@@ -237,6 +237,7 @@ class Service(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
       }
 
       val rowCount = Option(req.getParameter("rowCount"))
+      val copy = Option(req.getParameter("copy"))
 
       val jsonizedColumnIdMap = Option(req.getParameter("idMap")).getOrElse {
         return (BadRequest ~> Content("no idMap provided"))(resp)
@@ -351,7 +352,8 @@ class Service(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
 
       @tailrec
       def executeQuery(schema: Schema, analyzedQuery: SoQLAnalysis[String, SoQLAnalysisType]) {
-        val res = queryExecutor(base.receiveTimeoutMS(queryTimeout.toMillis.toInt), dataset, analyzedQuery, schema, precondition, ifModifiedSince, rowCount).map {
+        val res = queryExecutor(base.receiveTimeoutMS(queryTimeout.toMillis.toInt), dataset, analyzedQuery, schema,
+          precondition, ifModifiedSince, rowCount, copy).map {
           case QueryExecutor.NotFound =>
             chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
             finishRequest(notFoundResponse(dataset))
