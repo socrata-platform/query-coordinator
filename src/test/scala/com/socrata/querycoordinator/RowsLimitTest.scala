@@ -42,7 +42,7 @@ class RowsLimitTest extends TestBase {
     (qp.apply("select *", cols, schema) match {
       case SuccessfulParse(analysis) => analysis.limit
       case x =>
-    }) should be (Some(1000)) // qc has a default of 1k even not specified in config
+    }) should be (None) // no limits
 
     (qp.apply("select * limit 100000", cols, schema) match {
       case SuccessfulParse(analysis) => analysis.limit
