@@ -12,7 +12,7 @@ class QueryParserTest extends TestBase {
 
   import QueryParserTest._
 
-  test("'SELECT *' expands all columns") {
+  test("SELECT * expands all columns") {
     val query = "select *"
     val starPos = query.indexOf("*") + 1
     val expected = com.socrata.soql.collection.OrderedMap(
