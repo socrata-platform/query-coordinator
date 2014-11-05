@@ -1,12 +1,12 @@
 package com.socrata.querycoordinator
 
-import com.socrata.soql.SoQLAnalyzer
-import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
-import com.socrata.soql.environment.ColumnName
-import com.socrata.soql.types.{SoQLText, SoQLType}
 import com.socrata.querycoordinator.QueryParser.{AnalysisError, SuccessfulParse}
-import com.socrata.soql.typed.ColumnRef
+import com.socrata.soql.SoQLAnalyzer
+import com.socrata.soql.environment.ColumnName
+import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
 import com.socrata.soql.parsing.SoQLPosition
+import com.socrata.soql.typed.ColumnRef
+import com.socrata.soql.types.{SoQLText, SoQLType}
 
 class QueryParserTest extends TestBase {
 
