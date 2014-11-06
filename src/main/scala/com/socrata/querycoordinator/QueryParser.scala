@@ -12,7 +12,9 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLAnalysisType], maxRows: Option[Int]
 
   import QueryParser._
 
-  private def go(columnIdMapping: Map[ColumnName, String], schema: Map[String, SoQLType])(f: DatasetContext[SoQLAnalysisType] => SoQLAnalysis[ColumnName, SoQLAnalysisType]): Result = {
+  private def go(columnIdMapping: Map[ColumnName, String], schema: Map[String, SoQLType])
+                (f: DatasetContext[SoQLAnalysisType] => SoQLAnalysis[ColumnName, SoQLAnalysisType])
+                : Result = {
     val ds = dsContext(columnIdMapping, schema)
     try {
       limitRows(f(ds)) match {
