@@ -54,13 +54,13 @@ object QueryParser extends Logging {
 
   def dsContext(columnIdMapping: Map[ColumnName, String], rawSchema: Map[String, SoQLType]): DatasetContext[SoQLAnalysisType] =
     try {
-        // Ignore columns that exist in truth and missing in secondary
-        val knownColumnIdMapping = columnIdMapping.filter { case (k, v) => rawSchema.contains(v) }
-        if (columnIdMapping.size != knownColumnIdMapping.size) {
-          logger.info(s"truth has columns unknown to secondary ${columnIdMapping.size} ${knownColumnIdMapping.size}")
-        }
-        new DatasetContext[SoQLAnalysisType] {
-          val schema: OrderedMap[ColumnName, SoQLAnalysisType] = OrderedMap(knownColumnIdMapping.mapValues(rawSchema).toSeq.sortBy(_._1): _*)
-        }
+      // Ignore columns that exist in truth and missing in secondary
+      val knownColumnIdMapping = columnIdMapping.filter { case (k, v) => rawSchema.contains(v) }
+      if (columnIdMapping.size != knownColumnIdMapping.size) {
+        logger.info(s"truth has columns unknown to secondary ${columnIdMapping.size} ${knownColumnIdMapping.size}")
+      }
+      new DatasetContext[SoQLAnalysisType] {
+        val schema: OrderedMap[ColumnName, SoQLAnalysisType] = OrderedMap(knownColumnIdMapping.mapValues(rawSchema).toSeq.sortBy(_._1): _*)
+      }
     }
 }
