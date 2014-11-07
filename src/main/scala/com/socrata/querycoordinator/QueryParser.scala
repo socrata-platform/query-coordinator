@@ -52,9 +52,16 @@ object QueryParser extends Logging {
   case class UnknownColumnIds(columnIds: Set[String]) extends Result
   case class RowLimitExceeded(max: BigInt) extends Result
 
+  /**
+   * Make schema which is a mapping of column name to datatype
+   * by going through the raw schema of column id to datatype map.
+   * Ignore columns that exist in truth but missing in secondary.
+   * @param columnIdMapping column name to column id map (supposedly from soda fountain)
+   * @param rawSchema column id to datatype map like ( xxxx-yyyy -> text, ... ) (supposedly from secondary)
+   * @return column name to datatype map like ( field_name -> text, ... )
+   */
   def dsContext(columnIdMapping: Map[ColumnName, String], rawSchema: Map[String, SoQLType]): DatasetContext[SoQLAnalysisType] =
     try {
-      // Ignore columns that exist in truth and missing in secondary
       val knownColumnIdMapping = columnIdMapping.filter { case (k, v) => rawSchema.contains(v) }
       if (columnIdMapping.size != knownColumnIdMapping.size) {
         logger.info(s"truth has columns unknown to secondary ${columnIdMapping.size} ${knownColumnIdMapping.size}")
