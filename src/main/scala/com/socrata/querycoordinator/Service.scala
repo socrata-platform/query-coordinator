@@ -386,7 +386,7 @@ class Service(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
                   val qslm = HttpUtils.parseHttpDate(qsLastModified)
                   logSchemaFreshness(second.getAddress, sfDataVersion, sfLastModified, qsdv, qslm)
                 case _ =>
-                  log.warn("data version not available from secondary")
+                  log.warn("version related data not available from secondary")
               }
             }
             resp.setStatus(responseCode)
