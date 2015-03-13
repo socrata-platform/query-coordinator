@@ -11,11 +11,11 @@ resolvers += "Open Source Geospatial Foundation Repository" at "http://download.
 
 libraryDependencies ++= Seq(
   "com.google.protobuf" % "protobuf-java"               % "2.4.1",
-  "com.rojoma"         %% "rojoma-json-v3"              % "3.2.0",
-  "com.socrata"        %% "socrata-http-client"         % "3.0.1",
-  "com.socrata"        %% "socrata-http-curator-broker" % "3.0.1" exclude("org.slf4j", "slf4j-simple") exclude ("org.jboss.netty", "netty" /* see ZOOKEEPER-1681 */),
-  "com.socrata"        %% "socrata-thirdparty-utils"    % "2.5.3",
-  "com.socrata"        %% "soql-stdlib"                 % "0.4.0" exclude ("javax.media", "jai_core"),
+  "com.rojoma"         %% "rojoma-json-v3"              % "3.2.2",
+  "com.socrata"        %% "socrata-http-client"         % "3.1.1",
+  "com.socrata"        %% "socrata-http-curator-broker" % "3.1.1" exclude("org.slf4j", "slf4j-simple") exclude ("org.jboss.netty", "netty" /* see ZOOKEEPER-1681 */),
+  "com.socrata"        %% "socrata-thirdparty-utils"    % "3.0.0",
+  "com.socrata"        %% "soql-stdlib"                 % "0.5.0" exclude ("javax.media", "jai_core"),
   "com.typesafe"        % "config"                      % "1.0.0",
   "com.typesafe"       %% "scalalogging-slf4j"          % "1.1.0",
   "io.dropwizard.metrics" % "metrics-jetty9"            % "3.1.0",
@@ -40,7 +40,7 @@ mergeStrategy in assembly <<= (mergeStrategy in assembly) { old =>
 
 resourceGenerators in Compile <+= (resourceManaged in Compile, name in Compile, scalaVersion in Compile, version in Compile) map { (resourceManaged, name, scalaVersion, version) =>
   import com.rojoma.simplearm.util._
-  import com.rojoma.json.util.JsonUtil._
+  import com.rojoma.json.v3.util.JsonUtil._
   val file = resourceManaged / "query-coordinator-version.json"
   val revision = Process(Seq("git", "describe", "--always", "--dirty", "--long")).!!.split("\n")(0)
   val result = Map(
