@@ -37,6 +37,7 @@ scalacOptions ++= Seq("-deprecation", "-feature")
 
 mergeStrategy in assembly <<= (mergeStrategy in assembly) { old =>
   {
+    case PathList("org", "slf4j", "impl", xs @ _*)         => MergeStrategy.first
     case "about.html" => MergeStrategy.rename
     case x => old(x)
   }
