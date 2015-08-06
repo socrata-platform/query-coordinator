@@ -424,7 +424,9 @@ class Service(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
             case RollupInfoFetcher.Successful(rollups) =>
               val rewritten = queryRewriter.bestRewrite(schema, analyzedQuery, rollups)
               val (rollupName, analysis) = rewritten map { x => (Some(x._1), x._2) } getOrElse ((None, analyzedQuery))
-              log.info(s"Rewrote query on dataset $dataset to rollup $rollupName with analysis $analysis")
+              if (rewritten.isDefined) {
+                log.info(s"Rewrote query on dataset $dataset to rollup $rollupName with analysis $analysis")
+              }
               (analysis, rollupName)
             case RollupInfoFetcher.NoSuchDatasetInSecondary =>
               chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
