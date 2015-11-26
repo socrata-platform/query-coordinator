@@ -30,7 +30,7 @@ class QueryExecutor(httpClient: HttpClient,
   private val qpRowCount = "rowCount"
   private val qpCopy = "copy"
   private val qpRollupName = "rollupName"
-  private val qpIdAppearance = "idAppearance"
+  private val qpObfuscateId = "obfuscateId"
 
   /**
    * @note Reusing the result will re-issue the request to the upstream server.  The serialization of the
@@ -56,7 +56,7 @@ class QueryExecutor(httpClient: HttpClient,
       rowCount.map(rc => List(qpRowCount -> rc)).getOrElse(Nil) ++
       copy.map(c => List(qpCopy -> c)).getOrElse(Nil) ++
       rollupName.map(c => List(qpRollupName -> c)).getOrElse(Nil) ++
-      (if (!obfuscateId) List(qpIdAppearance -> "clear") else Nil)
+      (if (!obfuscateId) List(qpObfuscateId -> "false" ) else Nil)
     val request = base.p(qpQuery).
       addHeaders(PreconditionRenderer(precondition) ++ ifModifiedSince.map("If-Modified-Since" -> _.toHttpDate)).
       addHeaders(extraHeaders).

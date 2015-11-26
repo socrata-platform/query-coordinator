@@ -69,7 +69,7 @@ class QueryResource(secondary: Secondary,
 
       val forcedSecondaryName = req.queryParameter("store")
       val noRollup = req.queryParameter("no_rollup").isDefined
-      val obfuscateId = !Option(servReq.getParameter("idAppearance")).exists(_ == "clear")
+      val obfuscateId = !Option(servReq.getParameter(qpObfuscateId)).exists(_ == "false")
 
       forcedSecondaryName.foreach(ds => log.info("Forcing use of the secondary store instance: " + ds))
 
