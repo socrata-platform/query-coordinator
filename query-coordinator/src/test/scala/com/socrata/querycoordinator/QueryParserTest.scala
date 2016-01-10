@@ -19,7 +19,7 @@ class QueryParserTest extends TestBase {
       ColumnName("b") -> ColumnRef("bi", SoQLText)(new SoQLPosition(1, starPos, query, 0))
     )
     val actual = qp.apply(query, truthColumns, upToDateSchema) match {
-      case SuccessfulParse(analysis) => analysis.selection
+      case SuccessfulParse(analysis) => analysis.head.selection
       case x: QueryParser.Result => x
     }
     actual should be(expected)
@@ -32,7 +32,7 @@ class QueryParserTest extends TestBase {
       ColumnName("a") -> ColumnRef("ai", SoQLText)(new SoQLPosition(1, starPos, query, 0))
     )
     val actual = qp.apply(query, truthColumns, outdatedSchema) match {
-      case SuccessfulParse(analysis) => analysis.selection
+      case SuccessfulParse(analysis) => analysis.head.selection
       case x: QueryParser.Result => x
     }
     actual should be(expected)

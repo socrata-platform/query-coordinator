@@ -11,12 +11,12 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLAnalysisType], maxRows: Option[Int]
   import QueryParser._ // scalastyle:ignore import.grouping
 
   private def go(columnIdMapping: Map[ColumnName, String], schema: Map[String, SoQLType])
-                (f: DatasetContext[SoQLAnalysisType] => SoQLAnalysis[ColumnName, SoQLAnalysisType])
+                (f: DatasetContext[SoQLAnalysisType] => Seq[SoQLAnalysis[ColumnName, SoQLAnalysisType]])
   : Result = {
     val ds = dsContext(columnIdMapping, schema)
     try {
       limitRows(f(ds)) match {
-        case Right(analysis) => SuccessfulParse(analysis.mapColumnIds(columnIdMapping))
+        case Right(analyses) => SuccessfulParse(analyses.map(_.mapColumnIds(columnIdMapping)))
         case Left(result) => result
       }
     } catch {
@@ -25,19 +25,21 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLAnalysisType], maxRows: Option[Int]
     }
   }
 
-  private def limitRows(analysis: SoQLAnalysis[ColumnName, SoQLAnalysisType])
-  : Either[Result, SoQLAnalysis[ColumnName, SoQLAnalysisType]] = {
-    analysis.limit match {
+  private def limitRows(analysis: Seq[SoQLAnalysis[ColumnName, SoQLAnalysisType]]):
+    Either[Result, Seq[SoQLAnalysis[ColumnName, SoQLAnalysisType]]] = {
+    val lastAnalysis = analysis.last
+    lastAnalysis.limit match {
       case Some(lim) =>
         val actualMax = BigInt(maxRows.map(_.toLong).getOrElse(Long.MaxValue))
-        if (lim <= actualMax) Right(analysis) else Left(RowLimitExceeded(actualMax))
+        if (lim <= actualMax) { Right(analysis) }
+        else { Left(RowLimitExceeded(actualMax)) }
       case None =>
-        Right(analysis.copy(limit = Some(defaultRowsLimit)))
+        Right(analysis.dropRight(1) :+ lastAnalysis.copy(limit = Some(defaultRowsLimit)))
     }
   }
 
   def apply(query: String, columnIdMapping: Map[ColumnName, String], schema: Map[String, SoQLType]): Result =
-    go(columnIdMapping, schema)(analyzer.analyzeUnchainedQuery(query)(_))
+    go(columnIdMapping, schema)(analyzer.analyzeFullQuery(query)(_))
 
   def apply(selection: Option[String], // scalastyle:ignore parameter.number
             where: Option[String],
@@ -48,16 +50,17 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLAnalysisType], maxRows: Option[Int]
             offset: Option[String],
             search: Option[String],
             columnIdMapping: Map[ColumnName, String],
-            schema: Map[String, SoQLType]): Result =
-    go(columnIdMapping, schema)(
-      analyzer.analyzeSplitQuery(selection, where, groupBy, having, orderBy, limit, offset, search)(_))
+            schema: Map[String, SoQLType]): Result = {
+    val query = fullQuery(selection, where, groupBy, having, orderBy, limit, offset, search)
+    go(columnIdMapping, schema)(analyzer.analyzeFullQuery(query)(_))
+  }
 }
 
 object QueryParser extends Logging {
 
   sealed abstract class Result
 
-  case class SuccessfulParse(analysis: SoQLAnalysis[String, SoQLAnalysisType]) extends Result
+  case class SuccessfulParse(analysis: Seq[SoQLAnalysis[String, SoQLAnalysisType]]) extends Result
 
   case class AnalysisError(problem: SoQLException) extends Result
 
@@ -85,4 +88,24 @@ object QueryParser extends Logging {
           OrderedMap(knownColumnIdMapping.mapValues(rawSchema).toSeq.sortBy(_._1): _*)
       }
     }
+
+  private def fullQuery(selection : Option[String],
+                        where : Option[String],
+                        groupBy : Option[String],
+                        having : Option[String],
+                        orderBy : Option[String],
+                        limit : Option[String],
+                        offset : Option[String],
+                        search : Option[String]): String = {
+    val sb = new StringBuilder
+    sb.append(selection.map( "SELECT " + _).getOrElse("SELECT *"))
+    sb.append(where.map(" WHERE " + _).getOrElse(""))
+    sb.append(where.map(" GROUP BY " + _).getOrElse(""))
+    sb.append(where.map(" HAVING " + _).getOrElse(""))
+    sb.append(where.map(" ORDER BY " + _).getOrElse(""))
+    sb.append(where.map(" LIMIT " + _).getOrElse(""))
+    sb.append(where.map(" OFFSET " + _).getOrElse(""))
+    sb.append(where.map(x => "SEARCH '%s'".format(x.replace("'", "''"))).getOrElse(""))
+    sb.result()
+  }
 }
