@@ -17,26 +17,49 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLAnalysisType], maxRows: Option[Int]
     try {
       limitRows(f(ds)) match {
         case Right(analyses) =>
-          val initialAcc = (columnIdMapping, Seq.empty[SoQLAnalysis[String, SoQLAnalysisType]])
-          val (_, analysesColIds) = analyses.foldLeft(initialAcc) { (acc, analysis) =>
-            val (mapping, convertedAnalyses) = acc
-            // Newly introduced columns will be used as column id as is.
-            // There should be some sanitizer upstream that checks for field_name conformity.
-            // TODO: Alternatively, we may need to use internal column name map for new and temporary columns
-            val newlyIntroducedColumns = analysis.selection.keys.filter { columnName => !mapping.contains(columnName) }
-            val newMapping = newlyIntroducedColumns.foldLeft(mapping) { (acc, newColumn) =>
-              acc + (newColumn -> newColumn.name)
-            }
-            val a: SoQLAnalysis[String, SoQLAnalysisType] = analysis.mapColumnIds(newMapping)
-            (newMapping, convertedAnalyses :+ a)
-          }
-          SuccessfulParse(analysesColIds)
+          val analysesInColumnIds = remapAnalyses(columnIdMapping, analyses)
+          SuccessfulParse(analysesInColumnIds)
         case Left(result) => result
       }
     } catch {
       case e: SoQLException =>
         AnalysisError(e)
     }
+  }
+
+  /**
+   * Convert analyses from column names to column ids.
+   * Add new columns and remap "column ids" as it walks the soql chain.
+   */
+  private def remapAnalyses(columnIdMapping: Map[ColumnName, String], //schema: Map[String, SoQLType],
+                            analyses: Seq[SoQLAnalysis[ColumnName, SoQLAnalysisType]])
+    : Seq[SoQLAnalysis[String, SoQLAnalysisType]] = {
+    val initialAcc = (columnIdMapping, Seq.empty[SoQLAnalysis[String, SoQLAnalysisType]])
+    val (_, analysesInColIds) = analyses.foldLeft(initialAcc) { (acc, analysis) =>
+      val (mapping, convertedAnalyses) = acc
+      // Newly introduced columns will be used as column id as is.
+      // There should be some sanitizer upstream that checks for field_name conformity.
+      // TODO: Alternatively, we may need to use internal column name map for new and temporary columns
+      val newlyIntroducedColumns = analysis.selection.keys.filter { columnName => !mapping.contains(columnName) }
+      val mappingWithNewColumns = newlyIntroducedColumns.foldLeft(mapping) { (acc, newColumn) =>
+        acc + (newColumn -> newColumn.name)
+      }
+      // Re-map columns except for the innermost soql
+      val newMapping =
+        if (convertedAnalyses.nonEmpty) {
+          val prevAnalysis = convertedAnalyses.last
+          prevAnalysis.selection.foldLeft(mapping) { (acc, selCol) =>
+            val (colName, expr) = selCol
+            acc + (colName -> colName.name)
+          }
+        } else {
+          mappingWithNewColumns
+        }
+
+      val a: SoQLAnalysis[String, SoQLAnalysisType] = analysis.mapColumnIds(newMapping)
+      (mappingWithNewColumns, convertedAnalyses :+ a)
+    }
+    analysesInColIds
   }
 
   private def limitRows(analyses: Seq[SoQLAnalysis[ColumnName, SoQLAnalysisType]])
