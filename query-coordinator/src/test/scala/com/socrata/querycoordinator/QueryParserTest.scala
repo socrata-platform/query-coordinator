@@ -50,7 +50,7 @@ class QueryParserTest extends TestBase {
 
   test("Chain Soql") {
     val query = "SELECT a || 'one' as x WHERE a <> 'x' |> SELECT x || 'y' as y where x <> 'y' |> SELECT y || 'z' as z where y <> 'z'"
-    val actual = qp.apply(query, truthColumns, outdatedSchema)
+    val actual = qp.apply(query, truthColumns, outdatedSchema, merged = false)
     actual shouldBe a[SuccessfulParse]
 
     val SuccessfulParse(analyses) = actual
@@ -78,7 +78,6 @@ class QueryParserTest extends TestBase {
       StringLiteral("x", SoQLText)(NoPosition)
     ))(NoPosition, NoPosition)
 
-    println(actual)
     depositionedAnalyses(0).selection should be(select0)
     depositionedAnalyses(0).where should be(Some(where0))
 

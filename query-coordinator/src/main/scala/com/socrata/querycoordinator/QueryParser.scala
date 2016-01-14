@@ -2,9 +2,10 @@ package com.socrata.querycoordinator
 
 import com.socrata.soql.ast.Expression
 import com.socrata.soql.collection.OrderedMap
-import com.socrata.soql.environment.{ColumnName, DatasetContext}
+import com.socrata.soql.environment.{DatasetContext, ColumnName}
 import com.socrata.soql.exceptions.SoQLException
-import com.socrata.soql.types.{SoQLAnalysisType, SoQLType}
+import com.socrata.soql.functions.{MonomorphicFunction, VariableType, SoQLFunctions}
+import com.socrata.soql.types.{SoQLBoolean, SoQLAnalysisType, SoQLType}
 import com.socrata.soql.{SoQLAnalysis, SoQLAnalyzer}
 import com.typesafe.scalalogging.slf4j.Logging
 
@@ -75,8 +76,18 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLAnalysisType], maxRows: Option[Int]
     }
   }
 
-  def apply(query: String, columnIdMapping: Map[ColumnName, String], schema: Map[String, SoQLType]): Result = {
-    go(columnIdMapping, schema)(analyzer.analyzeFullQuery(query)(_))
+  def apply(query: String,
+            columnIdMapping: Map[ColumnName, String], schema: Map[String, SoQLType],
+            merged: Boolean = true): Result = {
+    val analyze: DatasetContext[SoQLAnalysisType] => Seq[SoQLAnalysis[ColumnName, SoQLAnalysisType]] =
+      analyzer.analyzeFullQuery(query)(_)
+    val analyzeMaybeMerge = if (merged) { analyze andThen soqlMerge } else { analyze }
+    go(columnIdMapping, schema)(analyzeMaybeMerge)
+  }
+
+  private def soqlMerge(analyses: Seq[SoQLAnalysis[ColumnName, SoQLAnalysisType]])
+    : Seq[SoQLAnalysis[ColumnName, SoQLAnalysisType]] = {
+    SoQLAnalysis.merge(andFn, analyses)
   }
 
   def apply(selection: Option[String], // scalastyle:ignore parameter.number
@@ -146,4 +157,12 @@ object QueryParser extends Logging {
     sb.append(where.map(s => "SEARCH %s".format(Expression.escapeString(s))).getOrElse(""))
     sb.result()
   }
+
+  // And function is used for chain SoQL merge.
+  private val andFnBindings = SoQLFunctions.Neq.parameters.map {
+    case VariableType(name) => name -> SoQLBoolean
+    case _ => throw new Exception("Unexpected function signature")
+  }.toMap
+
+  private val andFn = MonomorphicFunction(SoQLFunctions.Neq, andFnBindings)
 }
