@@ -44,4 +44,6 @@ class DatabaseConfig(config: Config, root: String) extends ConfigClass(config, r
   val database = getString("database")
   val username = getString("username")
   val password = getString("password")
+  val minPoolSize = getInt("min-pool-size")
+  val maxPoolSize = getInt("max-pool-size")
 }

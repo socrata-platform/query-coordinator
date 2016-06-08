@@ -33,8 +33,8 @@ object CacheSessionProviderFromConfig {
       ds.setUser(pg.db.username)
       ds.setPassword(pg.db.password)
       ds.setServerName(pg.db.host)
-      ds.setInitialConnections(10)
-      ds.setMaxConnections(30)
+      ds.setInitialConnections(pg.db.minPoolSize)
+      ds.setMaxConnections(pg.db.maxPoolSize)
       new PostgresqlCacheSessionProvider(ds,
         updateATimeInterval = pg.atimeUpdateInterval,
         survivorCutoff = pg.survivorCutoff,
