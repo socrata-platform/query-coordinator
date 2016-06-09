@@ -15,28 +15,28 @@ class FileCacheSession(dir: File, updateATimeInterval: FiniteDuration, streamWra
 
   private def filename(key: String) = new File(dir, "f" + URLEncoder.encode(key, "UTF-8"))
 
-  override def find(key: String, rs: ResourceScope): Option[ValueRef] = {
+  override def find(key: String, rs: ResourceScope): CacheSession.Result[Option[ValueRef]] = {
     try {
       val fname = filename(key)
       val now = System.currentTimeMillis
       if(fname.lastModified < now - updateATimeMS) fname.setLastModified(now)
       val f = scope.open(new FileInputStream(fname))
       val fc = scope.open(f.getChannel, transitiveClose = List(f))
-      Some(rs.open(new FileValueRef(fc, streamWrapper, scope)))
+      CacheSession.Success(Some(rs.open(new FileValueRef(fc, streamWrapper, scope))))
     } catch {
       case e: FileNotFoundException =>
-        None
+        CacheSession.Success(None)
     }
   }
 
-  override def create(key: String)(filler: OutputStream => Unit): Unit = {
+  override def create(key: String)(filler: CacheSession.Result[OutputStream] => Unit): Unit = {
     val temp = File.createTempFile("tmp", ".tmp", dir)
     try {
       using(new ResourceScope(key)) { rs =>
         val fos = rs.open(new FileOutputStream(temp))
         val wrapped = streamWrapper.wrapOutputStream(fos, rs)
-        val buffered = new BufferedOutputStream(wrapped)
-        filler(buffered)
+        val buffered = rs.open(new BufferedOutputStream(wrapped), transitiveClose = List(wrapped))
+        filler(CacheSession.Success(buffered))
       }
       temp.renameTo(filename(key))
     } finally {

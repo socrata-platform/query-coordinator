@@ -12,11 +12,12 @@ final abstract class NoopCacheSession
 object NoopCacheSession extends CacheSession {
   private val log = org.slf4j.LoggerFactory.getLogger(classOf[NoopCacheSession])
 
-  override def find(key: String, resourceScope: ResourceScope): Option[ValueRef] = None
+  override def find(key: String, resourceScope: ResourceScope): CacheSession.Result[Option[ValueRef]] =
+    CacheSession.Success(None)
 
-  override def create(key: String)(filler: OutputStream => Unit): Unit = {
+  override def create(key: String)(filler: CacheSession.Result[OutputStream] => Unit): Unit = {
     val out = new CountingOutputStream(NullOutputStream.NULL_OUTPUT_STREAM)
-    filler(out)
+    filler(CacheSession.Success(out))
     log.info("Would have cached {} byte(s) as {}, but am not because noop", out.getCount, key)
   }
 }

@@ -1,14 +1,14 @@
 package com.socrata.querycoordinator.caching.cache.postgresql
 
 import java.io.OutputStream
-import java.sql.{Connection, Timestamp}
+import java.sql.{SQLException, Connection, Timestamp}
 import javax.sql.DataSource
 
+import com.mchange.v2.resourcepool.TimeoutException
 import com.rojoma.simplearm.v2._
 import com.socrata.querycoordinator.caching.cache.{ValueRef, CacheSession}
 import com.socrata.querycoordinator.caching.{CloseBlockingOutputStream, ChunkingOutputStream}
 import com.socrata.util.io.StreamWrapper
-import org.postgresql.util.PSQLException
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -20,26 +20,33 @@ class PostgresqlCacheSession(ds: DataSource, updateATimeInterval: FiniteDuration
   @volatile private var writeConnection: Connection = null
   private var updateOnClose = Set.empty[Long]
 
-  private def initRead(): Unit = {
+  private def initRead(): Boolean = {
     if(closed) throw new IllegalStateException("Accessing a closed session")
     if(readConnection eq null) {
-      readConnection = scope.open(ds.getConnection)
+      readConnection =
+        try { scope.open(ds.getConnection) }
+        catch { case e: SQLException if e.getCause.isInstanceOf[TimeoutException] => return false }
       readConnection.setReadOnly(true)
       readConnection.setAutoCommit(true)
     }
+    true
   }
 
-  private def initWrite(): Unit = {
+  private def initWrite(): Boolean = {
     if(closed) throw new IllegalStateException("Accessing a closed session")
     if(writeConnection eq null) {
-      writeConnection = scope.open(ds.getConnection)
+      writeConnection =
+        try { scope.open(ds.getConnection) }
+        catch { case e: SQLException if e.getCause.isInstanceOf[TimeoutException] => return false }
       writeConnection.setReadOnly(false)
       writeConnection.setAutoCommit(false)
     }
+    true
   }
 
-  override def find(key: String, resourceScope: ResourceScope): Option[ValueRef] = synchronized {
-    initRead()
+  override def find(key: String, resourceScope: ResourceScope): CacheSession.Result[Option[ValueRef]] = synchronized {
+    if(!initRead()) return CacheSession.Timeout
+
     using(readConnection.prepareStatement("select id, approx_last_access from cache where key = ?")) { stmt =>
       stmt.setString(1, key)
       using(stmt.executeQuery()) { rs =>
@@ -49,16 +56,16 @@ class PostgresqlCacheSession(ds: DataSource, updateATimeInterval: FiniteDuration
 
           if(approx_last_access.getTime < System.currentTimeMillis - updateATimeMS) updateOnClose += dataKey
 
-          Some(resourceScope.open(new PostgresqlValueRef(readConnection, dataKey, scope, streamWrapper)))
+          CacheSession.Success(Some(resourceScope.open(new PostgresqlValueRef(readConnection, dataKey, scope, streamWrapper))))
         } else {
-          None
+          CacheSession.Success(None)
         }
       }
     }
   }
 
-  override def create(key: String)(filler: OutputStream => Unit): Unit = synchronized {
-    initWrite()
+  override def create(key: String)(filler: CacheSession.Result[OutputStream] => Unit): Unit = synchronized {
+    if(!initWrite()) { filler(CacheSession.Timeout); return }
 
     try {
       val id = using(writeConnection.prepareStatement("INSERT INTO cache (key, created_at, approx_last_access) VALUES (NULL, ?, ?) RETURNING id")) { stmt =>
@@ -83,7 +90,7 @@ class PostgresqlCacheSession(ds: DataSource, updateATimeInterval: FiniteDuration
         }
         using(new ResourceScope) { rs =>
           val stream = streamWrapper.wrapOutputStream(rs.open(new CloseBlockingOutputStream(os)), rs)
-          filler(stream)
+          filler(CacheSession.Success(stream))
         }
         os.close()
       }
@@ -130,7 +137,7 @@ class PostgresqlCacheSession(ds: DataSource, updateATimeInterval: FiniteDuration
           writeConnection.commit()
           true
         } catch {
-          case e: PSQLException if e.getSQLState == "40001" /* serialization_failure */ =>
+          case e: SQLException if e.getSQLState == "40001" /* serialization_failure */ =>
             false
         } finally {
           writeConnection.rollback()

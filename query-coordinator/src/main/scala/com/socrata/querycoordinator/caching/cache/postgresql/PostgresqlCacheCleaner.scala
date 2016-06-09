@@ -1,10 +1,9 @@
 package com.socrata.querycoordinator.caching.cache.postgresql
 
-import java.sql.{Connection, Timestamp}
+import java.sql.{SQLException, Connection, Timestamp}
 import javax.sql.DataSource
 
 import com.socrata.querycoordinator.caching.cache.CacheCleaner
-import org.postgresql.util.PSQLException
 
 import scala.concurrent.duration.FiniteDuration
 import com.rojoma.simplearm.v2._
@@ -92,7 +91,7 @@ class PostgresqlCacheCleaner(dataSource: DataSource, survivorCutoff: FiniteDurat
           conn.commit()
           true
         } catch {
-          case e: PSQLException if e.getSQLState == "40001" /* serialization_failure */ =>
+          case e: SQLException if e.getSQLState == "40001" /* serialization_failure */ =>
             false
         } finally {
           conn.rollback()
@@ -129,7 +128,7 @@ class PostgresqlCacheCleaner(dataSource: DataSource, survivorCutoff: FiniteDurat
           conn.commit()
           true
         } catch {
-          case e: PSQLException if e.getSQLState == "40001" /* serialization_failure */ =>
+          case e: SQLException if e.getSQLState == "40001" /* serialization_failure */ =>
             false
         } finally {
           conn.rollback()
