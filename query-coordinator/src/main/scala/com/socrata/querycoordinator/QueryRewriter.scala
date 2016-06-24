@@ -425,7 +425,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     }
 
     analysisMap.foreach {
-      case (rollupName, Failure(e: SoQLException)) => log.info(s"Couldn't parse rollup $rollupName, ignoring: ${e.toString}")
+      case (rollupName, Failure(e: SoQLException)) => log.info(s"Couldn't parse rollup $rollupName, ignoring ${e.getClass.getName}: ${e.getMessage}")
       case (rollupName, Failure(e)) => log.warn(s"Couldn't parse rollup $rollupName due to unexpected failure, ignoring", e)
       case _ =>
     }
