@@ -23,6 +23,7 @@ object QueryCoordinator {
       ScoverageSbtPlugin.ScoverageKeys.coverageMinimum := 30,
       libraryDependencies ++= Seq(
         postgresql,
+        c3p0,
         protobuf,
         rojomaJson,
         socrataHttpClient,
