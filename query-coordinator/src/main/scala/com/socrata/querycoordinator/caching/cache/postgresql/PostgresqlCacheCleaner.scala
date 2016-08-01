@@ -15,7 +15,7 @@ import com.rojoma.simplearm.v2._
  * @param deleteDelay Amount of time for an entry to remain on the pending_delete queue before it is actually deleted
  * @param assumeDeadCreateCutoff Amount of time for a keyless entry not on the delete queue to live before it is moved to the delete queue
  */
-class PostgresqlCacheCleaner(dataSource: DataSource, survivorCutoff: FiniteDuration, deleteDelay: FiniteDuration, assumeDeadCreateCutoff: FiniteDuration) extends CacheCleaner {
+class PostgresqlCacheCleaner(dataSource: DataSource, survivorCutoff: FiniteDuration, deleteDelay: FiniteDuration, assumeDeadCreateCutoff: FiniteDuration, chunkSize: Int) extends CacheCleaner {
   val survivorCutoffMS = survivorCutoff.toMillis
   val deleteDelayMS = deleteDelay.toMillis
   val assumeDeadCreateCutoffMS = assumeDeadCreateCutoff.toMillis
@@ -49,7 +49,6 @@ class PostgresqlCacheCleaner(dataSource: DataSource, survivorCutoff: FiniteDurat
 
           log.info("Found {} pending deletions old enough to actually delete", pendingEntries.size)
           if(pendingEntries.nonEmpty) {
-            val chunkSize = 200
             using(conn.createStatement()) { stmt =>
               val pendingDeletesHandled =
                 pendingEntries.grouped(chunkSize).foldLeft(0) { (updatedSoFar, pendingEntriesChunk) =>

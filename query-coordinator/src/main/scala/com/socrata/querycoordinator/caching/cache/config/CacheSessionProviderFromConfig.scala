@@ -45,6 +45,7 @@ object CacheSessionProviderFromConfig {
         survivorCutoff = pg.survivorCutoff,
         assumeDeadCreateCutoff = pg.assumeDeadCreateCutoff,
         deleteDelay = pg.deleteDelay,
+        deleteChunkSize = pg.deleteChunkSize,
         streamWrapper = streamWrapper)
     }
 }

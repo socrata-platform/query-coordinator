@@ -6,7 +6,7 @@ com.socrata.query-coordinator {
 
   log4j.logger.com.socrata.http.client.LivenessCheckerImpl = TRACE
   log4j.logger.com.socrata.http.server.livenesscheck = TRACE
- 
+
   all-secondary-instance-names = [{{ SECONDARY_INSTANCES }}]
 
   query-timeout = {{ QUERY_TIMEOUT }}
@@ -14,6 +14,9 @@ com.socrata.query-coordinator {
   {% if CACHE_DATABASE_HOST is defined and CACHE_DATABASE_PORT is defined and CACHE_DATABASE_PASSWORD is defined and CACHE_DATABASE_USERNAME is defined -%}
   cache {
     type = "postgresql"
+
+    delete-chunk-size = {{DELETE_CHUNK_SIZE}}
+
     database {
       host = {{CACHE_DATABASE_HOST}}
       port = {{CACHE_DATABASE_PORT}}
