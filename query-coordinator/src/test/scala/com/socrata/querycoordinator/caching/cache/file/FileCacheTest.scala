@@ -18,7 +18,7 @@ class FileCacheTest extends FunSuite with MustMatchers {
       sp.init()
 
       val session = sp.open(rs)
-      session.find("dne", rs) must equal (None)
+      session.find("dne", rs) must equal (CacheSession.Success(None))
       session.createText("hello") {
         case CacheSession.Success(w) =>
           w.write("world\n")
