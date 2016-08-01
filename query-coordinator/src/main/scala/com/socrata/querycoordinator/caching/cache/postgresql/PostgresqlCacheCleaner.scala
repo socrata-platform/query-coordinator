@@ -49,16 +49,27 @@ class PostgresqlCacheCleaner(dataSource: DataSource, survivorCutoff: FiniteDurat
 
           log.info("Found {} pending deletions old enough to actually delete", pendingEntries.size)
           if(pendingEntries.nonEmpty) {
+            val chunkSize = 200
             using(conn.createStatement()) { stmt =>
-              stmt.execute(pendingEntries.mkString("DELETE FROM pending_deletes WHERE id IN (", ",", ")"))
-              val pendingDeletesHandled = stmt.getUpdateCount
+              val pendingDeletesHandled =
+                pendingEntries.grouped(chunkSize).foldLeft(0) { (updatedSoFar, pendingEntriesChunk) =>
+                  stmt.execute(pendingEntriesChunk.mkString("DELETE FROM pending_deletes WHERE id IN (", ",", ")"))
+                  updatedSoFar + stmt.getUpdateCount
+                }
 
               if(toKill.nonEmpty) { // this should always be true
-                stmt.execute(toKill.mkString("DELETE FROM cache_data WHERE cache_id in (", ",", ")"))
-                val cacheDataDeleted = stmt.getUpdateCount
+                val (cacheDataDeleted, cacheEntriesDeleted) =
+                  toKill.grouped(chunkSize).foldLeft((0,0)) { (deletesSoFar, toKillChunk) =>
+                    val (cacheDataDeletedSoFar, cacheEntriesDeletedSoFar) = deletesSoFar
 
-                stmt.execute(toKill.mkString("DELETE FROM cache WHERE id in (", ",", ")"))
-                val cacheEntriesDeleted = stmt.getUpdateCount
+                    stmt.execute(toKillChunk.mkString("DELETE FROM cache_data WHERE cache_id in (", ",", ")"))
+                    val cacheDataDeletedChunk = stmt.getUpdateCount
+
+                    stmt.execute(toKillChunk.mkString("DELETE FROM cache WHERE id in (", ",", ")"))
+                    val cacheEntriesDeletedChunk = stmt.getUpdateCount
+
+                    (cacheDataDeletedSoFar + cacheDataDeletedChunk, cacheEntriesDeletedSoFar + cacheEntriesDeletedChunk)
+                  }
 
                 log.info("Deleted {} cache data lines in {} entries", cacheDataDeleted, cacheEntriesDeleted)
               }
