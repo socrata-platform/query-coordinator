@@ -28,7 +28,7 @@ class TestRollupScorer extends TestQueryRewriterBase {
     val rollupInfos = rollups.map { x => new RollupInfo(x._1, x._2) }
 
     /** Pull in the rollupAnalysis for easier debugging */
-    val rollupAnalysis = rewriter.analyzeRollups(schema, rollupInfos)
+    val rollupAnalysis = rewriter.analyzeRollups(schema, rollupInfos, Map.empty)
 
     // validate we don't have any ties, which could confuse things due to having no clear ordering.
     rollupAnalysis.values.map(RollupScorer.scoreRollup(_)).toSet should have size rollups.size

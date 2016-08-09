@@ -339,8 +339,8 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
   }
 
 
-  def possibleRewrites(schema: Schema, q: Anal, rollups: Seq[RollupInfo]): Map[RollupName, Anal] = {
-    possibleRewrites(q, analyzeRollups(schema, rollups))
+  def possibleRewrites(schema: Schema, q: Anal, rollups: Seq[RollupInfo], project: Map[String, String]): Map[RollupName, Anal] = {
+    possibleRewrites(q, analyzeRollups(schema, rollups, project))
   }
 
   def possibleRewrites(q: Anal, rollups: Map[RollupName, Anal]): Map[RollupName, Anal] = {
@@ -417,11 +417,19 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     QueryParser.dsContext(columnIdMap, schema.schema)
   }
 
-  def analyzeRollups(schema: Schema, rollups: Seq[RollupInfo]): Map[RollupName, Anal] = {
+  def analyzeRollups(schema: Schema, rollups: Seq[RollupInfo], project: Map[String, String]): Map[RollupName, Anal] = {
+
+    def reprojectColumn(cn: ColumnId): ColumnId = {
+      project.get(cn) match {
+        case Some(newName) => newName
+        case None => cn
+      }
+    }
+
     val dsContext = prefixedDsContext(schema)
     val rollupMap = rollups.map { r => (r.name, r.soql) }.toMap
     val analysisMap = rollupMap.mapValues { soql =>
-      Try(analyzer.analyzeUnchainedQuery(soql)(dsContext).mapColumnIds(removeRollupPrefix))
+      Try(analyzer.analyzeUnchainedQuery(soql)(dsContext).mapColumnIds(removeRollupPrefix).mapColumnIds(reprojectColumn))
     }
 
     analysisMap.foreach {
@@ -431,7 +439,23 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     }
 
     analysisMap collect {
-      case (k, Success(a)) => k -> a
+      case (k, Success(a)) =>
+        val ruAnalysis =
+          if (project.nonEmpty) {
+            val reprojectedSelection = a.selection.map {
+              case x@(cn: ColumnName, expr) =>
+                project.get(cn.name.stripMargin('_')) match {
+                  case Some(newName) =>
+                    (new ColumnName(newName), expr)
+                  case None =>
+                    x
+                }
+            }
+            a.copy(selection = reprojectedSelection)
+          } else {
+            a
+          }
+        k -> ruAnalysis
     }
   }
 }

@@ -6,21 +6,21 @@ import javax.servlet.http.HttpServletResponse
 import com.rojoma.json.v3.io.JsonReaderException
 import com.rojoma.json.v3.util.JsonUtil
 import com.rojoma.simplearm.v2.ResourceScope
-import com.socrata.http.common.AuxiliaryData
 import com.socrata.http.common.util.HttpUtils
 import com.socrata.http.server._
+import com.socrata.http.server.implicits._
 import com.socrata.http.server.responses._
 import com.socrata.http.server.util.RequestId
 import com.socrata.querycoordinator._
 import com.socrata.querycoordinator.caching.SharedHandle
-import com.socrata.soql.SoQLAnalysis
 import com.socrata.soql.environment.ColumnName
-import com.socrata.soql.exceptions.{TypecheckException, NoSuchColumn, DuplicateAlias}
+import com.socrata.soql.exceptions.{DuplicateAlias, NoSuchColumn, TypecheckException}
+import com.socrata.soql.SoQLAnalysis
+import com.socrata.soql.typed.ColumnRef
 import com.socrata.soql.types.SoQLType
 import org.apache.http.HttpStatus
 import org.joda.time.format.ISODateTimeFormat
-import org.joda.time.{Interval, DateTime}
-import com.socrata.http.server.implicits._
+import org.joda.time.{DateTime, Interval}
 
 
 import scala.annotation.tailrec
@@ -249,36 +249,32 @@ class QueryResource(secondary: Secondary,
          */
         def possiblyRewriteOneAnalysisInQuery(schema: Schema, analyzedQuery: Seq[SoQLAnalysis[String, SoQLType]])
           : (Seq[SoQLAnalysis[String, SoQLType]], Option[String]) = {
-          analyzedQuery.foldLeft((Seq.empty[SoQLAnalysis[String, SoQLType]], None: Option[String])) {
-            (acc, anal) =>
-              val existingRollupName = acc._2
-              existingRollupName match {
-                case Some(_) => (acc._1 :+ anal, existingRollupName)
-                case None =>
-                  val (rewrittenAnal, rollupName) = possiblyRewriteQuery(schema, anal)
-                  rollupName match {
-                    case Some(_) => (acc._1 :+ rewrittenAnal, rollupName)
-                    case None => (acc._1 :+ anal, None)
-                  }
-              }
-          }
-        }
-
-        def possiblyRewriteQuery(schema: Schema, analyzedQuery: SoQLAnalysis[String, SoQLType])
-          : (SoQLAnalysis[String, SoQLType], Option[String]) = {
           if (noRollup) {
             (analyzedQuery, None)
           } else {
             rollupInfoFetcher(base.receiveTimeoutMS(schemaTimeout.toMillis.toInt), dataset, copy) match {
               case RollupInfoFetcher.Successful(rollups) =>
-                val rewritten = RollupScorer.bestRollup(
-                  queryRewriter.possibleRewrites(schema, analyzedQuery, rollups).toSeq)
-                val (rollupName, analysis) = rewritten map { x => (Some(x._1), x._2) } getOrElse ((None, analyzedQuery))
-                if (rollupName.isDefined) {
-                  log.info(s"Rewrote query on dataset $dataset to rollup $rollupName")
+                val acc = analyzedQuery.foldLeft((Seq.empty[SoQLAnalysis[String, SoQLType]], None: Option[String], Map.empty[String, String])) {
+                  (acc, anal) =>
+                    val existingRollupName = acc._2
+                    existingRollupName match {
+                      case Some(_) =>
+                        (acc._1 :+ anal, existingRollupName, acc._3)
+                      case None =>
+                        val (rewrittenAnal, rollupName) = possiblyRewriteQuery(schema, anal, rollups, acc._3)
+                        val project = anal.selection.collect {
+                          case (name: ColumnName, cr: ColumnRef[String, SoQLType]) =>
+                            (cr.column, name.name)
+                        }
+                        rollupName match {
+                          case Some(_) =>
+                            (Seq(rewrittenAnal), rollupName, project) // all preceding analyses are thrown away
+                          case None =>
+                            (acc._1 :+ anal, None, project)
+                        }
+                    }
                 }
-                log.debug(s"Rewritten analysis: $analysis")
-                (analysis, rollupName)
+                (acc._1, acc._2)
               case RollupInfoFetcher.NoSuchDatasetInSecondary =>
                 chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
                 finishRequest(notFoundResponse(dataset))
@@ -291,6 +287,16 @@ class QueryResource(secondary: Secondary,
                 finishRequest(internalServerError)
             }
           }
+        }
+
+        def possiblyRewriteQuery(schema: Schema, analyzedQuery: SoQLAnalysis[String, SoQLType], rollups: Seq[RollupInfo], project: Map[String, String])
+          : (SoQLAnalysis[String, SoQLType], Option[String]) = {
+          val rewritten = RollupScorer.bestRollup(
+            queryRewriter.possibleRewrites(schema, analyzedQuery, rollups, project).toSeq)
+          val (rollupName, analysis) = rewritten map { x => (Some(x._1), x._2) } getOrElse ((None, analyzedQuery))
+          rollupName.foreach(ru => log.info(s"Rewrote query on dataset $dataset to rollup $ru")) // only log rollup name if it is defined.
+          log.debug(s"Rewritten analysis: $analysis")
+          (analysis, rollupName)
         }
 
         case class Versioned[T](payload: T, copyNumber: Long, dataVersion: Long, lastModified: DateTime)
