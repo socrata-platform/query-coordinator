@@ -96,6 +96,7 @@ class QueryResource(secondary: Secondary,
 
       val rowCount = Option(servReq.getParameter("rowCount"))
       val copy = Option(servReq.getParameter("copy"))
+      val customQueryTimeoutMs = Option(servReq.getParameter(qpQueryTimeoutMs))
 
       val jsonizedColumnIdMap = Option(servReq.getParameter("idMap")).getOrElse {
         finishRequest(BadRequest ~> Json("no idMap provided"))
@@ -196,7 +197,8 @@ class QueryResource(secondary: Secondary,
             schema.copyNumber,
             schema.dataVersion,
             schema.lastModified,
-            extendedScope
+            extendedScope,
+            customQueryTimeoutMs
           ) match {
             case QueryExecutor.Retry =>
               Left(nextRetry)
