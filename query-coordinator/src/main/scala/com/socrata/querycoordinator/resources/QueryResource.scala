@@ -33,7 +33,7 @@ class QueryResource(secondary: Secondary,
                     queryExecutor: QueryExecutor,
                     connectTimeout: FiniteDuration,
                     schemaTimeout: FiniteDuration,
-                    queryTimeout: FiniteDuration,
+                    receiveTimeout: FiniteDuration,
                     schemaCache: (String, Option[String], Schema) => Unit,
                     schemaDecache: (String, Option[String]) => Option[Schema],
                     secondaryInstance: SecondaryInstanceSelector,
@@ -96,7 +96,7 @@ class QueryResource(secondary: Secondary,
 
       val rowCount = Option(servReq.getParameter("rowCount"))
       val copy = Option(servReq.getParameter("copy"))
-      val customQueryTimeoutMs = Option(servReq.getParameter(qpQueryTimeoutMs))
+      val queryTimeoutSeconds = Option(servReq.getParameter(qpQueryTimeoutSeconds))
 
       val jsonizedColumnIdMap = Option(servReq.getParameter("idMap")).getOrElse {
         finishRequest(BadRequest ~> Json("no idMap provided"))
@@ -183,7 +183,7 @@ class QueryResource(secondary: Secondary,
           val extraHeaders = Map(RequestId.ReqIdHeader -> requestId) ++
             resourceName.map(fbf => Map(headerSocrataResource -> fbf)).getOrElse(Nil)
           queryExecutor(
-            base.receiveTimeoutMS(queryTimeout.toMillis.toInt).connectTimeoutMS(connectTimeout.toMillis.toInt),
+            base.receiveTimeoutMS(receiveTimeout.toMillis.toInt).connectTimeoutMS(connectTimeout.toMillis.toInt),
             dataset,
             analyzedQuery,
             schema.payload,
@@ -198,7 +198,7 @@ class QueryResource(secondary: Secondary,
             schema.dataVersion,
             schema.lastModified,
             extendedScope,
-            customQueryTimeoutMs
+            queryTimeoutSeconds
           ) match {
             case QueryExecutor.Retry =>
               Left(nextRetry)
@@ -433,7 +433,7 @@ object QueryResource {
             queryExecutor: QueryExecutor,
             connectTimeout: FiniteDuration,
             schemaTimeout: FiniteDuration,
-            queryTimeout: FiniteDuration,
+            receiveTimeout: FiniteDuration,
             schemaCache: (String, Option[String], Schema) => Unit,
             schemaDecache: (String, Option[String]) => Option[Schema],
             secondaryInstance: SecondaryInstanceSelector,
@@ -445,7 +445,7 @@ object QueryResource {
       queryExecutor,
       connectTimeout,
       schemaTimeout,
-      queryTimeout,
+      receiveTimeout,
       schemaCache,
       schemaDecache,
       secondaryInstance,

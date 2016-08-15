@@ -46,7 +46,7 @@ class QueryExecutor(httpClient: HttpClient,
   private val qpCopy = "copy"
   private val qpRollupName = "rollupName"
   private val qpObfuscateId = "obfuscateId"
-  private val qpQueryTimeoutMs = "queryTimeoutMs"
+  private val qpQueryTimeoutSeconds = "queryTimeoutSeconds"
 
   private case class Headers(http: Map[String, Seq[String]], cjson: JValue)
   private implicit val hCodec = AutomaticJsonCodecBuilder[Headers]
@@ -89,11 +89,11 @@ class QueryExecutor(httpClient: HttpClient,
             currentDataVersion: Long,
             currentLastModified: DateTime,
             resourceScopeHandle: SharedHandle[ResourceScope],
-            customQueryTimeoutMs: Option[String]): Result = {
+            queryTimeoutSeconds: Option[String]): Result = {
     val rs = resourceScopeHandle.get
     def go(theAnalyses: Seq[SoQLAnalysis[String, SoQLType]] = analyses): Result =
       reallyApply(base, dataset, theAnalyses, schema, precondition, ifModifiedSince, rowCount, copy,
-                  rollupName, obfuscateId, extraHeaders, rs, customQueryTimeoutMs)
+                  rollupName, obfuscateId, extraHeaders, rs, queryTimeoutSeconds)
 
     if(cacheSessionProvider == NoopCacheSessionProvider && !forceCacheEvenWhenNoop) return go()
     // checking preconditions will be handled below
@@ -335,13 +335,13 @@ class QueryExecutor(httpClient: HttpClient,
                           obfuscateId: Boolean,
                           extraHeaders: Map[String, String],
                           resourceScope: ResourceScope,
-                          customQueryTimeoutMs: Option[String]): Result = {
+                          queryTimeoutSeconds: Option[String]): Result = {
     val serializedAnalyses = serializeAnalysis(analyses)
     val params = List(
       qpDataset -> dataset,
       qpQuery -> serializedAnalyses,
       qpSchemaHash -> schema.hash) ++
-      customQueryTimeoutMs.map(qpQueryTimeoutMs -> _) ++
+      queryTimeoutSeconds.map(qpQueryTimeoutSeconds -> _) ++
       rowCount.map(rc => List(qpRowCount -> rc)).getOrElse(Nil) ++
       copy.map(c => List(qpCopy -> c)).getOrElse(Nil) ++
       rollupName.map(c => List(qpRollupName -> c)).getOrElse(Nil) ++

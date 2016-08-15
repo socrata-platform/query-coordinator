@@ -34,7 +34,7 @@ trait QueryService {
   val qpPosition = "position"
   val qpLine = "line"
   val qpObfuscateId = "obfuscateId"
-  val qpQueryTimeoutMs = "queryTimeoutMs"
+  val qpQueryTimeoutSeconds = "queryTimeoutSeconds"
 
   def soqlError(e: SoQLException): // scalastyle:ignore cyclomatic.complexity method.length
   (String, String, Map[String, JValue], Map[String, JValue]) = {

@@ -99,7 +99,7 @@ object Main extends App {
       queryExecutor = new QueryExecutor(httpClient, analysisSerializer, teeStream, cacheSessionProvider, windower, maxWindowCount),
       connectTimeout = config.connectTimeout,
       schemaTimeout = config.schemaTimeout,
-      queryTimeout = config.queryTimeout,
+      receiveTimeout = config.receiveTimeout,
       schemaCache = (_, _, _) => (),
       schemaDecache = (_, _) => None,
       secondaryInstance = secondaryInstanceSelector,
