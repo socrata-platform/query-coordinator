@@ -419,12 +419,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
 
   def analyzeRollups(schema: Schema, rollups: Seq[RollupInfo], project: Map[String, String]): Map[RollupName, Anal] = {
 
-    def reprojectColumn(cn: ColumnId): ColumnId = {
-      project.get(cn) match {
-        case Some(newName) => newName
-        case None => cn
-      }
-    }
+    def reprojectColumn(cn: ColumnId): ColumnId = project.getOrElse(cn, cn)
 
     val dsContext = prefixedDsContext(schema)
     val rollupMap = rollups.map { r => (r.name, r.soql) }.toMap
