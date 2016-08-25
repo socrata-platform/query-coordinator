@@ -35,6 +35,7 @@ class FilesystemCacheConfig(config: Config, rootPath: String) extends ConfigClas
 
 class PostgresqlCacheConfig(config: Config, root: String) extends ConfigClass(config, root) with ConcreteCacheImplConfig {
   val deleteDelay = getDuration("delete-delay")
+  val deleteChunkSize = getInt("delete-chunk-size")
   val db = getConfig("database", new DatabaseConfig(_, _))
 }
 
@@ -44,4 +45,6 @@ class DatabaseConfig(config: Config, root: String) extends ConfigClass(config, r
   val database = getString("database")
   val username = getString("username")
   val password = getString("password")
+  val minPoolSize = getInt("min-pool-size")
+  val maxPoolSize = getInt("max-pool-size")
 }

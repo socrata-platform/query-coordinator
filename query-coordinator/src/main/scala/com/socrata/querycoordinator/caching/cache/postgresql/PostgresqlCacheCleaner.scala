@@ -1,10 +1,9 @@
 package com.socrata.querycoordinator.caching.cache.postgresql
 
-import java.sql.{Connection, Timestamp}
+import java.sql.{Statement, SQLException, Connection, Timestamp}
 import javax.sql.DataSource
 
 import com.socrata.querycoordinator.caching.cache.CacheCleaner
-import org.postgresql.util.PSQLException
 
 import scala.concurrent.duration.FiniteDuration
 import com.rojoma.simplearm.v2._
@@ -15,13 +14,48 @@ import com.rojoma.simplearm.v2._
  * @param survivorCutoff TTL for a normal cache entry
  * @param deleteDelay Amount of time for an entry to remain on the pending_delete queue before it is actually deleted
  * @param assumeDeadCreateCutoff Amount of time for a keyless entry not on the delete queue to live before it is moved to the delete queue
+ * @param chunkSize Number of rows to delete from the cache tables in a single roundtrip
+ * @param useBatch True to us a batch of single-row deletes for each chunk; false to do DELETE IN (...).  It looks like
+ *                   DELETE IN (...) may suppress index-use?
  */
-class PostgresqlCacheCleaner(dataSource: DataSource, survivorCutoff: FiniteDuration, deleteDelay: FiniteDuration, assumeDeadCreateCutoff: FiniteDuration) extends CacheCleaner {
+class PostgresqlCacheCleaner(dataSource: DataSource, survivorCutoff: FiniteDuration, deleteDelay: FiniteDuration, assumeDeadCreateCutoff: FiniteDuration, chunkSize: Int, useBatch: () => Boolean) extends CacheCleaner {
   val survivorCutoffMS = survivorCutoff.toMillis
   val deleteDelayMS = deleteDelay.toMillis
   val assumeDeadCreateCutoffMS = assumeDeadCreateCutoff.toMillis
 
   val log = org.slf4j.LoggerFactory.getLogger(classOf[PostgresqlCacheCleaner])
+
+  def multiSql(conn: Connection, batchSql: String, chunkSql: Iterable[Long] => String, ids: Iterable[Long]): Int = {
+    if(ids.nonEmpty) {
+      if(useBatch()) {
+        using(conn.prepareStatement(batchSql)) { stmt =>
+          ids.grouped(chunkSize).foldLeft(0) { (updatedSoFar, chunk) =>
+            for(id <- chunk) {
+              stmt.setLong(1, id)
+              stmt.addBatch()
+            }
+            updatedSoFar + stmt.executeBatch().sum
+          }
+        }
+      } else {
+        using(conn.createStatement()) { stmt =>
+          ids.grouped(chunkSize).foldLeft(0) { (updatedSoFar, chunk) =>
+            updatedSoFar + stmt.executeUpdate(chunkSql(chunk))
+          }
+        }
+      }
+    } else {
+      0
+    }
+  }
+
+  def multiDelete(conn: Connection, table: String, idCol: String, ids: Iterable[Long]): Int = {
+    multiSql(conn, s"DELETE FROM $table WHERE $idCol = ?", _.mkString(s"DELETE FROM $table WHERE $idCol IN (", ",", ")"), ids)
+  }
+
+  def multiUpdate(conn: Connection, table: String, update: String, idCol: String, ids: Iterable[Long]): Int = {
+    multiSql(conn, s"UPDATE $table SET $update WHERE $idCol = ?", _.mkString(s"UPDATE $table SET $update WHERE $idCol IN (", ",", ")"), ids)
+  }
 
   def clean(): Unit = {
     using(dataSource.getConnection()) { conn =>
@@ -50,22 +84,12 @@ class PostgresqlCacheCleaner(dataSource: DataSource, survivorCutoff: FiniteDurat
 
           log.info("Found {} pending deletions old enough to actually delete", pendingEntries.size)
           if(pendingEntries.nonEmpty) {
-            using(conn.createStatement()) { stmt =>
-              stmt.execute(pendingEntries.mkString("DELETE FROM pending_deletes WHERE id IN (", ",", ")"))
-              val pendingDeletesHandled = stmt.getUpdateCount
+            val pendingDeletesHandled = multiDelete(conn, "pending_deletes", "id", pendingEntries)
+            val cacheDataDeleted = multiDelete(conn, "cache_data", "cache_id", toKill)
+            val cacheEntriesDeleted = multiDelete(conn, "cache", "id", toKill)
+            log.info("Deleted {} cache data lines in {} entries", cacheDataDeleted, cacheEntriesDeleted)
 
-              if(toKill.nonEmpty) { // this should always be true
-                stmt.execute(toKill.mkString("DELETE FROM cache_data WHERE cache_id in (", ",", ")"))
-                val cacheDataDeleted = stmt.getUpdateCount
-
-                stmt.execute(toKill.mkString("DELETE FROM cache WHERE id in (", ",", ")"))
-                val cacheEntriesDeleted = stmt.getUpdateCount
-
-                log.info("Deleted {} cache data lines in {} entries", cacheDataDeleted, cacheEntriesDeleted)
-              }
-
-              log.info("Handled {} pending deletes", pendingDeletesHandled)
-            }
+            log.info("Handled {} pending deletes", pendingDeletesHandled)
           }
 
           // ok, now we need to kill any cache entries with a NULL key and an old enough created_at and which are NOT in pending_deletes
@@ -92,7 +116,7 @@ class PostgresqlCacheCleaner(dataSource: DataSource, survivorCutoff: FiniteDurat
           conn.commit()
           true
         } catch {
-          case e: PSQLException if e.getSQLState == "40001" /* serialization_failure */ =>
+          case e: SQLException if e.getSQLState == "40001" /* serialization_failure */ =>
             false
         } finally {
           conn.rollback()
@@ -120,16 +144,12 @@ class PostgresqlCacheCleaner(dataSource: DataSource, survivorCutoff: FiniteDurat
                 res.result()
               }
             }
-          if(deletedCacheEntries.nonEmpty) {
-            using(conn.createStatement()) { stmt =>
-              stmt.execute(deletedCacheEntries.mkString("UPDATE cache SET key = NULL WHERE id IN (",",",")"))
-            }
-          }
+          multiUpdate(conn, "cache", "key = NULL", "id", deletedCacheEntries)
           log.info("Added {} entries to the pending delete queue", deletedCacheEntries.size)
           conn.commit()
           true
         } catch {
-          case e: PSQLException if e.getSQLState == "40001" /* serialization_failure */ =>
+          case e: SQLException if e.getSQLState == "40001" /* serialization_failure */ =>
             false
         } finally {
           conn.rollback()

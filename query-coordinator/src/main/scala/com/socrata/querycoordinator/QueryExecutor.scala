@@ -117,9 +117,12 @@ class QueryExecutor(httpClient: HttpClient,
 
       def tryToServeFromCache(): Option[Result] = {
         val headers = cacheSession.find(cacheKey(readCacheKeyBase, "headers"), rs) match {
-          case None =>
+          case CacheSession.Timeout =>
+            log.warn("Timeout while acquiring headers from cache!")
             return None
-          case Some(headerVal) =>
+          case CacheSession.Success(None) =>
+            return None
+          case CacheSession.Success(Some(headerVal)) =>
             val r = headerVal.openText(rs)
             val header = JsonUtil.readJson[Headers](r)
             rs.close(r)
@@ -146,10 +149,16 @@ class QueryExecutor(httpClient: HttpClient,
         def lookupWindows(acc: List[ValueRef], i: BigInt): Option[Seq[ValueRef]] = {
           if(i <= endWindow.window) {
             cacheSession.find(cacheKey(readCacheKeyBase, i.toString), rs) match {
-              case Some(vr) =>
+              case CacheSession.Success(Some(vr)) =>
                 if(isEnd(vr)) { rs.close(vr); Some(acc.reverse) }
                 else lookupWindows(vr :: acc, i + 1)
-              case None =>
+              case CacheSession.Success(None) =>
+                acc.foreach(rs.close(_))
+                None
+              case CacheSession.Timeout =>
+                // this shouldn't happen; if we've successfully read the headers, then we have opened the
+                // connection and won't fail re-opening it.
+                log.warn("Timeout while acquiring data from cache!")
                 acc.foreach(rs.close(_))
                 None
             }
@@ -266,15 +275,27 @@ class QueryExecutor(httpClient: HttpClient,
     val copyNumber = httpHeaders.get("x-soda2-copynumber").map(_.head.toLong).getOrElse(abort("No copy number in the response"))
     val dataVersion = httpHeaders.get("x-soda2-dataversion").map(_.head.toLong).getOrElse(abort("No data version in the response"))
     val cacheKeyBase = makeCacheKeyBase(dataset, unlimitedAnalyses, schema.hash, lastModified, copyNumber, dataVersion, rollupName, obfuscateId, rowCount)
-    cacheSession.createText(cacheKey(cacheKeyBase, "headers")) { out =>
-      JsonUtil.writeJson(out, headers)
+    cacheSession.createText(cacheKey(cacheKeyBase, "headers")) {
+      case CacheSession.Success(out) =>
+        JsonUtil.writeJson(out, headers)
+      case CacheSession.Timeout =>
+        log.warn("Timeout writing the response headers into the cache!")
+        rs.close(body)
+        return
     }
     var nextWindowNum = startWindow
     while(jvalues.hasNext && nextWindowNum <= endWindow) {
       val values = take(jvalues, windower.windowSize)
       if(values.nonEmpty) {
-        cacheSession.createText(cacheKey(cacheKeyBase, nextWindowNum.toString)) { out =>
-          JsonUtil.writeJson(out, values)
+        cacheSession.createText(cacheKey(cacheKeyBase, nextWindowNum.toString)) {
+          case CacheSession.Success(out) =>
+            JsonUtil.writeJson(out, values)
+          case CacheSession.Timeout =>
+            // implementation detail leak: we know that if we've successfully opened the connection for writing,
+            // then we won't time out trying to open it for writing again.
+            log.warn("Got a CacheSession.Timeout after successfully writing headers?  This shouldn't have happened!")
+            rs.close(body)
+            return
         }
       }
       nextWindowNum += 1

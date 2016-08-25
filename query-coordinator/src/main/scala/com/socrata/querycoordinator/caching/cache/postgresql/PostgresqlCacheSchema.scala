@@ -1,11 +1,26 @@
 package com.socrata.querycoordinator.caching.cache.postgresql
 
+import java.sql.{SQLException, Connection}
 import javax.sql.DataSource
+import com.mchange.v2.resourcepool.TimeoutException
 import com.rojoma.simplearm.v2._
 
 object PostgresqlCacheSchema {
+  private def requireConnection(dataSource: DataSource): Connection = {
+    var c: Connection = null
+    do {
+      try {
+        c = dataSource.getConnection()
+      } catch {
+        case e: SQLException if e.getCause.isInstanceOf[TimeoutException] =>
+          // ok, we'll just retry until we get one
+      }
+    } while(c == null)
+    c
+  }
+
   def create(dataSource: DataSource): Unit = {
-    using(dataSource.getConnection()) { conn =>
+    using(requireConnection(dataSource)) { conn =>
       conn.setAutoCommit(false)
 
       try {

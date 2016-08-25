@@ -17,7 +17,7 @@ import com.socrata.http.server.util.RequestId.ReqIdHeader
 import com.socrata.http.server.util.handlers.{NewLoggingHandler, ThreadRenamingHandler}
 import com.socrata.querycoordinator.caching.Windower
 import com.socrata.querycoordinator.resources.{VersionResource, QueryResource}
-import com.socrata.querycoordinator.util.TeeToTempInputStream
+import com.socrata.querycoordinator.util.{ConfigWatch, TeeToTempInputStream}
 import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
 import com.socrata.soql.types.SoQLType
 import com.socrata.soql.{AnalysisSerializer, SoQLAnalyzer}
@@ -74,7 +74,8 @@ object Main extends App {
       new strategies.RoundRobinStrategy))
     pongProvider <- managed(new LivenessCheckResponder(config.livenessCheck)).and(_.start())
     reporter <- MetricsReporter.managed(config.metrics)
-    cacheSessionProvider <- CacheSessionProviderFromConfig(config.cache, StreamWrapper.gzip).and(_.init())
+    useBatchDelete <- managed(new ConfigWatch[Boolean](curator, "query-coordinator/use-batch-delete", true)).and(_.start())
+    cacheSessionProvider <- CacheSessionProviderFromConfig(config.cache, useBatchDelete, StreamWrapper.gzip).and(_.init())
     cacheCleaner <- managed(new CacheCleanerThread(cacheSessionProvider, config.cache.cleanInterval)).and(_.start())
   } {
     def teeStream(in: InputStream): TeeToTempInputStream = new TeeToTempInputStream(in)

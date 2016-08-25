@@ -4,6 +4,7 @@ object Dependencies {
 
   object versions {
     val postgresql = "9.4.1207.jre7"
+    val c3p0 = "0.9.5.2"
     val socrataHttpVersion = "3.10.1"
     val protobuf = "2.4.1"
     val rojomaJson = "3.5.0"
@@ -23,6 +24,7 @@ object Dependencies {
   }
 
   val postgresql = "org.postgresql" % "postgresql" % versions.postgresql
+  val c3p0 = "com.mchange" % "c3p0" % versions.c3p0
   val protobuf = "com.google.protobuf" % "protobuf-java" % versions.protobuf
   val rojomaJson = "com.rojoma" %% "rojoma-json-v3" % versions.rojomaJson
   val socrataHttpClient = "com.socrata" %% "socrata-http-client" % versions.socrataHttpVersion
