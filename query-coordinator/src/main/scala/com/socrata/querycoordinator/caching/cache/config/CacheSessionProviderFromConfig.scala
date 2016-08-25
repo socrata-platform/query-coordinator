@@ -10,12 +10,12 @@ import com.socrata.querycoordinator.caching.cache.postgresql.PostgresqlCacheSess
 import org.postgresql.ds.PGSimpleDataSource
 
 object CacheSessionProviderFromConfig {
-  def apply(config: CacheConfig, streamWrapper: StreamWrapper = StreamWrapper.noop): Managed[CacheSessionProvider with CacheCleanerProvider with CacheInit] =
+  def apply(config: CacheConfig, useBatchDelete: () => Boolean, streamWrapper: StreamWrapper = StreamWrapper.noop): Managed[CacheSessionProvider with CacheCleanerProvider with CacheInit] =
     config.realConfig match {
       case fs: FilesystemCacheConfig =>
         fromFilesystem(fs, streamWrapper)
       case pg: PostgresqlCacheConfig =>
-        fromPostgres(pg, streamWrapper)
+        fromPostgres(pg, useBatchDelete, streamWrapper)
       case NoopCacheConfig =>
         unmanaged(NoopCacheSessionProvider)
     }
@@ -28,7 +28,7 @@ object CacheSessionProviderFromConfig {
       assumeDeadCreateCutoff = fs.assumeDeadCreateCutoff,
       streamWrapper = streamWrapper))
 
-  def fromPostgres(pg: PostgresqlCacheConfig, streamWrapper: StreamWrapper) =
+  def fromPostgres(pg: PostgresqlCacheConfig, useBatchDelete: () => Boolean, streamWrapper: StreamWrapper) =
     for(ds <- managed(new ComboPooledDataSource(false))) yield {
       ds.setDriverClass("org.postgresql.Driver")
       ds.setJdbcUrl("jdbc:postgresql://" + pg.db.host + ":" + pg.db.port + "/" + pg.db.database)
@@ -46,6 +46,7 @@ object CacheSessionProviderFromConfig {
         assumeDeadCreateCutoff = pg.assumeDeadCreateCutoff,
         deleteDelay = pg.deleteDelay,
         deleteChunkSize = pg.deleteChunkSize,
+        useBatchDelete = useBatchDelete,
         streamWrapper = streamWrapper)
     }
 }

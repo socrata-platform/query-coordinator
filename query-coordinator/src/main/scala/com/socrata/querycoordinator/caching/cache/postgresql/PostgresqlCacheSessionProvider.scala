@@ -14,6 +14,7 @@ class PostgresqlCacheSessionProvider(ds: DataSource,
                                      deleteDelay: FiniteDuration,
                                      assumeDeadCreateCutoff: FiniteDuration,
                                      deleteChunkSize: Int,
+                                     useBatchDelete: () => Boolean,
                                      streamWrapper: StreamWrapper = StreamWrapper.noop)
   extends CacheSessionProvider with CacheCleanerProvider with CacheInit
 {
@@ -28,5 +29,5 @@ class PostgresqlCacheSessionProvider(ds: DataSource,
     rs.open(new PostgresqlCacheSession(ds, updateATimeInterval, streamWrapper))(JdbcCacheSessionResource)
 
   def cleaner(): CacheCleaner =
-    new PostgresqlCacheCleaner(ds, survivorCutoff, deleteDelay, assumeDeadCreateCutoff, deleteChunkSize)
+    new PostgresqlCacheCleaner(ds, survivorCutoff, deleteDelay, assumeDeadCreateCutoff, deleteChunkSize, useBatchDelete)
 }
