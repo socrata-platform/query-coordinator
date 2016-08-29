@@ -17,11 +17,11 @@ import com.socrata.http.server.util.RequestId.ReqIdHeader
 import com.socrata.http.server.util.handlers.{NewLoggingHandler, ThreadRenamingHandler}
 import com.socrata.querycoordinator.caching.Windower
 import com.socrata.querycoordinator.resources.{VersionResource, QueryResource}
-import com.socrata.querycoordinator.util.{ConfigWatch, TeeToTempInputStream}
+import com.socrata.querycoordinator.util.TeeToTempInputStream
 import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
 import com.socrata.soql.types.SoQLType
 import com.socrata.soql.{AnalysisSerializer, SoQLAnalyzer}
-import com.socrata.curator.{CuratorFromConfig, DiscoveryFromConfig}
+import com.socrata.curator.{ConfigWatch, CuratorFromConfig, DiscoveryFromConfig}
 import com.socrata.thirdparty.metrics.{MetricsReporter, SocrataHttpSupport}
 import com.socrata.thirdparty.typesafeconfig.Propertizer
 import com.typesafe.config.{Config, ConfigFactory}
