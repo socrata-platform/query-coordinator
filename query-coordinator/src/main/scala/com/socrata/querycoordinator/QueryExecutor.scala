@@ -275,6 +275,21 @@ class QueryExecutor(httpClient: HttpClient,
     val copyNumber = httpHeaders.get("x-soda2-copynumber").map(_.head.toLong).getOrElse(abort("No copy number in the response"))
     val dataVersion = httpHeaders.get("x-soda2-dataversion").map(_.head.toLong).getOrElse(abort("No data version in the response"))
     val cacheKeyBase = makeCacheKeyBase(dataset, unlimitedAnalyses, schema.hash, lastModified, copyNumber, dataVersion, rollupName, obfuscateId, rowCount)
+
+    val firstBlock = take(jvalues, windower.windowSize)
+    val isGroupBy = unlimitedAnalyses.exists(_.groupBy.isDefined)
+    if(!isGroupBy && firstBlock.size < windower.windowSize) {
+      log.info("Not caching; the query returned fewer than one window worth of rows and it wasn't a group-by")
+      return
+    }
+    // at this point `firstBlock` is definitely non-empty (because a group-by query will always
+    // return at least one row).  But let's be paranoid!  The worst that happens is that we'll
+    // fail to cache something.
+    if(firstBlock.isEmpty) {
+      log.error("Unexpected empty block!  Not caching.")
+      return
+    }
+
     cacheSession.createText(cacheKey(cacheKeyBase, "headers")) {
       case CacheSession.Success(out) =>
         JsonUtil.writeJson(out, headers)
@@ -284,21 +299,25 @@ class QueryExecutor(httpClient: HttpClient,
         return
     }
     var nextWindowNum = startWindow
-    while(jvalues.hasNext && nextWindowNum <= endWindow) {
-      val values = take(jvalues, windower.windowSize)
-      if(values.nonEmpty) {
-        cacheSession.createText(cacheKey(cacheKeyBase, nextWindowNum.toString)) {
-          case CacheSession.Success(out) =>
-            JsonUtil.writeJson(out, values)
-          case CacheSession.Timeout =>
-            // implementation detail leak: we know that if we've successfully opened the connection for writing,
-            // then we won't time out trying to open it for writing again.
-            log.warn("Got a CacheSession.Timeout after successfully writing headers?  This shouldn't have happened!")
-            rs.close(body)
-            return
-        }
+
+    // also not a def because we want to return from `doCache` out of this.
+    val cacheBlock = { (values: Seq[JValue]) =>
+      cacheSession.createText(cacheKey(cacheKeyBase, nextWindowNum.toString)) {
+        case CacheSession.Success(out) =>
+          JsonUtil.writeJson(out, values)
+        case CacheSession.Timeout =>
+          // implementation detail leak: we know that if we've successfully opened the connection for writing,
+          // then we won't time out trying to open it for writing again.
+          log.warn("Got a CacheSession.Timeout after successfully writing headers?  This shouldn't have happened!")
+          rs.close(body)
+          return
       }
       nextWindowNum += 1
+    }
+    cacheBlock(firstBlock)
+    while(jvalues.hasNext && nextWindowNum <= endWindow) {
+      val values = take(jvalues, windower.windowSize)
+      cacheBlock(values)
     }
     if(nextWindowNum <= endWindow) {
       cacheSession.createText(cacheKey(cacheKeyBase, nextWindowNum.toString)) { out =>
