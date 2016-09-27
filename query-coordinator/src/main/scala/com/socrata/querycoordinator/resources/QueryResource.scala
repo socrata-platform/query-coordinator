@@ -222,7 +222,7 @@ class QueryResource(secondary: Secondary,
               // Log data version difference if response is OK.  Ignore not modified response and others.
               responseCode match {
                 case HttpStatus.SC_OK =>
-                  (headers("x-soda2-dataversion").headOption, headers("last-modified").headOption) match {
+                  (headers("x-soda2-dataversion").headOption, headers("x-soda2-secondary-last-modified").headOption) match {
                     case (Some(qsDataVersion), Some(qsLastModified)) =>
                       val qsdv = qsDataVersion.toLong
                       val qslm = HttpUtils.parseHttpDate(qsLastModified)
