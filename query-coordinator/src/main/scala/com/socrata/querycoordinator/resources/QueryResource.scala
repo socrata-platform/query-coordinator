@@ -256,27 +256,13 @@ class QueryResource(secondary: Secondary,
           } else {
             rollupInfoFetcher(base.receiveTimeoutMS(schemaTimeout.toMillis.toInt), dataset, copy) match {
               case RollupInfoFetcher.Successful(rollups) =>
-                val (analyses, rollupName, _) = analyzedQuery.foldLeft((Seq.empty[SoQLAnalysis[String, SoQLType]], None: Option[String], Map.empty[String, String])) {
-                  (acc, anal) =>
-                    val (analyses, existingRollupName, projectMap) = acc
-                    existingRollupName match {
-                      case Some(_) =>
-                        (analyses :+ anal, existingRollupName, projectMap)
-                      case None =>
-                        val (rewrittenAnal, rollupName) = possiblyRewriteQuery(schema, anal, rollups, projectMap)
-                        val project = anal.selection.collect {
-                          case (name: ColumnName, cr: ColumnRef[String, SoQLType]) =>
-                            (cr.column, name.name)
-                        }
-                        rollupName match {
-                          case Some(_) =>
-                            (Seq(rewrittenAnal), rollupName, project) // all preceding analyses are thrown away
-                          case None =>
-                            (analyses :+ anal, None, project)
-                        }
-                    }
+                // Only the leftmost soql in a chain can use rollups.
+                possiblyRewriteQuery(schema, analyzedQuery.head, rollups, Map.empty[String, String]) match {
+                  case (rewrittenAnal, ru@Some(_)) =>
+                    (analyzedQuery.updated(0, rewrittenAnal), ru)
+                  case (_, None) =>
+                    (analyzedQuery, None)
                 }
-                (analyses, rollupName)
               case RollupInfoFetcher.NoSuchDatasetInSecondary =>
                 chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
                 finishRequest(notFoundResponse(dataset))
