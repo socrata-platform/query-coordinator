@@ -9,8 +9,9 @@ import scala.util.parsing.input.NoPosition
 
 object SoQLAnalysisDepositioner {
   def apply[ColumnId,Type](sa: SoQLAnalysis[ColumnId,Type]): SoQLAnalysis[ColumnId,Type] = {
-    val SoQLAnalysis(isGrouped, selection, where, groupBy, having, orderBy, limit, offset, search) = sa
+    val SoQLAnalysis(isGrouped, distinct, selection, where, groupBy, having, orderBy, limit, offset, search) = sa
     SoQLAnalysis(isGrouped = isGrouped,
+                 distinct = distinct,
                  selection = depositionSelection(selection),
                  where = depositionOptExpr(where),
                  groupBy = depositionGroupBys(groupBy),
