@@ -367,7 +367,8 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
           // has a limit or offset, but we currently don't.
           ensure(None == r.limit, "mismatch on limit") orElse
           ensure(None == r.offset, "mismatch on offset") orElse
-          ensure(q.search == None, "mismatch on search")
+          ensure(q.search == None, "mismatch on search") orElse
+          ensure(q.distinct == r.distinct, "mismatch on distinct")
 
       mismatch match {
         case None =>
