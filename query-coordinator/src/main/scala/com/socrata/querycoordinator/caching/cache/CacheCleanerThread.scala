@@ -5,7 +5,7 @@ import java.util.concurrent.{TimeUnit, Semaphore}
 
 import scala.concurrent.duration.FiniteDuration
 
-class CacheCleanerThread(cleanerProvider: CacheCleanerProvider, interval: FiniteDuration) extends Closeable {
+class CacheCleanerThread(cleanerProvider: CacheCleanerProvider, interval: FiniteDuration, cleanerId: String) extends Closeable {
   private val log = org.slf4j.LoggerFactory.getLogger(classOf[CacheCleanerThread])
   private val finished = new Semaphore(0)
   private val intervalMS = interval.toMillis
@@ -15,7 +15,7 @@ class CacheCleanerThread(cleanerProvider: CacheCleanerProvider, interval: Finite
     setName("Cache cleaner")
 
     override def run(): Unit = {
-      val cleaner = cleanerProvider.cleaner()
+      val cleaner = cleanerProvider.cleaner(cleanerId, interval)
       while(!finished.tryAcquire(intervalMS, TimeUnit.MILLISECONDS)) {
         try {
           cleaner.clean()

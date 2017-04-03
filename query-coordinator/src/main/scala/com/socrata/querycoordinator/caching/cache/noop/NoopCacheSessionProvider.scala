@@ -3,10 +3,16 @@ package com.socrata.querycoordinator.caching.cache.noop
 import com.rojoma.simplearm.v2.ResourceScope
 import com.socrata.querycoordinator.caching.cache._
 
-object NoopCacheSessionProvider extends CacheSessionProvider with CacheCleanerProvider with CacheInit {
-  override def open(rs: ResourceScope): CacheSession = NoopCacheSession
+import scala.concurrent.duration.FiniteDuration
 
-  override def cleaner(): CacheCleaner = NoopCacheCleaner
+class NoopCacheSessionProvider
+
+object NoopCacheSessionProvider extends CacheSessionProvider with CacheCleanerProvider with CacheInit {
+  protected val log = org.slf4j.LoggerFactory.getLogger(classOf[NoopCacheSessionProvider])
+
+  override def open(rs: ResourceScope, dataset: String): CacheSession = NoopCacheSession
+
+  override def cleaner(id: String, interval: FiniteDuration): CacheCleaner = NoopCacheCleaner
 
   override def init(): Unit = {}
 }

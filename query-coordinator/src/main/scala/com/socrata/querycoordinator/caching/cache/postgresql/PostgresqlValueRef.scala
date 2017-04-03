@@ -7,12 +7,14 @@ import com.rojoma.simplearm.v2.ResourceScope
 import com.socrata.querycoordinator.caching.cache.ValueRef
 import com.socrata.util.io.StreamWrapper
 
-class PostgresqlValueRef(connection: Connection, key: Long, scope: ResourceScope, streamWrapper: StreamWrapper) extends ValueRef {
+class PostgresqlValueRef(connection: Connection, dataset: String, key: Long, scope: ResourceScope, streamWrapper: StreamWrapper) extends ValueRef {
   private var closed = false
+
+  import PostgresqlCacheSchema.dataTable
 
   override def open(scope: ResourceScope): InputStream = synchronized {
     if(closed) throw new IOException("Closed ValueRef")
-    val stmt = scope.open(connection.prepareStatement("SELECT data FROM cache_data WHERE cache_id = ? ORDER BY chunknum"))
+    val stmt = scope.open(connection.prepareStatement(s"SELECT data FROM ${dataTable(dataset)} WHERE cache_id = ? ORDER BY chunknum"))
     stmt.setLong(1, key)
     stmt.setFetchSize(1)
     val rs = scope.open(stmt.executeQuery(), transitiveClose = List(stmt))

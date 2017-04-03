@@ -95,9 +95,12 @@ class QueryExecutor(httpClient: HttpClient,
       reallyApply(base, dataset, theAnalyses, schema, precondition, ifModifiedSince, rowCount, copy,
                   rollupName, obfuscateId, extraHeaders, rs, queryTimeoutSeconds)
 
-    if(cacheSessionProvider == NoopCacheSessionProvider && !forceCacheEvenWhenNoop) return go()
+    if((cacheSessionProvider == NoopCacheSessionProvider && !forceCacheEvenWhenNoop) ||
+       cacheSessionProvider.isDisabled()) {
+      return go()
+    }
     // checking preconditions will be handled below
-    if(analyses.last.limit.isEmpty) return go()
+    if(cacheSessionProvider.shouldSkip(analyses, rollupName)) return go()
 
     val origLimit = analyses.last.limit.get
     val origOffset = analyses.last.offset.getOrElse(BigInt(0))
@@ -112,7 +115,7 @@ class QueryExecutor(httpClient: HttpClient,
     val readCacheKeyBase = makeCacheKeyBase(dataset, unlimitedAnalyses, schema.hash, currentLastModified, currentCopyNumber, currentDataVersion, rollupName, obfuscateId, rowCount)
 
     using(new ResourceScope()) { tmpScope =>
-      val cacheSession = cacheSessionProvider.open(rs)
+      val cacheSession = cacheSessionProvider.open(rs, dataset)
 
       // ok, here we get a little ugly.  And by a little ugly, I mean "a lot ugly".  So this
       // thing is trying to read data out of the cache.  If it's not found, it will fall back to
@@ -121,6 +124,7 @@ class QueryExecutor(httpClient: HttpClient,
       def tryToServeFromCache(): Option[Result] = {
         val headers = cacheSession.find(cacheKey(readCacheKeyBase, "headers"), rs) match {
           case CacheSession.Timeout =>
+            cacheSessionProvider.disabled()
             log.warn("Timeout while acquiring headers from cache!")
             return None
           case CacheSession.Success(None) =>
@@ -159,6 +163,7 @@ class QueryExecutor(httpClient: HttpClient,
                 acc.foreach(rs.close(_))
                 None
               case CacheSession.Timeout =>
+                cacheSessionProvider.disabled()
                 // this shouldn't happen; if we've successfully read the headers, then we have opened the
                 // connection and won't fail re-opening it.
                 log.warn("Timeout while acquiring data from cache!")
@@ -297,6 +302,7 @@ class QueryExecutor(httpClient: HttpClient,
       case CacheSession.Success(out) =>
         JsonUtil.writeJson(out, headers)
       case CacheSession.Timeout =>
+        cacheSessionProvider.disabled()
         log.warn("Timeout writing the response headers into the cache!")
         rs.close(body)
         return
@@ -309,6 +315,7 @@ class QueryExecutor(httpClient: HttpClient,
         case CacheSession.Success(out) =>
           JsonUtil.writeJson(out, values)
         case CacheSession.Timeout =>
+          cacheSessionProvider.disabled()
           // implementation detail leak: we know that if we've successfully opened the connection for writing,
           // then we won't time out trying to open it for writing again.
           log.warn("Got a CacheSession.Timeout after successfully writing headers?  This shouldn't have happened!")
