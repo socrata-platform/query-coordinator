@@ -11,15 +11,15 @@ trait CacheSessionProvider {
 
   def open(rs: ResourceScope, dataset: String): CacheSession
 
-  private var disabledTil = new DateTime(0)
+  private var disableTil = new DateTime(0)
 
-  def disabled() = {
-    disabledTil = new DateTime(System.currentTimeMillis()).plusHours(1)
-    log.warn(s"disable cache until $disabledTil" )
+  def disable() = {
+    disableTil = new DateTime(System.currentTimeMillis()).plusHours(1)
+    log.warn(s"disable cache until $disableTil" )
   }
 
-  def isDisabled(): Boolean = {
-    disabledTil.isAfterNow
+  def disabled: Boolean = {
+    disableTil.isAfterNow
   }
 
   def shouldSkip(analyses: Seq[SoQLAnalysis[String, SoQLType]], rollupName: Option[String]): Boolean = {
