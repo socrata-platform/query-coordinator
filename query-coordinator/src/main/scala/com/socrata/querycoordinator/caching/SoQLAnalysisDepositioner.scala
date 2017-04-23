@@ -3,7 +3,7 @@ package com.socrata.querycoordinator.caching
 import com.socrata.soql.SoQLAnalysis
 import com.socrata.soql.typed._
 import com.socrata.soql.collection.OrderedMap
-import com.socrata.soql.environment.ColumnName
+import com.socrata.soql.environment.{ColumnName, TableName}
 
 import scala.util.parsing.input.NoPosition
 
@@ -13,7 +13,7 @@ object SoQLAnalysisDepositioner {
     SoQLAnalysis(isGrouped = isGrouped,
                  distinct = distinct,
                  selection = depositionSelection(selection),
-                 join,
+                 join = depsoitionOptJoins(join),
                  where = depositionOptExpr(where),
                  groupBy = depositionGroupBys(groupBy),
                  having = depositionOptExpr(having),
@@ -45,4 +45,13 @@ object SoQLAnalysisDepositioner {
   private def depositionOrderBys[ColumnId,Type](expr: Option[Seq[OrderBy[ColumnId, Type]]]) = expr.map(_.map(depositionOrderBy))
 
   private def depositionOrderBy[ColumnId,Type](ob: OrderBy[ColumnId, Type]) = ob.copy(expression = depositionExpr(ob.expression))
+
+  private def depsoitionOptJoins[ColumnId, Type](joinsOpt: Option[List[Tuple2[TableName, CoreExpr[ColumnId, Type]]]]) = {
+    joinsOpt.map { joins =>
+      joins.map {
+        case (tableName, expr) =>
+          (tableName, depositionExpr(expr))
+      }
+    }
+  }
 }

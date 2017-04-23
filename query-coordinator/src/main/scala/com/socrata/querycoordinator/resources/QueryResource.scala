@@ -137,7 +137,7 @@ class QueryResource(secondary: Secondary,
         def analyzeRequest(schema: Versioned[Schema], isFresh: Boolean): Either[QueryRetryState, Versioned[(Schema, Seq[SoQLAnalysis[String, SoQLType]])]] = {
           val parsedQuery = query match {
             case Left(q) =>
-              queryParser(q, columnIdMap, schema.payload.schema, fuseMap)
+              queryParser(q, columnIdMap, schema.payload.schema, base, fuseMap)
             case Right(fq) =>
               queryParser(
                 selection = fq.select,
@@ -150,6 +150,7 @@ class QueryResource(secondary: Secondary,
                 search = fq.search,
                 columnIdMapping = columnIdMap,
                 schema = schema.payload.schema,
+                base,
                 fuseMap = fuseMap
               )
           }
@@ -251,7 +252,7 @@ class QueryResource(secondary: Secondary,
          */
         def possiblyRewriteOneAnalysisInQuery(schema: Schema, analyzedQuery: Seq[SoQLAnalysis[String, SoQLType]])
           : (Seq[SoQLAnalysis[String, SoQLType]], Option[String]) = {
-          if (noRollup) {
+          if (noRollup || analyzedQuery.exists(_.join.isEmpty)) {
             (analyzedQuery, None)
           } else {
             rollupInfoFetcher(base.receiveTimeoutMS(schemaTimeout.toMillis.toInt), dataset, copy) match {

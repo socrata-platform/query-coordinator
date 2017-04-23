@@ -1,5 +1,7 @@
 package com.socrata.querycoordinator
 
+import com.socrata.http.client.RequestBuilder
+import com.socrata.querycoordinator.SchemaFetcher.{Successful, SuccessfulExtendedSchema}
 import com.socrata.querycoordinator.fusion.{CompoundTypeFuser, NoopFuser, SoQLRewrite}
 import com.socrata.soql.aliases.AliasAnalysis
 import com.socrata.soql.ast.{Expression, Select, Selection}
@@ -13,19 +15,21 @@ import com.socrata.soql.types.SoQLType
 import com.socrata.soql.{SoQLAnalysis, SoQLAnalyzer}
 import com.typesafe.scalalogging.slf4j.Logging
 
-class QueryParser(analyzer: SoQLAnalyzer[SoQLType], maxRows: Option[Int], defaultRowsLimit: Int) {
+
+class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher, maxRows: Option[Int], defaultRowsLimit: Int) {
   import QueryParser._ // scalastyle:ignore import.grouping
   import com.socrata.querycoordinator.util.Join._
 
   type AnalysisContext = Map[String, DatasetContext[SoQLType]]
 
   private def go(columnIdMapping: Map[ColumnName, String], schema: Map[String, SoQLType])
-                (f: AnalysisContext => Seq[SoQLAnalysis[ColumnName, SoQLType]]): Result = {
+                (f: AnalysisContext => (Seq[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String])): Result = {
     val ds = toAnalysisContext(dsContext(columnIdMapping, schema))
     try {
-      limitRows(f(ds)) match {
+      val (analyses, joinColumnIdMapping) = f(ds)
+      limitRows(analyses) match {
         case Right(analyses) =>
-          val analysesInColumnIds = remapAnalyses(columnIdMapping, analyses)
+          val analysesInColumnIds = remapAnalyses(joinColumnIdMapping, analyses)
           SuccessfulParse(analysesInColumnIds)
         case Left(result) => result
       }
@@ -39,7 +43,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], maxRows: Option[Int], defaul
    * Convert analyses from column names to column ids.
    * Add new columns and remap "column ids" as it walks the soql chain.
    */
-  private def remapAnalyses(columnIdMapping: Map[ColumnName, String], //schema: Map[String, SoQLType],
+  private def remapAnalyses(columnIdMapping: Map[QualifiedColumnName, String], //schema: Map[String, SoQLType],
                             analyses: Seq[SoQLAnalysis[ColumnName, SoQLType]])
     : Seq[SoQLAnalysis[String, SoQLType]] = {
     val initialAcc = (columnIdMapping, Seq.empty[SoQLAnalysis[String, SoQLType]])
@@ -48,26 +52,32 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], maxRows: Option[Int], defaul
       // Newly introduced columns will be used as column id as is.
       // There should be some sanitizer upstream that checks for field_name conformity.
       // TODO: Alternatively, we may need to use internal column name map for new and temporary columns
-      val newlyIntroducedColumns = analysis.selection.keys.filter { columnName => !mapping.contains(columnName) }
-      val mappingWithNewColumns = newlyIntroducedColumns.foldLeft(mapping) { (acc, newColumn) =>
-        acc + (newColumn -> newColumn.name)
+      val newlyIntroducedColumns = analysis.selection.keys.map(QualifiedColumnName(None, _)).filter { columnName => !mapping.contains(columnName) }
+      val mappingWithNewColumns: Map[QualifiedColumnName, String] = newlyIntroducedColumns.foldLeft(mapping) { (acc, newColumn) =>
+        acc + (newColumn -> newColumn.columnName.name)
       }
       // Re-map columns except for the innermost soql
-      val newMapping =
+      val newMapping: Map[QualifiedColumnName, String] =
         if (convertedAnalyses.nonEmpty) {
           val prevAnalysis = convertedAnalyses.last
           prevAnalysis.selection.foldLeft(mapping) { (acc, selCol) =>
             val (colName, expr) = selCol
-            acc + (colName -> colName.name)
+            acc + (QualifiedColumnName(None, colName) -> colName.name)
           }
         } else {
           mappingWithNewColumns
         }
 
-      val a: SoQLAnalysis[String, SoQLType] = analysis.mapColumnIds(mapIgnoringQualifier(newMapping))
+      val a: SoQLAnalysis[String, SoQLType] = analysis.mapColumnIds(qualifiedColumnNameToColumnId(newMapping))
       (mappingWithNewColumns, convertedAnalyses :+ a)
     }
     analysesInColIds
+  }
+
+  private def qualifiedColumnNameToColumnId(qualifiedColumnNameMap: Map[QualifiedColumnName, String])
+                                           (columnName: ColumnName, qual: Option[String]): String = {
+    val columnId = qualifiedColumnNameMap(QualifiedColumnName(qual, columnName))
+    columnId
   }
 
   private def limitRows(analyses: Seq[SoQLAnalysis[ColumnName, SoQLType]])
@@ -83,8 +93,67 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], maxRows: Option[Int], defaul
     }
   }
 
-  private def analyzeQuery(query: String): AnalysisContext => Seq[SoQLAnalysis[ColumnName, SoQLType]] = {
-      analyzer.analyzeFullQuery(query)(_)
+  private def analyzeQuery(query: String, columnIdMap: Map[ColumnName, String], selectedSecondaryInstanceBase: RequestBuilder):
+    AnalysisContext => (Seq[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String]) = {
+    analyzeFullQuery(query, columnIdMap, selectedSecondaryInstanceBase)
+  }
+
+  private def analyzeFullQuery(query: String, columnIdMap: Map[ColumnName, String], selectedSecondaryInstanceBase: RequestBuilder)(ctx: AnalysisContext):
+    (Seq[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String]) = {
+
+    val parsed = new Parser().selectStatement(query)
+
+    val joins = parsed.flatten { select =>
+      select.join match {
+        case None => Seq.empty
+        case Some(joins) => joins
+      }
+    }
+
+    val primaryColumnIdMap = columnIdMap.map { case (k, v) => QualifiedColumnName(None, k) -> v }
+
+    val (joinColumnIdMap, joinCtx) =
+      joins.foldLeft((primaryColumnIdMap, ctx)) { (acc, join) =>
+        join match {
+          case (joinResourceName, _) =>
+            val schemaResult = schemaFetcher.schemaWithFieldName(selectedSecondaryInstanceBase, joinResourceName.name, None, useResourceName = true)
+            schemaResult match {
+              case SuccessfulExtendedSchema(schema, copyNumber, dataVersion, lastModified) =>
+                val joinResourceAliasOrName = joinResourceName.alias.getOrElse(joinResourceName.name)
+                val combinedCtx = acc._2 + (joinResourceAliasOrName ->  schemaToDatasetContext(schema))
+                val combinedIdMap = acc._1 ++ schema.schema.map {
+                  case (columnId, (_, fieldName)) =>
+                    (QualifiedColumnName(Some(joinResourceAliasOrName), new ColumnName(fieldName)) -> columnId)
+                }
+                (combinedIdMap, combinedCtx)
+              case _ =>
+                acc
+            }
+        }
+      }
+
+    parsed match {
+      case Seq(one) =>
+        val result = analyzer.analyzeWithSelection(one)(joinCtx)
+        (Seq(result), joinColumnIdMap)
+      case moreThanOne =>
+        val result = analyzer.analyze(moreThanOne)(joinCtx)
+        (result, joinColumnIdMap)
+    }
+  }
+
+  private def schemaToDatasetContext(schema: SchemaWithFieldName): DatasetContext[SoQLType] = {
+    val columnNameTypes = schema.schema.values.foldLeft(Map.empty[ColumnName, SoQLType]) { (acc, v) =>
+      v match {
+        case (soqlType, fieldName) =>
+          acc + (new ColumnName(fieldName) -> soqlType)
+      }
+    }
+    val schemaForOrderedMap = columnNameTypes.mapValues( x => (x.hashCode, x ))
+
+    new DatasetContext[SoQLType] {
+      val schema: OrderedMap[ColumnName, SoQLType] = new OrderedMap(schemaForOrderedMap, schemaForOrderedMap.keys.toVector)
+    }
   }
 
   private def analyzeQueryWithCompoundTypeFusion(query: String,
@@ -128,24 +197,35 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], maxRows: Option[Int], defaul
   def apply(query: String,
             columnIdMapping: Map[ColumnName, String],
             schema: Map[String, SoQLType],
+            selectedSecondaryInstanceBase: RequestBuilder,
             fuseMap: Map[String, String] = Map.empty,
             merged: Boolean = true): Result = {
 
+    // TODO: handle complex type fusion and join
+    def fakeAdapter(columnIdMapping: Map[ColumnName, String])(analyses: Seq[SoQLAnalysis[ColumnName, SoQLType]]): (Seq[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String]) = {
+      (analyses, columnIdMapping.map { case(k, v) => QualifiedColumnName(None, k) -> v })
+    }
+
     val postAnalyze = CompoundTypeFuser(fuseMap) match {
       case x if x.eq(NoopFuser) =>
-        analyzeQuery(query)
+        analyzeQuery(query, columnIdMapping, selectedSecondaryInstanceBase)
       case fuser: SoQLRewrite =>
         val analyze = analyzeQueryWithCompoundTypeFusion(query, fuser, columnIdMapping, schema)
-        analyze andThen fuser.postAnalyze
+        analyze andThen fuser.postAnalyze andThen fakeAdapter(columnIdMapping)
     }
 
     val analyzeMaybeMerge = if (merged) { postAnalyze andThen soqlMerge } else { postAnalyze }
     go(columnIdMapping, schema)(analyzeMaybeMerge)
   }
 
-  private def soqlMerge(analyses: Seq[SoQLAnalysis[ColumnName, SoQLType]])
-    : Seq[SoQLAnalysis[ColumnName, SoQLType]] = {
-    SoQLAnalysis.merge(andFn, analyses)
+  private def soqlMerge(analysesAndColumnIdMap: (Seq[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String]))
+    : (Seq[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String]) = {
+    val (analyses, qualColumnIdMap) = analysesAndColumnIdMap
+    if (qualColumnIdMap.keys.exists(_.qualifier.isDefined)) { // Cannot merge if we use more than one tables
+      analysesAndColumnIdMap
+    } else {
+      (SoQLAnalysis.merge(andFn, analyses), qualColumnIdMap)
+    }
   }
 
   def apply(selection: Option[String], // scalastyle:ignore parameter.number
@@ -158,9 +238,10 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], maxRows: Option[Int], defaul
             search: Option[String],
             columnIdMapping: Map[ColumnName, String],
             schema: Map[String, SoQLType],
+            selectedSecondaryInstanceBase: RequestBuilder,
             fuseMap: Map[String, String]): Result = {
     val query = fullQuery(selection, where, groupBy, having, orderBy, limit, offset, search)
-    apply(query, columnIdMapping, schema, fuseMap)
+    apply(query, columnIdMapping, schema, selectedSecondaryInstanceBase, fuseMap)
   }
 }
 

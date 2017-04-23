@@ -84,7 +84,7 @@ object Main extends App {
 
     val secondary = Secondary(
       secondaryProvider = dataCoordinatorProviderProvider,
-      schemaFetcher = new SchemaFetcher(httpClient),
+      schemaFetcher = SchemaFetcher(httpClient),
       secondaryInstance = secondaryInstanceSelector,
       connectTimeout = config.connectTimeout,
       schemaTimeout = config.schemaTimeout
@@ -92,11 +92,11 @@ object Main extends App {
 
     val windower = new Windower(config.cache.rowsPerWindow)
     val maxWindowCount = config.cache.maxWindows
-
+    val schemaFetcher = SchemaFetcher(httpClient)
     val queryResource = QueryResource(
       secondary = secondary,
-      schemaFetcher = new SchemaFetcher(httpClient),
-      queryParser = new QueryParser(analyzer, config.maxRows, config.defaultRowsLimit),
+      schemaFetcher = schemaFetcher,
+      queryParser = new QueryParser(analyzer, schemaFetcher, config.maxRows, config.defaultRowsLimit),
       queryExecutor = new QueryExecutor(httpClient, analysisSerializer, teeStream, cacheSessionProvider, windower, maxWindowCount),
       connectTimeout = config.connectTimeout,
       schemaTimeout = config.schemaTimeout,

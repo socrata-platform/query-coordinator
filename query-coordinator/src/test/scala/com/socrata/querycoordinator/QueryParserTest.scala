@@ -1,5 +1,6 @@
 package com.socrata.querycoordinator
 
+import com.socrata.http.client.RequestBuilder
 import com.socrata.querycoordinator.QueryParser.{AnalysisError, SuccessfulParse}
 import com.socrata.querycoordinator.caching.SoQLAnalysisDepositioner
 import com.socrata.querycoordinator.util.Join
@@ -24,7 +25,7 @@ class QueryParserTest extends TestBase {
       ColumnName("a") -> ColumnRef(NoQualifier, "ai", SoQLText)(new SoQLPosition(1, starPos, query, 0)),
       ColumnName("b") -> ColumnRef(NoQualifier, "bi", SoQLText)(new SoQLPosition(1, starPos, query, 0))
     )
-    val actual = qp.apply(query, truthColumns, upToDateSchema) match {
+    val actual = qp.apply(query, truthColumns, upToDateSchema, fakeRequestBuilder) match {
       case SuccessfulParse(analyses) => analyses.head.selection
       case x: QueryParser.Result => x
     }
@@ -37,7 +38,7 @@ class QueryParserTest extends TestBase {
     val expected = com.socrata.soql.collection.OrderedMap(
       ColumnName("a") -> ColumnRef(NoQualifier, "ai", SoQLText)(new SoQLPosition(1, starPos, query, 0))
     )
-    val actual = qp.apply(query, truthColumns, outdatedSchema) match {
+    val actual = qp.apply(query, truthColumns, outdatedSchema, fakeRequestBuilder) match {
       case SuccessfulParse(analyses) => analyses.head.selection
       case x: QueryParser.Result => x
     }
@@ -46,13 +47,13 @@ class QueryParserTest extends TestBase {
 
   test("SELECT non existing column errs") {
     val query = "select b"
-    val actual = qp.apply(query, truthColumns, outdatedSchema)
+    val actual = qp.apply(query, truthColumns, outdatedSchema, fakeRequestBuilder)
     actual.getClass should be(classOf[AnalysisError])
   }
 
   test("Chain Soql") {
     val query = "SELECT a || 'one' as x WHERE a <> 'x' |> SELECT x || 'y' as y where x <> 'y' |> SELECT y || 'z' as z where y <> 'z'"
-    val actual = qp.apply(query, truthColumns, outdatedSchema, merged = false)
+    val actual = qp.apply(query, truthColumns, outdatedSchema, fakeRequestBuilder, merged = false)
     actual shouldBe a[SuccessfulParse]
 
     val SuccessfulParse(analyses) = actual
@@ -112,11 +113,11 @@ class QueryParserTest extends TestBase {
 
   test("Chain Soql hides not selected columns") {
     val query = "SELECT * |> SELECT a"
-    val actual = qp.apply(query, truthColumns, upToDateSchema)
+    val actual = qp.apply(query, truthColumns, upToDateSchema, fakeRequestBuilder)
     actual shouldBe a[SuccessfulParse]
 
     val badQuery = "SELECT 'x' as x |> SELECT a"
-    val badActual = qp.apply(badQuery, truthColumns, outdatedSchema)
+    val badActual = qp.apply(badQuery, truthColumns, outdatedSchema, fakeRequestBuilder)
     badActual shouldBe a[AnalysisError]
   }
 }
@@ -129,7 +130,7 @@ object QueryParserTest {
 
   val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
 
-  val qp = new QueryParser(analyzer, Some(maxRowLimit), defaultRowLimit)
+  val qp = new QueryParser(analyzer, FakeSchemaFetcher, Some(maxRowLimit), defaultRowLimit)
 
   val truthColumns = Map[ColumnName, String](ColumnName("a") -> "ai", ColumnName("b") -> "bi")
 
