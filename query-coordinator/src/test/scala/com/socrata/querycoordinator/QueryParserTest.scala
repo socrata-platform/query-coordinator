@@ -2,25 +2,27 @@ package com.socrata.querycoordinator
 
 import com.socrata.querycoordinator.QueryParser.{AnalysisError, SuccessfulParse}
 import com.socrata.querycoordinator.caching.SoQLAnalysisDepositioner
+import com.socrata.querycoordinator.util.Join
 import com.socrata.soql.collection.OrderedMap
 import com.socrata.soql.environment.ColumnName
 import com.socrata.soql.functions._
 import com.socrata.soql.parsing.SoQLPosition
 import com.socrata.soql.SoQLAnalyzer
-import com.socrata.soql.typed.{StringLiteral, FunctionCall, ColumnRef}
+import com.socrata.soql.typed.{ColumnRef, FunctionCall, StringLiteral}
 import com.socrata.soql.types.{SoQLText, SoQLType}
 
 import scala.util.parsing.input.NoPosition
 
 class QueryParserTest extends TestBase {
   import QueryParserTest._ // scalastyle:ignore import.grouping
+  import Join.NoQualifier
 
   test("SELECT * expands all columns") {
     val query = "select *"
     val starPos = query.indexOf("*") + 1
     val expected = com.socrata.soql.collection.OrderedMap(
-      ColumnName("a") -> ColumnRef("ai", SoQLText)(new SoQLPosition(1, starPos, query, 0)),
-      ColumnName("b") -> ColumnRef("bi", SoQLText)(new SoQLPosition(1, starPos, query, 0))
+      ColumnName("a") -> ColumnRef(NoQualifier, "ai", SoQLText)(new SoQLPosition(1, starPos, query, 0)),
+      ColumnName("b") -> ColumnRef(NoQualifier, "bi", SoQLText)(new SoQLPosition(1, starPos, query, 0))
     )
     val actual = qp.apply(query, truthColumns, upToDateSchema) match {
       case SuccessfulParse(analyses) => analyses.head.selection
@@ -33,7 +35,7 @@ class QueryParserTest extends TestBase {
     val query = "select *"
     val starPos = query.indexOf("*") + 1
     val expected = com.socrata.soql.collection.OrderedMap(
-      ColumnName("a") -> ColumnRef("ai", SoQLText)(new SoQLPosition(1, starPos, query, 0))
+      ColumnName("a") -> ColumnRef(NoQualifier, "ai", SoQLText)(new SoQLPosition(1, starPos, query, 0))
     )
     val actual = qp.apply(query, truthColumns, outdatedSchema) match {
       case SuccessfulParse(analyses) => analyses.head.selection
@@ -69,12 +71,12 @@ class QueryParserTest extends TestBase {
     val neq = MonomorphicFunction(SoQLFunctions.Neq, neqBindings)
 
     val select0 = OrderedMap(ColumnName("x") -> FunctionCall(concat, Seq(
-      ColumnRef("ai", SoQLText.t)(NoPosition),
+      ColumnRef(NoQualifier, "ai", SoQLText.t)(NoPosition),
       StringLiteral("one", SoQLText.t)(NoPosition)
     ))(NoPosition, NoPosition))
 
     val where0 = FunctionCall(neq, Seq(
-      ColumnRef("ai", SoQLText.t)(NoPosition),
+      ColumnRef(NoQualifier, "ai", SoQLText.t)(NoPosition),
       StringLiteral("x", SoQLText.t)(NoPosition)
     ))(NoPosition, NoPosition)
 
@@ -82,12 +84,12 @@ class QueryParserTest extends TestBase {
     depositionedAnalyses(0).where should be(Some(where0))
 
     val select1 = OrderedMap(ColumnName("y") -> FunctionCall(concat, Seq(
-      ColumnRef("x", SoQLText.t)(NoPosition),
+      ColumnRef(NoQualifier, "x", SoQLText.t)(NoPosition),
       StringLiteral("y", SoQLText.t)(NoPosition)
     ))(NoPosition, NoPosition))
 
     val where1 = FunctionCall(neq, Seq(
-      ColumnRef("x", SoQLText.t)(NoPosition),
+      ColumnRef(NoQualifier, "x", SoQLText.t)(NoPosition),
       StringLiteral("y", SoQLText.t)(NoPosition)
     ))(NoPosition, NoPosition)
 
@@ -95,12 +97,12 @@ class QueryParserTest extends TestBase {
     depositionedAnalyses(1).where should be(Some(where1))
 
     val select2 = OrderedMap(ColumnName("z") -> FunctionCall(concat, Seq(
-      ColumnRef("y", SoQLText.t)(NoPosition),
+      ColumnRef(NoQualifier, "y", SoQLText.t)(NoPosition),
       StringLiteral("z", SoQLText.t)(NoPosition)
     ))(NoPosition, NoPosition))
 
     val where2 = FunctionCall(neq, Seq(
-      ColumnRef("y", SoQLText.t)(NoPosition),
+      ColumnRef(NoQualifier, "y", SoQLText.t)(NoPosition),
       StringLiteral("z", SoQLText.t)(NoPosition)
     ))(NoPosition, NoPosition)
 

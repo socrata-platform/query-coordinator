@@ -4,20 +4,24 @@ import com.socrata.querycoordinator.fusion.{CompoundTypeFuser, NoopFuser, SoQLRe
 import com.socrata.soql.aliases.AliasAnalysis
 import com.socrata.soql.ast.{Expression, Select, Selection}
 import com.socrata.soql.collection.{OrderedMap, OrderedSet}
-import com.socrata.soql.environment.{ColumnName, DatasetContext, UntypedDatasetContext}
+import com.socrata.soql.environment._
 import com.socrata.soql.exceptions.SoQLException
 import com.socrata.soql.functions.SoQLFunctions
 import com.socrata.soql.parsing.Parser
+import com.socrata.soql.typed._
 import com.socrata.soql.types.SoQLType
 import com.socrata.soql.{SoQLAnalysis, SoQLAnalyzer}
 import com.typesafe.scalalogging.slf4j.Logging
 
 class QueryParser(analyzer: SoQLAnalyzer[SoQLType], maxRows: Option[Int], defaultRowsLimit: Int) {
   import QueryParser._ // scalastyle:ignore import.grouping
+  import com.socrata.querycoordinator.util.Join._
+
+  type AnalysisContext = Map[String, DatasetContext[SoQLType]]
 
   private def go(columnIdMapping: Map[ColumnName, String], schema: Map[String, SoQLType])
-                (f: DatasetContext[SoQLType] => Seq[SoQLAnalysis[ColumnName, SoQLType]]): Result = {
-    val ds = dsContext(columnIdMapping, schema)
+                (f: AnalysisContext => Seq[SoQLAnalysis[ColumnName, SoQLType]]): Result = {
+    val ds = toAnalysisContext(dsContext(columnIdMapping, schema))
     try {
       limitRows(f(ds)) match {
         case Right(analyses) =>
@@ -60,7 +64,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], maxRows: Option[Int], defaul
           mappingWithNewColumns
         }
 
-      val a: SoQLAnalysis[String, SoQLType] = analysis.mapColumnIds(newMapping)
+      val a: SoQLAnalysis[String, SoQLType] = analysis.mapColumnIds(mapIgnoringQualifier(newMapping))
       (mappingWithNewColumns, convertedAnalyses :+ a)
     }
     analysesInColIds
@@ -79,7 +83,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], maxRows: Option[Int], defaul
     }
   }
 
-  private def analyzeQuery(query: String): DatasetContext[SoQLType] => Seq[SoQLAnalysis[ColumnName, SoQLType]] = {
+  private def analyzeQuery(query: String): AnalysisContext => Seq[SoQLAnalysis[ColumnName, SoQLType]] = {
       analyzer.analyzeFullQuery(query)(_)
   }
 
@@ -87,12 +91,12 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], maxRows: Option[Int], defaul
                                                  fuser: SoQLRewrite,
                                                  columnIdMapping: Map[ColumnName, String],
                                                  schema: Map[String, SoQLType]):
-    DatasetContext[SoQLType] => Seq[SoQLAnalysis[ColumnName, SoQLType]] = {
-
+    AnalysisContext => Seq[SoQLAnalysis[ColumnName, SoQLType]] = {
     val parsedStmts = new Parser().selectStatement(query)
 
     // expand "select *"
     val firstStmt = parsedStmts.head
+
     val baseCtx = new UntypedDatasetContext {
       override val columns: OrderedSet[ColumnName] = {
         // exclude non-existing columns in the schema
@@ -101,7 +105,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], maxRows: Option[Int], defaul
       }
     }
 
-    val expandedStmts = parsedStmts.foldLeft((Seq.empty[Select], baseCtx)) { (acc, select) =>
+    val expandedStmts = parsedStmts.foldLeft((Seq.empty[Select], toAnalysisContext(baseCtx))) { (acc, select) =>
       val (selects, ctx) = acc
       val expandedSelection = AliasAnalysis.expandSelection(select.selection)(ctx)
       val expandedStmt = select.copy(selection = Selection(None, None, expandedSelection))
@@ -111,7 +115,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], maxRows: Option[Int], defaul
       val nextCtx = new UntypedDatasetContext {
         override val columns: OrderedSet[ColumnName] = OrderedSet(columnNames: _*)
       }
-      (selects :+ expandedStmt, nextCtx)
+      (selects :+ expandedStmt, toAnalysisContext(nextCtx))
     }._1
 
     // rewrite only the last statement.

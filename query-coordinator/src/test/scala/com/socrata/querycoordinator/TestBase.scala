@@ -1,7 +1,9 @@
 package com.socrata.querycoordinator
 
+import com.socrata.soql.environment.TableName
+import com.socrata.soql.typed._
 import com.socrata.thirdparty.typesafeconfig.Propertizer
-import com.typesafe.config.{ConfigFactory, Config}
+import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.log4j.PropertyConfigurator
 import org.scalatest.{BeforeAndAfterAll, FunSuite, ShouldMatchers}
 import org.scalatest.prop.PropertyChecks
