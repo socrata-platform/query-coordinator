@@ -1,11 +1,15 @@
 package com.socrata.querycoordinator
 
-import com.socrata.querycoordinator.QueryRewriter.{RollupName, Anal}
+import com.socrata.querycoordinator.QueryRewriter.{Anal, RollupName}
+import com.socrata.querycoordinator.util.Join
 import com.socrata.soql.SoQLAnalysis
 import com.socrata.soql.environment.ColumnName
 import com.socrata.soql.types.SoQLType
 
 class TestQueryRewriter extends TestQueryRewriterBase {
+
+  import Join._
+
   /** Each rollup here is defined by:
     * - a name
     * - a soql statement.  Note this must be the mapped statement,
@@ -44,7 +48,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
 
     val rollupDsContext = QueryParser.dsContext(rollupNoopColumnNameMap, rewrittenRawSchema)
 
-    val rewrittenQueryAnalysis = analyzer.analyzeUnchainedQuery(q)(rollupDsContext).mapColumnIds(rollupNoopColumnNameMap)
+    val rewrittenQueryAnalysis = analyzer.analyzeUnchainedQuery(q)(toAnalysisContext(rollupDsContext)).mapColumnIds(mapIgnoringQualifier(rollupNoopColumnNameMap))
     rewrittenQueryAnalysis
   }
 

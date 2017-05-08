@@ -1,15 +1,16 @@
 package com.socrata.querycoordinator.fusion
 
-import com.socrata.querycoordinator.QueryParser.SuccessfulParse
+import scala.util.parsing.input.NoPosition
+
 import com.socrata.querycoordinator.{QueryParser, TestBase}
+import com.socrata.querycoordinator.QueryParser.SuccessfulParse
 import com.socrata.querycoordinator.caching.SoQLAnalysisDepositioner
+import com.socrata.querycoordinator.util.Join.NoQualifier
+import com.socrata.soql.SoQLAnalyzer
 import com.socrata.soql.environment.ColumnName
 import com.socrata.soql.functions._
-import com.socrata.soql.SoQLAnalyzer
 import com.socrata.soql.typed._
 import com.socrata.soql.types._
-
-import scala.util.parsing.input.NoPosition
 
 class QueryParserFuseTest extends TestBase {
   import QueryParserFuseTest._ // scalastyle:ignore import.grouping
@@ -21,8 +22,8 @@ class QueryParserFuseTest extends TestBase {
       FunctionCall(eqFn, Seq(ptlFc, NumberLiteral(1.1, SoQLNumber.t)(NoPosition)))(NoPosition, NoPosition)
 
     val expectedSelection = com.socrata.soql.collection.OrderedMap(
-      ColumnName("a") -> ColumnRef("ai", SoQLText)(NoPosition),
-      ColumnName("b") -> ColumnRef("bi", SoQLText)(NoPosition),
+      ColumnName("a") -> ColumnRef(NoQualifier, "ai", SoQLText)(NoPosition),
+      ColumnName("b") -> ColumnRef(NoQualifier, "bi", SoQLText)(NoPosition),
       ColumnName("location") -> locationFc,
       ColumnName("phone") -> phoneFc
     )
@@ -59,7 +60,7 @@ class QueryParserFuseTest extends TestBase {
 
     val expectedSelection = com.socrata.soql.collection.OrderedMap(
       ColumnName("phone") -> phoneFc,
-      ColumnName("a") -> ColumnRef("ai", SoQLText)(NoPosition)
+      ColumnName("a") -> ColumnRef(NoQualifier, "ai", SoQLText)(NoPosition)
     )
 
     val actual = qp.apply(query, truthColumns, schema, fuse) match {
@@ -77,9 +78,9 @@ class QueryParserFuseTest extends TestBase {
     val query = "SELECT :*, * |> SELECT phone, phone_type, :id"
 
     val expectedSelection = com.socrata.soql.collection.OrderedMap(
-      ColumnName("phone") -> ColumnRef("phone", SoQLText)(NoPosition),
-      ColumnName("phone_type") -> ColumnRef("phone_type", SoQLText)(NoPosition),
-      ColumnName(":id") -> ColumnRef(":id", SoQLID)(NoPosition)
+      ColumnName("phone") -> ColumnRef(NoQualifier, "phone", SoQLText)(NoPosition),
+      ColumnName("phone_type") -> ColumnRef(NoQualifier, "phone_type", SoQLText)(NoPosition),
+      ColumnName(":id") -> ColumnRef(NoQualifier, ":id", SoQLID)(NoPosition)
     )
 
     val actual = qp.apply(query, truthColumns, schema, Map.empty) match {
@@ -96,7 +97,7 @@ class QueryParserFuseTest extends TestBase {
     val query = "SELECT a"
 
     val expectedSelection = com.socrata.soql.collection.OrderedMap(
-      ColumnName("a") -> ColumnRef("ai", SoQLText)(NoPosition)
+      ColumnName("a") -> ColumnRef(NoQualifier, "ai", SoQLText)(NoPosition)
     )
 
     val actual = qp.apply(query, truthColumns, schema, Map.empty) match {
@@ -145,16 +146,16 @@ object QueryParserFuseTest {
   )
 
   val locationFc = FunctionCall(SoQLFunctions.Location.monomorphic.get, Seq(
-    ColumnRef("location", SoQLPoint.t)(NoPosition),
-    ColumnRef("location_address", SoQLText.t)(NoPosition),
-    ColumnRef("location_city", SoQLText.t)(NoPosition),
-    ColumnRef("location_state", SoQLText.t)(NoPosition),
-    ColumnRef("location_zip", SoQLText.t)(NoPosition)
+    ColumnRef(NoQualifier, "location", SoQLPoint.t)(NoPosition),
+    ColumnRef(NoQualifier, "location_address", SoQLText.t)(NoPosition),
+    ColumnRef(NoQualifier, "location_city", SoQLText.t)(NoPosition),
+    ColumnRef(NoQualifier, "location_state", SoQLText.t)(NoPosition),
+    ColumnRef(NoQualifier, "location_zip", SoQLText.t)(NoPosition)
   ))(NoPosition, NoPosition)
 
   val phoneFc = FunctionCall(SoQLFunctions.Phone.monomorphic.get, Seq(
-    ColumnRef("phone", SoQLText.t)(NoPosition),
-    ColumnRef("phone_type", SoQLText.t)(NoPosition)
+    ColumnRef(NoQualifier, "phone", SoQLText.t)(NoPosition),
+    ColumnRef(NoQualifier, "phone_type", SoQLText.t)(NoPosition)
   ))(NoPosition, NoPosition)
 
   val eqBindings = SoQLFunctions.Eq.parameters.map {
@@ -165,7 +166,7 @@ object QueryParserFuseTest {
   val eqFn = MonomorphicFunction(SoQLFunctions.Eq, eqBindings)
 
   val ptlFc = FunctionCall(SoQLFunctions.PointToLatitude.monomorphic.get,
-    Seq(ColumnRef("location", SoQLPoint.t)(NoPosition)))(NoPosition, NoPosition)
+    Seq(ColumnRef(NoQualifier, "location", SoQLPoint.t)(NoPosition)))(NoPosition, NoPosition)
 
   val fuse = Map("location" -> "location", "phone" -> "phone")
 }

@@ -5,6 +5,7 @@ import com.socrata.soql.ast._
 import com.socrata.soql.environment.ColumnName
 import com.socrata.soql.functions.SoQLFunctions
 import com.socrata.soql.parsing.standalone_exceptions.BadParse
+import com.socrata.soql.typed.Qualifier
 import com.socrata.soql.types.SoQLType
 import com.typesafe.scalalogging.slf4j.Logging
 
@@ -46,6 +47,8 @@ object CompoundTypeFuser {
  * @param fuseBase contains the base name of expanded columns which need to be fused.
  */
 class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite with Logging {
+
+  import com.socrata.querycoordinator.util.Join._
 
   private val ColumnPrefix = "#" // prefix should have no special meaning in regex.
 
@@ -124,23 +127,23 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite with 
 
   private def rewrite(expr: Expression): Option[Expression] = {
     expr match {
-      case baseColumn@ColumnOrAliasRef(name: ColumnName) =>
+      case baseColumn@ColumnOrAliasRef(NoQualifier, name: ColumnName) =>
         fuse.get(name.name) match {
           case Some(FTLocation) =>
-            val address = ColumnOrAliasRef(ColumnName(s"${name.name}_address"))(NoPosition)
-            val city = ColumnOrAliasRef(ColumnName(s"${name.name}_city"))(NoPosition)
-            val state = ColumnOrAliasRef(ColumnName(s"${name.name}_state"))(NoPosition)
-            val zip = ColumnOrAliasRef(ColumnName(s"${name.name}_zip"))(NoPosition)
+            val address = ColumnOrAliasRef(NoQualifier, ColumnName(s"${name.name}_address"))(NoPosition)
+            val city = ColumnOrAliasRef(NoQualifier, ColumnName(s"${name.name}_city"))(NoPosition)
+            val state = ColumnOrAliasRef(NoQualifier, ColumnName(s"${name.name}_state"))(NoPosition)
+            val zip = ColumnOrAliasRef(NoQualifier, ColumnName(s"${name.name}_zip"))(NoPosition)
             val args = Seq(baseColumn, address, city, state, zip)
             val fc = FunctionCall(SoQLFunctions.Location.name, args)(NoPosition, NoPosition)
             Some(fc)
           case Some(FTPhone) =>
-            val phoneType = ColumnOrAliasRef(ColumnName(s"${name.name}_type"))(NoPosition)
+            val phoneType = ColumnOrAliasRef(NoQualifier, ColumnName(s"${name.name}_type"))(NoPosition)
             var args = Seq(baseColumn, phoneType)
             val fc = FunctionCall(SoQLFunctions.Phone.name, args)(NoPosition, NoPosition)
             Some(fc)
           case Some(FTUrl) =>
-            val urlDescription = ColumnOrAliasRef(ColumnName(s"${name.name}_description"))(NoPosition)
+            val urlDescription = ColumnOrAliasRef(NoQualifier, ColumnName(s"${name.name}_description"))(NoPosition)
             var args = Seq(baseColumn, urlDescription)
             val fc = FunctionCall(SoQLFunctions.Url.name, args)(NoPosition, NoPosition)
             Some(fc)
@@ -149,22 +152,22 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite with 
           case None =>
             Some(expr)
         }
-      case fc@FunctionCall(fnName, Seq(ColumnOrAliasRef(name: ColumnName)))
+      case fc@FunctionCall(fnName, Seq(ColumnOrAliasRef(NoQualifier, name: ColumnName)))
         if (Set(SoQLFunctions.PointToLatitude.name, SoQLFunctions.PointToLongitude.name).contains(fnName)) => Some(fc)
-      case fc@FunctionCall(fnName, Seq(ColumnOrAliasRef(name: ColumnName), StringLiteral(prop)))
+      case fc@FunctionCall(fnName, Seq(ColumnOrAliasRef(NoQualifier, name: ColumnName), StringLiteral(prop)))
         if fnName.name == SpecialFunctions.Subscript.name =>
         fuse.get(name.name) match {
           case Some(FTLocation) =>
             prop match {
               case "latitude" =>
-                val args = Seq(ColumnOrAliasRef(ColumnName(s"${name.name}"))(NoPosition))
+                val args = Seq(ColumnOrAliasRef(NoQualifier, ColumnName(s"${name.name}"))(NoPosition))
                 Some(FunctionCall(SoQLFunctions.PointToLatitude.name, args)(NoPosition, NoPosition))
               case "longitude" =>
-                val args = Seq(ColumnOrAliasRef(ColumnName(s"${name.name}"))(NoPosition))
+                val args = Seq(ColumnOrAliasRef(NoQualifier, ColumnName(s"${name.name}"))(NoPosition))
                 Some(FunctionCall(SoQLFunctions.PointToLatitude.name, args)(NoPosition, NoPosition))
               case "human_address" =>
                 val args = Seq("address", "city", "state", "zip")
-                  .map(subProp => ColumnOrAliasRef(ColumnName(s"${name.name}_$subProp"))(NoPosition))
+                  .map(subProp => ColumnOrAliasRef(NoQualifier, ColumnName(s"${name.name}_$subProp"))(NoPosition))
                 Some(FunctionCall(SoQLFunctions.HumanAddress.name, args)(NoPosition, NoPosition))
               case _ =>
                 throw BadParse("unknown location property", fc.position)
@@ -172,18 +175,18 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite with 
           case Some(FTPhone) =>
             prop match {
               case "phone_number" =>
-                Some(ColumnOrAliasRef(ColumnName(name.name))(NoPosition))
+                Some(ColumnOrAliasRef(NoQualifier, ColumnName(name.name))(NoPosition))
               case "phone_type" =>
-                Some(ColumnOrAliasRef(ColumnName(s"${name.name}_type"))(NoPosition))
+                Some(ColumnOrAliasRef(NoQualifier, ColumnName(s"${name.name}_type"))(NoPosition))
               case _ =>
                 throw BadParse("unknown phone property", fc.position)
             }
           case Some(FTUrl) =>
             prop match {
               case "url" =>
-                Some(ColumnOrAliasRef(ColumnName(name.name))(NoPosition))
+                Some(ColumnOrAliasRef(NoQualifier, ColumnName(name.name))(NoPosition))
               case "description" =>
-                Some(ColumnOrAliasRef(ColumnName(s"${name.name}_description"))(NoPosition))
+                Some(ColumnOrAliasRef(NoQualifier, ColumnName(s"${name.name}_description"))(NoPosition))
               case _ =>
                 throw BadParse("unknown phone property", fc.position)
             }

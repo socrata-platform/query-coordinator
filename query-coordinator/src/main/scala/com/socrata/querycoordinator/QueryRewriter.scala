@@ -2,16 +2,21 @@ package com.socrata.querycoordinator
 
 import com.socrata.querycoordinator.QueryRewriter._
 import com.socrata.soql.collection.OrderedMap
-import com.socrata.soql.environment.ColumnName
+import com.socrata.soql.environment.{ColumnName, TableName}
 import com.socrata.soql.exceptions.SoQLException
 import com.socrata.soql.functions.SoQLFunctions._
 import com.socrata.soql.functions._
+import com.socrata.soql.typed.{ColumnRef => _, FunctionCall => _, OrderBy => _, _}
 import com.socrata.soql.types._
 import com.socrata.soql.{SoQLAnalysis, SoQLAnalyzer, typed}
 import org.joda.time.{DateTimeConstants, LocalDateTime}
+
 import scala.util.{Failure, Success, Try}
 
 class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
+
+  import com.socrata.querycoordinator.util.Join._
+
   val log = org.slf4j.LoggerFactory.getLogger(classOf[QueryRewriter])
 
   def ensure(expr: Boolean, msg: String): Option[String] = if (!expr) Some(msg) else None
@@ -150,7 +155,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
           lowerRewrite <- rewriteExpr(lower, rollupColIdx)
           upperRewrite <- rewriteExpr(upper, rollupColIdx)
           newParams <- Some(Seq(
-            typed.ColumnRef(rollupColumnId(idx), SoQLFloatingTimestamp.t)(fc.position),
+            typed.ColumnRef(NoQualifier, rollupColumnId(idx), SoQLFloatingTimestamp.t)(fc.position),
             lowerRewrite,
             upperRewrite))
         } yield fc.copy(parameters = newParams)(fc.position, fc.position)
@@ -211,7 +216,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
           // The left hand side should be a floating timestamp, and the right hand side will be a string being cast
           // to a floating timestamp.  eg. my_floating_timestamp < '2010-01-01'::floating_timestamp
           // While it is eminently reasonable to also accept them in flipped order, that is being left for later.
-          case (colRef@typed.ColumnRef(_, SoQLFloatingTimestamp),
+          case (colRef@typed.ColumnRef(_, _, SoQLFloatingTimestamp),
           cast@typed.FunctionCall(MonomorphicFunction(TextToFloatingTimestamp, _), Seq(typed.StringLiteral(ts, _)))) =>
             for {
               parsedTs <- SoQLFloatingTimestamp.StringRep.unapply(ts)
@@ -220,6 +225,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
               possibleTruncFunctions <- Some(dateTruncHierarchy.dropWhile { f => f != truncatedTo })
               rollupColIdx <- findFunctionOnColumn(rollupColIdx, possibleTruncFunctions, colRef)
               newParams <- Some(Seq(typed.ColumnRef(
+                NoQualifier,
                 rollupColumnId(rollupColIdx),
                 SoQLFloatingTimestamp.t)(fc.position), right))
             } yield fc.copy(parameters = newParams)(fc.position, fc.position)
@@ -246,7 +252,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
         val mf = MonomorphicFunction(Sum, Map("a" -> SoQLNumber))
         for {
           idx <- findCountStarOrLiteral(rollupColIdx) // find count(*) column in rollup
-          newSumCol <- Some(typed.ColumnRef(rollupColumnId(idx), SoQLNumber.t)(fc.position))
+          newSumCol <- Some(typed.ColumnRef(NoQualifier, rollupColumnId(idx), SoQLNumber.t)(fc.position))
           newFc <- Some(typed.FunctionCall(mf, Seq(newSumCol))(fc.position, fc.position))
         } yield newFc
       // If this is a between function operating on floating timestamps, and arguments b and c are both date aggregates,
@@ -265,19 +271,19 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
       // There is actually a much more general case on this where non-aggregate functions can
       // be applied on top of other non-aggregate functions in many cases that we are not currently
       // implementing.
-      case fc@typed.FunctionCall(MonomorphicFunction(IsNotNull, _), Seq(colRef@typed.ColumnRef(_, _)))
+      case fc@typed.FunctionCall(MonomorphicFunction(IsNotNull, _), Seq(colRef@typed.ColumnRef(_, _, _)))
         if findFunctionOnColumn(rollupColIdx, dateTruncHierarchy, colRef).isDefined =>
         for {
           colIdx <- findFunctionOnColumn(rollupColIdx, dateTruncHierarchy, colRef)
         } yield fc.copy(parameters =
-          Seq(typed.ColumnRef(rollupColumnId(colIdx), colRef.typ)(fc.position)))(fc.position, fc.functionNamePosition)
+          Seq(typed.ColumnRef(NoQualifier, rollupColumnId(colIdx), colRef.typ)(fc.position)))(fc.position, fc.functionNamePosition)
       case fc: FunctionCall if !fc.function.isAggregate => rewriteNonagg(rollupColIdx, fc)
       // If the function is "self aggregatable" we can apply it on top of an already aggregated rollup
       // column, eg. select foo, bar, max(x) max_x group by foo, bar --> select foo, max(max_x) group by foo
       // If we have a matching column, we just need to update its argument to reference the rollup column.
       case fc: FunctionCall if isSelfAggregatableAggregate(fc.function.function) =>
         for {idx <- rollupColIdx.get(fc)} yield fc.copy(parameters =
-          Seq(typed.ColumnRef(rollupColumnId(idx), fc.typ)(fc.position)))(fc.position, fc.position)
+          Seq(typed.ColumnRef(NoQualifier, rollupColumnId(idx), fc.typ)(fc.position)))(fc.position, fc.position)
       case _ => None
     }
   }
@@ -288,7 +294,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     // if we have the exact same function in rollup and query, just turn it into a column ref in the rollup
     val functionMatch = for {
       idx <- rollupColIdx.get(fc)
-    } yield typed.ColumnRef(rollupColumnId(idx), fc.typ)(fc.position)
+    } yield typed.ColumnRef(NoQualifier, rollupColumnId(idx), fc.typ)(fc.position)
     // otherwise, see if we can recursively rewrite
     functionMatch.orElse {
       val mapped = fc.parameters.map(fe => rewriteExpr(fe, rollupColIdx))
@@ -405,7 +411,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
    * Once we have the analyzed rollup query with column names, we need to remove the leading "_" on non-system
    * columns to make the names match up with the underlying dataset schema.
    */
-  private def removeRollupPrefix(cn: ColumnName): ColumnId = {
+  private def removeRollupPrefix(cn: ColumnName, qual: Qualifier): ColumnId = { // TODO: Join
     cn.name(0) match {
       case ':' => cn.name
       case _ => cn.name.drop(1)
@@ -415,12 +421,13 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
   // maps prefixed column name to type
   private def prefixedDsContext(schema: Schema) = {
     val columnIdMap = schema.schema.map { case (k, v) => addRollupPrefix(k) -> k }
-    QueryParser.dsContext(columnIdMap, schema.schema)
+    Map(TableName.PrimaryTable.qualifier -> QueryParser.dsContext(columnIdMap, schema.schema))
   }
 
   def analyzeRollups(schema: Schema, rollups: Seq[RollupInfo], project: Map[String, String]): Map[RollupName, Anal] = {
 
-    def reprojectColumn(cn: ColumnId): ColumnId = project.getOrElse(cn, cn)
+    // TODO: Join - qualifier
+    def reprojectColumn(cn: ColumnId, qual: Qualifier): ColumnId = project.getOrElse(cn, cn)
 
     val dsContext = prefixedDsContext(schema)
     val rollupMap = rollups.map { r => (r.name, r.soql) }.toMap

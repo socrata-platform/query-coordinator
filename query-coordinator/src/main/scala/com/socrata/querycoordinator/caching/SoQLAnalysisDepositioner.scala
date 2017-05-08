@@ -9,10 +9,11 @@ import scala.util.parsing.input.NoPosition
 
 object SoQLAnalysisDepositioner {
   def apply[ColumnId,Type](sa: SoQLAnalysis[ColumnId,Type]): SoQLAnalysis[ColumnId,Type] = {
-    val SoQLAnalysis(isGrouped, distinct, selection, where, groupBy, having, orderBy, limit, offset, search) = sa
+    val SoQLAnalysis(isGrouped, distinct, selection, join, where, groupBy, having, orderBy, limit, offset, search) = sa
     SoQLAnalysis(isGrouped = isGrouped,
                  distinct = distinct,
                  selection = depositionSelection(selection),
+                 join,
                  where = depositionOptExpr(where),
                  groupBy = depositionGroupBys(groupBy),
                  having = depositionOptExpr(having),
@@ -28,7 +29,7 @@ object SoQLAnalysisDepositioner {
 
   private def depositionExpr[ColumnId,Type](expr: CoreExpr[ColumnId, Type]): CoreExpr[ColumnId, Type] = {
     expr match {
-      case ColumnRef(column, typ) => ColumnRef(column, typ)(NoPosition)
+      case ColumnRef(qual, column, typ) => ColumnRef(qual, column, typ)(NoPosition)
       case NumberLiteral(value, typ) => NumberLiteral(value, typ)(NoPosition)
       case StringLiteral(value, typ) => StringLiteral(value, typ)(NoPosition)
       case BooleanLiteral(value, typ) => BooleanLiteral(value, typ)(NoPosition)
