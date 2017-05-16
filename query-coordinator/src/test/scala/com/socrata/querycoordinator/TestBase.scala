@@ -1,5 +1,6 @@
 package com.socrata.querycoordinator
 
+import com.socrata.http.client.RequestBuilder
 import com.socrata.soql.environment.TableName
 import com.socrata.soql.typed._
 import com.socrata.thirdparty.typesafeconfig.Propertizer
@@ -12,4 +13,6 @@ abstract class TestBase extends FunSuite  with ShouldMatchers  with PropertyChec
   val config: Config = ConfigFactory.load().getConfig("com.socrata.query-coordinator")
 
   PropertyConfigurator.configure(Propertizer("log4j", config.getConfig("log4j")))
+
+  val fakeRequestBuilder = RequestBuilder("")
 }
