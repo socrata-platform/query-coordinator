@@ -221,11 +221,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
   private def soqlMerge(analysesAndColumnIdMap: (Seq[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String]))
     : (Seq[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String]) = {
     val (analyses, qualColumnIdMap) = analysesAndColumnIdMap
-    if (qualColumnIdMap.keys.exists(_.qualifier.isDefined)) { // Cannot merge if we use more than one tables
-      analysesAndColumnIdMap
-    } else {
-      (SoQLAnalysis.merge(andFn, analyses), qualColumnIdMap)
-    }
+    (SoQLAnalysis.merge(andFn, analyses), qualColumnIdMap)
   }
 
   def apply(selection: Option[String], // scalastyle:ignore parameter.number
