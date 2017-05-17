@@ -252,7 +252,7 @@ class QueryResource(secondary: Secondary,
          */
         def possiblyRewriteOneAnalysisInQuery(schema: Schema, analyzedQuery: Seq[SoQLAnalysis[String, SoQLType]])
           : (Seq[SoQLAnalysis[String, SoQLType]], Option[String]) = {
-          if (noRollup || analyzedQuery.exists(_.join.isEmpty)) {
+          if (noRollup || analyzedQuery.exists(_.join.nonEmpty)) {
             (analyzedQuery, None)
           } else {
             rollupInfoFetcher(base.receiveTimeoutMS(schemaTimeout.toMillis.toInt), dataset, copy) match {
