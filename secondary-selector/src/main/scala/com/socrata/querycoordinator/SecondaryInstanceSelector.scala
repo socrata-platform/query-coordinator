@@ -105,12 +105,12 @@ class SecondaryInstanceSelector(config: SecondarySelectorConfig) extends Logging
     }
   }
 
-  def getInstanceName(dataset: String, isInSecondary: (String => Option[Boolean])): Option[String] = {
+  def getInstanceName(dataset: String, isInSecondary: (String => Option[Boolean]), excludedSecondaryNames: Set[String]): Option[String] = {
     // datasetMap is a synchronized map, then  lock on dss for any access inside dss
     val dss = Await.result(datasetMap(dataset)(new DatasetServers), waitTime)
     @tailrec
     def getInstanceName0: Option[String] = {
-      val candidates = candidatesVector(dataset, dss)
+      val candidates = candidatesVector(dataset, dss).filter(server => !excludedSecondaryNames.contains(server.name))
       if (candidates.isEmpty) {
         // if it wraps, reset.  it isn't going to wrap.
         if (getNopesCount(dataset).incrementAndGet() < 0) getNopesCount(dataset).set(0)

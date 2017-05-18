@@ -1,7 +1,8 @@
 package com.socrata.querycoordinator
 
 import com.socrata.http.client.RequestBuilder
-import com.socrata.querycoordinator.SchemaFetcher.{Successful, SuccessfulExtendedSchema}
+import com.socrata.querycoordinator.SchemaFetcher.{NoSuchDatasetInSecondary, Successful, SuccessfulExtendedSchema}
+import com.socrata.querycoordinator.exceptions.JoinedDatasetNotColocatedException
 import com.socrata.querycoordinator.fusion.{CompoundTypeFuser, NoopFuser, SoQLRewrite}
 import com.socrata.soql.aliases.AliasAnalysis
 import com.socrata.soql.ast.{Expression, Select, Selection}
@@ -36,6 +37,8 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
     } catch {
       case e: SoQLException =>
         AnalysisError(e)
+      case e: JoinedDatasetNotColocatedException =>
+        QueryParser.JoinedTableNotFound(e.dataset, e.secondaryHost)
     }
   }
 
@@ -126,6 +129,8 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
                     (QualifiedColumnName(Some(joinResourceAliasOrName), new ColumnName(fieldName)) -> columnId)
                 }
                 (combinedIdMap, combinedCtx)
+              case NoSuchDatasetInSecondary =>
+                throw new JoinedDatasetNotColocatedException(joinResourceName.name, selectedSecondaryInstanceBase.host)
               case _ =>
                 acc
             }
@@ -236,6 +241,8 @@ object QueryParser extends Logging {
   case class UnknownColumnIds(columnIds: Set[String]) extends Result
 
   case class RowLimitExceeded(max: BigInt) extends Result
+
+  case class JoinedTableNotFound(joinedTable: String, secondaryHost: String) extends Result
 
   /**
    * Make schema which is a mapping of column name to datatype

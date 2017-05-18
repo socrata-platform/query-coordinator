@@ -20,9 +20,10 @@ class Secondary(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
 
 
   def chosenSecondaryName(forcedSecondaryName: Option[String],
-                          dataset: String, copy: Option[String]): Option[String] = {
+                          dataset: String, copy: Option[String],
+                          excludedSecondaryNames: Set[String]): Option[String] = {
     forcedSecondaryName.orElse {
-      secondaryInstance.getInstanceName(dataset, isInSecondary(_, dataset, copy))
+      secondaryInstance.getInstanceName(dataset, isInSecondary(_, dataset, copy), excludedSecondaryNames)
     }
   }
 

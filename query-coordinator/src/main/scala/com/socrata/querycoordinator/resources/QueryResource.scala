@@ -117,8 +117,8 @@ class QueryResource(secondary: Secondary,
       // potentially long-running thing, and can cause a retry
       // if the upstream says "the schema just changed".
 
-      final class QueryRetryState(retriesSoFar: Int) {
-        val chosenSecondaryName = secondary.chosenSecondaryName(forcedSecondaryName, dataset, copy)
+      final class QueryRetryState(retriesSoFar: Int, excludedSecondaryNames: Set[String]) {
+        val chosenSecondaryName = secondary.chosenSecondaryName(forcedSecondaryName, dataset, copy, excludedSecondaryNames)
         val second = secondary.serviceInstance(dataset, chosenSecondaryName)
         val base = secondary.reqBuilder(second)
         log.debug("Base URI: " + base.url)
@@ -138,6 +138,8 @@ class QueryResource(secondary: Secondary,
               finishRequest(unknownColumnIds(cids))
             case QueryParser.RowLimitExceeded(max) =>
               finishRequest(rowLimitExceeded(max))
+            case QueryParser.JoinedTableNotFound(j, s) =>
+              Left(nextRetry)
           }
         }
 
@@ -264,7 +266,7 @@ class QueryResource(secondary: Secondary,
 
         def nextRetry: QueryRetryState =
           if(retriesSoFar < 3) {
-            new QueryRetryState(retriesSoFar + 1)
+            new QueryRetryState(retriesSoFar + 1, chosenSecondaryName.map(x => excludedSecondaryNames + x).getOrElse(excludedSecondaryNames))
           } else {
             log.error("Too many retries")
             finishRequest(ranOutOfRetriesResponse)
@@ -310,7 +312,7 @@ class QueryResource(secondary: Secondary,
           case Right(r) => r
         }
       }
-      loop(new QueryRetryState(0))
+      loop(new QueryRetryState(0, Set.empty))
     } catch {
       case FinishRequest(response) =>
         response
