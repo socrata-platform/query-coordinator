@@ -84,6 +84,7 @@ class QueryResource(secondary: Secondary,
       val query = Option(servReq.getParameter("q")).map(Left(_)).getOrElse {
         Right(FragmentedQuery(
           select = Option(servReq.getParameter("select")),
+          join = Option(servReq.getParameter("join")),
           where = Option(servReq.getParameter("where")),
           group = Option(servReq.getParameter("group")),
           having = Option(servReq.getParameter("having")),
@@ -141,6 +142,7 @@ class QueryResource(secondary: Secondary,
             case Right(fq) =>
               queryParser(
                 selection = fq.select,
+                join = fq.join,
                 where = fq.where,
                 groupBy = fq.group,
                 having = fq.having,

@@ -121,6 +121,7 @@ trait QueryService {
   }
 
   case class FragmentedQuery(select: Option[String],
+                             join: Option[String],
                              where: Option[String],
                              group: Option[String],
                              having: Option[String],

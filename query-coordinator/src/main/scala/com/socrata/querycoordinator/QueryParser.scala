@@ -225,6 +225,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
   }
 
   def apply(selection: Option[String], // scalastyle:ignore parameter.number
+            join: Option[String],
             where: Option[String],
             groupBy: Option[String],
             having: Option[String],
@@ -236,7 +237,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
             schema: Map[String, SoQLType],
             selectedSecondaryInstanceBase: RequestBuilder,
             fuseMap: Map[String, String]): Result = {
-    val query = fullQuery(selection, where, groupBy, having, orderBy, limit, offset, search)
+    val query = fullQuery(selection, join, where, groupBy, having, orderBy, limit, offset, search)
     apply(query, columnIdMapping, schema, selectedSecondaryInstanceBase, fuseMap)
   }
 }
@@ -274,23 +275,25 @@ object QueryParser extends Logging {
       }
     }
 
-  private def fullQuery(selection : Option[String],
-                        where : Option[String],
-                        groupBy : Option[String],
-                        having : Option[String],
-                        orderBy : Option[String],
-                        limit : Option[String],
-                        offset : Option[String],
-                        search : Option[String]): String = {
+  private def fullQuery(selection: Option[String],
+                        join: Option[String],
+                        where: Option[String],
+                        groupBy: Option[String],
+                        having: Option[String],
+                        orderBy: Option[String],
+                        limit: Option[String],
+                        offset: Option[String],
+                        search: Option[String]): String = {
     val sb = new StringBuilder
     sb.append(selection.map( "SELECT " + _).getOrElse("SELECT *"))
+    sb.append(join.map(" JOIN " + _).getOrElse(""))
     sb.append(where.map(" WHERE " + _).getOrElse(""))
-    sb.append(where.map(" GROUP BY " + _).getOrElse(""))
-    sb.append(where.map(" HAVING " + _).getOrElse(""))
-    sb.append(where.map(" ORDER BY " + _).getOrElse(""))
-    sb.append(where.map(" LIMIT " + _).getOrElse(""))
-    sb.append(where.map(" OFFSET " + _).getOrElse(""))
-    sb.append(where.map(s => "SEARCH %s".format(Expression.escapeString(s))).getOrElse(""))
+    sb.append(groupBy.map(" GROUP BY " + _).getOrElse(""))
+    sb.append(having.map(" HAVING " + _).getOrElse(""))
+    sb.append(orderBy.map(" ORDER BY " + _).getOrElse(""))
+    sb.append(limit.map(" LIMIT " + _).getOrElse(""))
+    sb.append(offset.map(" OFFSET " + _).getOrElse(""))
+    sb.append(search.map(s => "SEARCH %s".format(Expression.escapeString(s))).getOrElse(""))
     sb.result()
   }
 
