@@ -223,22 +223,6 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
     val (analyses, qualColumnIdMap) = analysesAndColumnIdMap
     (SoQLAnalysis.merge(andFn, analyses), qualColumnIdMap)
   }
-
-  def apply(selection: Option[String], // scalastyle:ignore parameter.number
-            where: Option[String],
-            groupBy: Option[String],
-            having: Option[String],
-            orderBy: Option[String],
-            limit: Option[String],
-            offset: Option[String],
-            search: Option[String],
-            columnIdMapping: Map[ColumnName, String],
-            schema: Map[String, SoQLType],
-            selectedSecondaryInstanceBase: RequestBuilder,
-            fuseMap: Map[String, String]): Result = {
-    val query = fullQuery(selection, where, groupBy, having, orderBy, limit, offset, search)
-    apply(query, columnIdMapping, schema, selectedSecondaryInstanceBase, fuseMap)
-  }
 }
 
 object QueryParser extends Logging {
@@ -273,26 +257,6 @@ object QueryParser extends Logging {
           OrderedMap(knownColumnIdMapping.mapValues(rawSchema).toSeq.sortBy(_._1): _*)
       }
     }
-
-  private def fullQuery(selection : Option[String],
-                        where : Option[String],
-                        groupBy : Option[String],
-                        having : Option[String],
-                        orderBy : Option[String],
-                        limit : Option[String],
-                        offset : Option[String],
-                        search : Option[String]): String = {
-    val sb = new StringBuilder
-    sb.append(selection.map( "SELECT " + _).getOrElse("SELECT *"))
-    sb.append(where.map(" WHERE " + _).getOrElse(""))
-    sb.append(where.map(" GROUP BY " + _).getOrElse(""))
-    sb.append(where.map(" HAVING " + _).getOrElse(""))
-    sb.append(where.map(" ORDER BY " + _).getOrElse(""))
-    sb.append(where.map(" LIMIT " + _).getOrElse(""))
-    sb.append(where.map(" OFFSET " + _).getOrElse(""))
-    sb.append(where.map(s => "SEARCH %s".format(Expression.escapeString(s))).getOrElse(""))
-    sb.result()
-  }
 
   // And function is used for chain SoQL merge.
   private val andFn = SoQLFunctions.And.monomorphic.get
