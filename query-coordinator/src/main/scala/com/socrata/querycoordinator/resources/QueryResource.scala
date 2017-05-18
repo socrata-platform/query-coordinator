@@ -81,19 +81,7 @@ class QueryResource(secondary: Secondary,
                                             .map(parseFuseColumnMap(_))
                                             .getOrElse(Map.empty)
 
-      val query = Option(servReq.getParameter("q")).map(Left(_)).getOrElse {
-        Right(FragmentedQuery(
-          select = Option(servReq.getParameter("select")),
-          join = Option(servReq.getParameter("join")),
-          where = Option(servReq.getParameter("where")),
-          group = Option(servReq.getParameter("group")),
-          having = Option(servReq.getParameter("having")),
-          search = Option(servReq.getParameter("search")),
-          order = Option(servReq.getParameter("order")),
-          limit = Option(servReq.getParameter(qpLimit)),
-          offset = Option(servReq.getParameter("offset"))
-        ))
-      }
+      val query = servReq.getParameter("q")
 
       val rowCount = Option(servReq.getParameter("rowCount"))
       val copy = Option(servReq.getParameter("copy"))
@@ -136,26 +124,8 @@ class QueryResource(secondary: Secondary,
         log.debug("Base URI: " + base.url)
 
         def analyzeRequest(schema: Versioned[Schema], isFresh: Boolean): Either[QueryRetryState, Versioned[(Schema, Seq[SoQLAnalysis[String, SoQLType]])]] = {
-          val parsedQuery = query match {
-            case Left(q) =>
-              queryParser(q, columnIdMap, schema.payload.schema, base, fuseMap)
-            case Right(fq) =>
-              queryParser(
-                selection = fq.select,
-                join = fq.join,
-                where = fq.where,
-                groupBy = fq.group,
-                having = fq.having,
-                orderBy = fq.order,
-                limit = fq.limit,
-                offset = fq.offset,
-                search = fq.search,
-                columnIdMapping = columnIdMap,
-                schema = schema.payload.schema,
-                base,
-                fuseMap = fuseMap
-              )
-          }
+
+          val parsedQuery = queryParser(query, columnIdMap, schema.payload.schema, base, fuseMap)
 
           parsedQuery match {
             case QueryParser.SuccessfulParse(analysis) =>

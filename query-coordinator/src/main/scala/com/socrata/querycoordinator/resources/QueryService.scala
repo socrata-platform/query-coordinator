@@ -120,16 +120,6 @@ trait QueryService {
     Json(error)
   }
 
-  case class FragmentedQuery(select: Option[String],
-                             join: Option[String],
-                             where: Option[String],
-                             group: Option[String],
-                             having: Option[String],
-                             search: Option[String],
-                             order: Option[String],
-                             limit: Option[String],
-                             offset: Option[String])
-
   case class FinishRequest(response: HttpResponse) extends ControlThrowable
 
 
