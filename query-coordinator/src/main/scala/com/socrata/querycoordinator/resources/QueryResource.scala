@@ -11,6 +11,7 @@ import com.socrata.http.server._
 import com.socrata.http.server.implicits._
 import com.socrata.http.server.responses._
 import com.socrata.http.server.util.RequestId
+import com.socrata.querycoordinator.SchemaFetcher.{NoSuchDatasetInSecondary, SuccessfulExtendedSchema}
 import com.socrata.querycoordinator._
 import com.socrata.querycoordinator.caching.SharedHandle
 import com.socrata.soql.environment.ColumnName
@@ -21,7 +22,6 @@ import com.socrata.soql.types.SoQLType
 import org.apache.http.HttpStatus
 import org.joda.time.format.ISODateTimeFormat
 import org.joda.time.{DateTime, Interval}
-
 
 import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
@@ -87,20 +87,6 @@ class QueryResource(secondary: Secondary,
       val copy = Option(servReq.getParameter("copy"))
       val queryTimeoutSeconds = Option(servReq.getParameter(qpQueryTimeoutSeconds))
 
-      val jsonizedColumnIdMap = Option(servReq.getParameter("idMap")).getOrElse {
-        finishRequest(BadRequest ~> Json("no idMap provided"))
-      }
-      val columnIdMap: Map[ColumnName, String] = try {
-        JsonUtil.parseJson[Map[String, String]](jsonizedColumnIdMap) match {
-          case Right(rawMap) =>
-            rawMap.map { case (col, typ) => ColumnName(col) -> typ }
-          case Left(_) =>
-            finishRequest(BadRequest ~> Json("idMap not an object whose values are strings"))
-        }
-      } catch {
-        case e: JsonReaderException =>
-          finishRequest(BadRequest ~> Json("idMap not parsable as JSON"))
-      }
       val precondition = req.precondition
       val ifModifiedSince = req.dateTimeHeader("If-Modified-Since")
 
@@ -125,7 +111,7 @@ class QueryResource(secondary: Secondary,
 
         def analyzeRequest(schema: Versioned[Schema], isFresh: Boolean): Either[QueryRetryState, Versioned[(Schema, Seq[SoQLAnalysis[String, SoQLType]])]] = {
 
-          val parsedQuery = queryParser(query, columnIdMap, schema.payload.schema, base, fuseMap)
+          val parsedQuery = queryParser(dataset, query, schema.payload.schema, base, fuseMap)
 
           parsedQuery match {
             case QueryParser.SuccessfulParse(analysis) =>
@@ -140,6 +126,8 @@ class QueryResource(secondary: Secondary,
               finishRequest(rowLimitExceeded(max))
             case QueryParser.JoinedTableNotFound(j, s) =>
               Left(nextRetry)
+            case QueryParser.FailToFetchSchema(reason) =>
+              finishRequest(BadRequest ~> Json(s"fail to fetch schema - $reason"))
           }
         }
 
