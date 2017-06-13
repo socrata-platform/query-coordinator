@@ -96,12 +96,12 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
     }
   }
 
-  private def analyzeQuery(query: String, columnIdMap: Map[ColumnName, String], selectedSecondaryInstanceBase: RequestBuilder):
+  private def analyzeQuery(dataset: String, query: String, columnIdMap: Map[ColumnName, String], selectedSecondaryInstanceBase: RequestBuilder):
     AnalysisContext => (Seq[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String]) = {
-    analyzeFullQuery(query, columnIdMap, selectedSecondaryInstanceBase)
+    analyzeFullQuery(dataset, query, columnIdMap, selectedSecondaryInstanceBase)
   }
 
-  private def analyzeFullQuery(query: String, columnIdMap: Map[ColumnName, String], selectedSecondaryInstanceBase: RequestBuilder)(ctx: AnalysisContext):
+  private def analyzeFullQuery(dataset: String, query: String, columnIdMap: Map[ColumnName, String], selectedSecondaryInstanceBase: RequestBuilder)(ctx: AnalysisContext):
     (Seq[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String]) = {
 
     val parsed = new Parser().selectStatement(query)
@@ -199,12 +199,22 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
     analyzer.analyze(fusedStmts)(_)
   }
 
-  def apply(query: String,
-            columnIdMapping: Map[ColumnName, String],
+  def apply(dataset: String,
+            query: String,
             schema: Map[String, SoQLType],
             selectedSecondaryInstanceBase: RequestBuilder,
             fuseMap: Map[String, String] = Map.empty,
             merged: Boolean = true): Result = {
+
+    val columnIdMapping = schemaFetcher.schemaWithFieldName(selectedSecondaryInstanceBase, dataset, None, useResourceName = false) match {
+      case SuccessfulExtendedSchema(schema, _, _, _) =>
+        schema.schema.map {
+          case (columnId, (_, fieldName)) =>
+            (new ColumnName(fieldName) -> columnId)
+        }
+      case failToFetchSchema =>
+        return FailToFetchSchema(failToFetchSchema.getClass.getSimpleName)
+    }
 
     // TODO: handle complex type fusion and join
     def fakeAdapter(columnIdMapping: Map[ColumnName, String])(analyses: Seq[SoQLAnalysis[ColumnName, SoQLType]]): (Seq[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String]) = {
@@ -213,7 +223,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
 
     val postAnalyze = CompoundTypeFuser(fuseMap) match {
       case x if x.eq(NoopFuser) =>
-        analyzeQuery(query, columnIdMapping, selectedSecondaryInstanceBase)
+        analyzeQuery(dataset, query, columnIdMapping, selectedSecondaryInstanceBase)
       case fuser: SoQLRewrite =>
         val analyze = analyzeQueryWithCompoundTypeFusion(query, fuser, columnIdMapping, schema)
         analyze andThen fuser.postAnalyze andThen fakeAdapter(columnIdMapping)
@@ -243,6 +253,8 @@ object QueryParser extends Logging {
   case class RowLimitExceeded(max: BigInt) extends Result
 
   case class JoinedTableNotFound(joinedTable: String, secondaryHost: String) extends Result
+
+  case class FailToFetchSchema(reason: String) extends Result
 
   /**
    * Make schema which is a mapping of column name to datatype

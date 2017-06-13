@@ -1,8 +1,9 @@
 package com.socrata.querycoordinator.fusion
 
 import scala.util.parsing.input.NoPosition
-import com.socrata.querycoordinator.{FakeSchemaFetcher, QueryParser, TestBase}
+import com.socrata.querycoordinator._
 import com.socrata.querycoordinator.QueryParser.SuccessfulParse
+import com.socrata.querycoordinator.SchemaFetcher.SuccessfulExtendedSchema
 import com.socrata.querycoordinator.caching.SoQLAnalysisDepositioner
 import com.socrata.querycoordinator.util.Join.NoQualifier
 import com.socrata.soql.SoQLAnalyzer
@@ -10,6 +11,7 @@ import com.socrata.soql.environment.ColumnName
 import com.socrata.soql.functions._
 import com.socrata.soql.typed._
 import com.socrata.soql.types._
+import org.joda.time.DateTime
 
 class QueryParserFuseTest extends TestBase {
   import QueryParserFuseTest._ // scalastyle:ignore import.grouping
@@ -27,7 +29,7 @@ class QueryParserFuseTest extends TestBase {
       ColumnName("phone") -> phoneFc
     )
 
-    val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, fuse) match {
+    val actual = qp.apply(datasetId, query, schema, fakeRequestBuilder, fuse) match {
       case SuccessfulParse(analyses) =>
         val actual = SoQLAnalysisDepositioner(analyses.head)
         actual.selection should be(expectedSelection)
@@ -44,7 +46,7 @@ class QueryParserFuseTest extends TestBase {
       ColumnName("phone") -> phoneFc
     )
 
-    val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, fuse) match {
+    val actual = qp.apply(datasetId, query, schema, fakeRequestBuilder, fuse) match {
       case SuccessfulParse(analyses) =>
         val actual = SoQLAnalysisDepositioner(analyses.head)
         actual.selection should be(expectedSelection)
@@ -62,7 +64,7 @@ class QueryParserFuseTest extends TestBase {
       ColumnName("a") -> ColumnRef(NoQualifier, "ai", SoQLText)(NoPosition)
     )
 
-    val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, fuse) match {
+    val actual = qp.apply(datasetId, query, schema, fakeRequestBuilder, fuse) match {
       case SuccessfulParse(analyses) =>
         val actual = SoQLAnalysisDepositioner(analyses.head)
         actual.selection should be(expectedSelection)
@@ -82,7 +84,7 @@ class QueryParserFuseTest extends TestBase {
       ColumnName(":id") -> ColumnRef(NoQualifier, ":id", SoQLID)(NoPosition)
     )
 
-    val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, Map.empty) match {
+    val actual = qp.apply(datasetId, query, schema, fakeRequestBuilder, Map.empty) match {
       case SuccessfulParse(analyses) =>
         val actual = SoQLAnalysisDepositioner(analyses.head)
         actual.selection should be(expectedSelection)
@@ -99,7 +101,7 @@ class QueryParserFuseTest extends TestBase {
       ColumnName("a") -> ColumnRef(NoQualifier, "ai", SoQLText)(NoPosition)
     )
 
-    val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, Map.empty) match {
+    val actual = qp.apply(datasetId, query, schema, fakeRequestBuilder, Map.empty) match {
       case SuccessfulParse(analyses) =>
         val actual = SoQLAnalysisDepositioner(analyses.head)
       case x: QueryParser.Result =>
@@ -116,33 +118,24 @@ object QueryParserFuseTest {
 
   val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
 
-  val qp = new QueryParser(analyzer, FakeSchemaFetcher, Some(maxRowLimit), defaultRowLimit)
+  val truthSchema = Map[String, Tuple2[SoQLType, String]](
+    ":id" -> Tuple2(SoQLID, ":id"),
+    "ai" -> Tuple2(SoQLText, "a"),
+    "bi" -> Tuple2(SoQLText, "b"),
+    "location" -> Tuple2(SoQLPoint, "location"),
+    "location_address" -> Tuple2(SoQLText, "location_address"),
+    "location_city" -> Tuple2(SoQLText, "location_city"),
+    "location_state" -> Tuple2(SoQLText, "location_state"),
+    "location_zip" -> Tuple2(SoQLText, "location_zip"),
+    "phone" -> Tuple2(SoQLText, "phone"),
+    "phone_type" -> Tuple2(SoQLText, "phone_type"))
 
-  val truthColumns = Map[ColumnName, String](
-    ColumnName(":id") -> ":id",
-    ColumnName("a") -> "ai",
-    ColumnName("b") -> "bi",
-    ColumnName("location") -> "location",
-    ColumnName("location_address") -> "location_address",
-    ColumnName("location_city") -> "location_city",
-    ColumnName("location_state") -> "location_state",
-    ColumnName("location_zip") -> "location_zip",
-    ColumnName("phone") -> "phone",
-    ColumnName("phone_type") -> "phone_type"
-  )
+  val schemaWithFieldName = SchemaWithFieldName(truthSchema.hashCode().toString, truthSchema, pk = ":id")
+  val extendedSchema = SuccessfulExtendedSchema(schemaWithFieldName, 0, 0, new DateTime(0))
 
-  val schema = Map[String, SoQLType](
-    ":id" -> SoQLID,
-    "ai" -> SoQLText,
-    "bi" -> SoQLText,
-    "location" -> SoQLPoint,
-    "location_address" -> SoQLText,
-    "location_city" -> SoQLText,
-    "location_state" -> SoQLText,
-    "location_zip" -> SoQLText,
-    "phone" -> SoQLText,
-    "phone_type" -> SoQLText
-  )
+  val qp = new QueryParser(analyzer, new FakeSchemaFetcher(extendedSchema), Some(maxRowLimit), defaultRowLimit)
+
+  val schema: Map[String, SoQLType] = truthSchema.map { case (k, v) => (k -> v._1) }
 
   val locationFc = FunctionCall(SoQLFunctions.Location.monomorphic.get, Seq(
     ColumnRef(NoQualifier, "location", SoQLPoint.t)(NoPosition),

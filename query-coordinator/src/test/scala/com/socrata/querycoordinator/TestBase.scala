@@ -15,4 +15,6 @@ abstract class TestBase extends FunSuite  with ShouldMatchers  with PropertyChec
   PropertyConfigurator.configure(Propertizer("log4j", config.getConfig("log4j")))
 
   val fakeRequestBuilder = RequestBuilder("")
+
+  val datasetId = "dont-care"
 }
