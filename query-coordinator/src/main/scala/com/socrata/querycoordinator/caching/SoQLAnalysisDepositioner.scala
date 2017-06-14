@@ -46,11 +46,10 @@ object SoQLAnalysisDepositioner {
 
   private def depositionOrderBy[ColumnId,Type](ob: OrderBy[ColumnId, Type]) = ob.copy(expression = depositionExpr(ob.expression))
 
-  private def depsoitionOptJoins[ColumnId, Type](joinsOpt: Option[List[Tuple2[TableName, CoreExpr[ColumnId, Type]]]]) = {
+  private def depsoitionOptJoins[ColumnId, Type](joinsOpt: Option[List[Join[ColumnId, Type]]]) = {
     joinsOpt.map { joins =>
-      joins.map {
-        case (tableName, expr) =>
-          (tableName, depositionExpr(expr))
+      joins.map { join =>
+        Join(join.typ, join.tableName, depositionExpr(join.expr))
       }
     }
   }

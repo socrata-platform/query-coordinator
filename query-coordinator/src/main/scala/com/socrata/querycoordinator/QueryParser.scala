@@ -117,23 +117,20 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
 
     val (joinColumnIdMap, joinCtx) =
       joins.foldLeft((primaryColumnIdMap, ctx)) { (acc, join) =>
-        join match {
-          case (joinResourceName, _) =>
-            val schemaResult = schemaFetcher(selectedSecondaryInstanceBase, joinResourceName.name, None, useResourceName = true)
-            schemaResult match {
-              case Successful(schema, copyNumber, dataVersion, lastModified) =>
-                val joinResourceAliasOrName = joinResourceName.alias.getOrElse(joinResourceName.name)
-                val combinedCtx = acc._2 + (joinResourceAliasOrName ->  schemaToDatasetContext(schema))
-                val combinedIdMap = acc._1 ++ schema.schema.map {
-                  case (columnId, (_, fieldName)) =>
-                    (QualifiedColumnName(Some(joinResourceAliasOrName), new ColumnName(fieldName)) -> columnId)
-                }
-                (combinedIdMap, combinedCtx)
-              case NoSuchDatasetInSecondary =>
-                throw new JoinedDatasetNotColocatedException(joinResourceName.name, selectedSecondaryInstanceBase.host)
-              case _ =>
-                acc
+        val schemaResult = schemaFetcher(selectedSecondaryInstanceBase, join.tableName.name, None, useResourceName = true)
+        schemaResult match {
+          case Successful(schema, copyNumber, dataVersion, lastModified) =>
+            val joinResourceAliasOrName = join.tableName.alias.getOrElse(join.tableName.name)
+            val combinedCtx = acc._2 + (joinResourceAliasOrName ->  schemaToDatasetContext(schema))
+            val combinedIdMap = acc._1 ++ schema.schema.map {
+              case (columnId, (_, fieldName)) =>
+                (QualifiedColumnName(Some(joinResourceAliasOrName), new ColumnName(fieldName)) -> columnId)
             }
+            (combinedIdMap, combinedCtx)
+          case NoSuchDatasetInSecondary =>
+            throw new JoinedDatasetNotColocatedException(join.tableName.name, selectedSecondaryInstanceBase.host)
+          case _ =>
+            acc
         }
       }
 
