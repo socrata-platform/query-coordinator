@@ -3,8 +3,6 @@ package com.socrata.querycoordinator.resources
 import java.io.{InputStream, OutputStream}
 import javax.servlet.http.HttpServletResponse
 
-import com.rojoma.json.v3.io.JsonReaderException
-import com.rojoma.json.v3.util.JsonUtil
 import com.rojoma.simplearm.v2.ResourceScope
 import com.socrata.http.common.util.HttpUtils
 import com.socrata.http.server._
@@ -16,7 +14,6 @@ import com.socrata.querycoordinator.caching.SharedHandle
 import com.socrata.soql.environment.ColumnName
 import com.socrata.soql.exceptions.{DuplicateAlias, NoSuchColumn, TypecheckException}
 import com.socrata.soql.SoQLAnalysis
-import com.socrata.soql.typed.ColumnRef
 import com.socrata.soql.types.SoQLType
 import org.apache.http.HttpStatus
 import org.joda.time.format.ISODateTimeFormat
@@ -87,20 +84,6 @@ class QueryResource(secondary: Secondary,
       val copy = Option(servReq.getParameter("copy"))
       val queryTimeoutSeconds = Option(servReq.getParameter(qpQueryTimeoutSeconds))
 
-      val jsonizedColumnIdMap = Option(servReq.getParameter("idMap")).getOrElse {
-        finishRequest(BadRequest ~> Json("no idMap provided"))
-      }
-      val columnIdMap: Map[ColumnName, String] = try {
-        JsonUtil.parseJson[Map[String, String]](jsonizedColumnIdMap) match {
-          case Right(rawMap) =>
-            rawMap.map { case (col, typ) => ColumnName(col) -> typ }
-          case Left(_) =>
-            finishRequest(BadRequest ~> Json("idMap not an object whose values are strings"))
-        }
-      } catch {
-        case e: JsonReaderException =>
-          finishRequest(BadRequest ~> Json("idMap not parsable as JSON"))
-      }
       val precondition = req.precondition
       val ifModifiedSince = req.dateTimeHeader("If-Modified-Since")
 
@@ -123,13 +106,15 @@ class QueryResource(secondary: Secondary,
         val base = secondary.reqBuilder(second)
         log.debug("Base URI: " + base.url)
 
-        def analyzeRequest(schema: Versioned[Schema], isFresh: Boolean): Either[QueryRetryState, Versioned[(Schema, Seq[SoQLAnalysis[String, SoQLType]])]] = {
+        def analyzeRequest(schemaWithFieldNames: Versioned[SchemaWithFieldName], isFresh: Boolean): Either[QueryRetryState, Versioned[(Schema, Seq[SoQLAnalysis[String, SoQLType]])]] = {
 
-          val parsedQuery = queryParser(query, columnIdMap, schema.payload.schema, base, fuseMap)
+          val schema = stripFieldNamesFromSchema(schemaWithFieldNames.payload)
+          val columnIdMap = extractColumnIdMap(schemaWithFieldNames.payload)
+          val parsedQuery = queryParser(query, columnIdMap, schema.schema, base, fuseMap)
 
           parsedQuery match {
             case QueryParser.SuccessfulParse(analysis) =>
-              Right(schema.copy(payload = (schema.payload, analysis)))
+              Right(schemaWithFieldNames.copy(payload = (schema, analysis)))
             case QueryParser.AnalysisError(_: DuplicateAlias | _: NoSuchColumn | _: TypecheckException) if !isFresh =>
               getSchema(dataset, copy).right.flatMap(analyzeRequest(_, true))
             case QueryParser.AnalysisError(e) =>
@@ -141,6 +126,14 @@ class QueryResource(secondary: Secondary,
             case QueryParser.JoinedTableNotFound(j, s) =>
               Left(nextRetry)
           }
+        }
+
+        def stripFieldNamesFromSchema(s: SchemaWithFieldName): Schema = {
+          Schema(s.hash, s.schema.map { case (k, v) => (k -> v._1)}, s.pk)
+        }
+
+        def extractColumnIdMap(s: SchemaWithFieldName): Map[ColumnName, String] = {
+          s.schema.map { case (k, v) => (new ColumnName(v._2) -> k)}
         }
 
         /**
@@ -272,7 +265,7 @@ class QueryResource(secondary: Secondary,
             finishRequest(ranOutOfRetriesResponse)
           }
 
-        def getSchema(dataset: String, copy: Option[String]): Either[QueryRetryState, Versioned[Schema]] = {
+        def getSchema(dataset: String, copy: Option[String]): Either[QueryRetryState, Versioned[SchemaWithFieldName]] = {
           schemaFetcher(
             base.receiveTimeoutMS(schemaTimeout.toMillis.toInt).connectTimeoutMS(connectTimeout.toMillis.toInt),
             dataset,

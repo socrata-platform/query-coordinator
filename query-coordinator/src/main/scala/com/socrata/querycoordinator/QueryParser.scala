@@ -1,7 +1,7 @@
 package com.socrata.querycoordinator
 
 import com.socrata.http.client.RequestBuilder
-import com.socrata.querycoordinator.SchemaFetcher.{NoSuchDatasetInSecondary, Successful, SuccessfulExtendedSchema}
+import com.socrata.querycoordinator.SchemaFetcher.{NoSuchDatasetInSecondary, Successful}
 import com.socrata.querycoordinator.exceptions.JoinedDatasetNotColocatedException
 import com.socrata.querycoordinator.fusion.{CompoundTypeFuser, NoopFuser, SoQLRewrite}
 import com.socrata.soql.aliases.AliasAnalysis
@@ -119,9 +119,9 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
       joins.foldLeft((primaryColumnIdMap, ctx)) { (acc, join) =>
         join match {
           case (joinResourceName, _) =>
-            val schemaResult = schemaFetcher.schemaWithFieldName(selectedSecondaryInstanceBase, joinResourceName.name, None, useResourceName = true)
+            val schemaResult = schemaFetcher(selectedSecondaryInstanceBase, joinResourceName.name, None, useResourceName = true)
             schemaResult match {
-              case SuccessfulExtendedSchema(schema, copyNumber, dataVersion, lastModified) =>
+              case Successful(schema, copyNumber, dataVersion, lastModified) =>
                 val joinResourceAliasOrName = joinResourceName.alias.getOrElse(joinResourceName.name)
                 val combinedCtx = acc._2 + (joinResourceAliasOrName ->  schemaToDatasetContext(schema))
                 val combinedIdMap = acc._1 ++ schema.schema.map {
