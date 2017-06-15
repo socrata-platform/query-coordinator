@@ -179,7 +179,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
     val expandedStmts = parsedStmts.foldLeft((Seq.empty[Select], toAnalysisContext(baseCtx))) { (acc, select) =>
       val (selects, ctx) = acc
       val expandedSelection = AliasAnalysis.expandSelection(select.selection)(ctx)
-      val expandedStmt = select.copy(selection = Selection(None, None, expandedSelection))
+      val expandedStmt = select.copy(selection = Selection(None, Seq.empty, expandedSelection))
       val columnNames = expandedStmt.selection.expressions.map { se =>
         se.name.map(_._1).getOrElse(ColumnName(se.expression.toString.replaceAllLiterally("`", "")))
       }
