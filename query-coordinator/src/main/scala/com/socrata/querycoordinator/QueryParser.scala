@@ -71,7 +71,14 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
           mappingWithNewColumns
         }
 
-      val a: SoQLAnalysis[String, SoQLType] = analysis.mapColumnIds(qualifiedColumnNameToColumnId(newMapping))
+      def newMappingTupled: Map[(ColumnName, Qualifier), String] =
+        newMapping.map { case (k, v) =>
+          (k.columnName, k.qualifier) -> v
+        }
+      def toColumnNameJoinAlias(joinAlias: Option[String], columnName: ColumnName) = (columnName, joinAlias)
+      def toColumnIdJ(columnName: ColumnName) = columnName.name
+      
+      val a: SoQLAnalysis[String, SoQLType] = analysis.mapColumnIds(newMappingTupled, toColumnNameJoinAlias, toColumnIdJ, toColumnIdJ)
       (mappingWithNewColumns, convertedAnalyses :+ a)
     }
     analysesInColIds
@@ -117,18 +124,24 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
 
     val (joinColumnIdMap, joinCtx) =
       joins.foldLeft((primaryColumnIdMap, ctx)) { (acc, join) =>
-        val schemaResult = schemaFetcher(selectedSecondaryInstanceBase, join.tableName.name, None, useResourceName = true)
+        val joinTableName = join.tableLike.head.from.get
+        val schemaResult = schemaFetcher(selectedSecondaryInstanceBase, joinTableName.name, None, useResourceName = true)
         schemaResult match {
           case Successful(schema, copyNumber, dataVersion, lastModified) =>
-            val joinResourceAliasOrName = join.tableName.alias.getOrElse(join.tableName.name)
-            val combinedCtx = acc._2 + (joinResourceAliasOrName ->  schemaToDatasetContext(schema))
+            val joinTableAliasOrName = joinTableName.alias.getOrElse(joinTableName.name)
+            val joinAlias = join.alias.getOrElse(joinTableAliasOrName)
+            val combinedCtx = acc._2 + (joinTableAliasOrName -> schemaToDatasetContext(schema)) +
+              (joinAlias -> schemaToDatasetContext(schema))
             val combinedIdMap = acc._1 ++ schema.schema.map {
               case (columnId, (_, fieldName)) =>
-                (QualifiedColumnName(Some(joinResourceAliasOrName), new ColumnName(fieldName)) -> columnId)
+                (QualifiedColumnName(Some(joinTableAliasOrName), new ColumnName(fieldName)) -> columnId)
+            } ++ schema.schema.map {
+              case (columnId, (_, fieldName)) =>
+              (QualifiedColumnName(Some(joinAlias), new ColumnName(fieldName)) -> columnId)
             }
             (combinedIdMap, combinedCtx)
           case NoSuchDatasetInSecondary =>
-            throw new JoinedDatasetNotColocatedException(join.tableName.name, selectedSecondaryInstanceBase.host)
+            throw new JoinedDatasetNotColocatedException(joinTableName.name, selectedSecondaryInstanceBase.host)
           case _ =>
             acc
         }
