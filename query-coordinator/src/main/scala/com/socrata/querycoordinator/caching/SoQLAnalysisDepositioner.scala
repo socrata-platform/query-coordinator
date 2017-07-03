@@ -9,10 +9,11 @@ import scala.util.parsing.input.NoPosition
 
 object SoQLAnalysisDepositioner {
   def apply[ColumnId,Type](sa: SoQLAnalysis[ColumnId,Type]): SoQLAnalysis[ColumnId,Type] = {
-    val SoQLAnalysis(isGrouped, distinct, selection, join, where, groupBy, having, orderBy, limit, offset, search) = sa
+    val SoQLAnalysis(isGrouped, distinct, selection, from, join, where, groupBy, having, orderBy, limit, offset, search) = sa
     SoQLAnalysis(isGrouped = isGrouped,
                  distinct = distinct,
                  selection = depositionSelection(selection),
+                 from = from,
                  join = depsoitionOptJoins(join),
                  where = depositionOptExpr(where),
                  groupBy = depositionGroupBys(groupBy),
@@ -49,7 +50,7 @@ object SoQLAnalysisDepositioner {
   private def depsoitionOptJoins[ColumnId, Type](joinsOpt: Option[List[Join[ColumnId, Type]]]) = {
     joinsOpt.map { joins =>
       joins.map { join =>
-        Join(join.typ, join.tableName, depositionExpr(join.expr))
+        Join(join.typ, join.tableLike.map(SoQLAnalysisDepositioner(_)), join.alias, depositionExpr(join.expr))
       }
     }
   }
