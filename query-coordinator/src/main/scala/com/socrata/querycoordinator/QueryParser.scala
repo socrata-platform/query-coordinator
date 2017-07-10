@@ -113,12 +113,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
 
     val parsed = new Parser().selectStatement(query)
 
-    val joins = parsed.flatten { select =>
-      select.join match {
-        case None => Seq.empty
-        case Some(joins) => joins
-      }
-    }
+    val joins = com.socrata.querycoordinator.util.Join.expandJoins(parsed)
 
     val primaryColumnIdMap = columnIdMap.map { case (k, v) => QualifiedColumnName(None, k) -> v }
 
