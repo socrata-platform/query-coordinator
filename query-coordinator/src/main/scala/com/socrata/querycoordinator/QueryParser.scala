@@ -103,12 +103,19 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
     }
   }
 
-  private def analyzeQuery(query: String, columnIdMap: Map[ColumnName, String], selectedSecondaryInstanceBase: RequestBuilder):
+  private def analyzeQuery(query: String, columnIdMap: Map[ColumnName, String],
+                           selectedSecondaryInstanceBase: RequestBuilder,
+                           fuser: SoQLRewrite,
+                           schema: Map[String, SoQLType]):
     AnalysisContext => (Seq[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String]) = {
-    analyzeFullQuery(query, columnIdMap, selectedSecondaryInstanceBase)
+    analyzeFullQuery(query, columnIdMap, selectedSecondaryInstanceBase, fuser, schema)
   }
 
-  private def analyzeFullQuery(query: String, columnIdMap: Map[ColumnName, String], selectedSecondaryInstanceBase: RequestBuilder)(ctx: AnalysisContext):
+  private def analyzeFullQuery(query: String,
+                               columnIdMap: Map[ColumnName, String],
+                               selectedSecondaryInstanceBase: RequestBuilder,
+                               fuser: SoQLRewrite,
+                               schema: Map[String, SoQLType])(ctx: AnalysisContext):
     (Seq[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String]) = {
 
     val parsed = new Parser().selectStatement(query)
@@ -144,11 +151,15 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
 
     parsed match {
       case Seq(one) =>
-        val result = analyzer.analyzeWithSelection(one)(joinCtx)
-        (Seq(result), joinColumnIdMap)
+        val rewrittenOne = fuser.rewrite(Seq(one), columnIdMap, schema).head
+        val result = analyzer.analyzeWithSelection(rewrittenOne)(joinCtx)
+        val fusedResult = fuser.postAnalyze(Seq(result))
+        (fusedResult, joinColumnIdMap)
       case moreThanOne =>
-        val result = analyzer.analyze(moreThanOne)(joinCtx)
-        (result, joinColumnIdMap)
+        val moreThanOneRewritten = fuser.rewrite(moreThanOne, columnIdMap, schema)
+        val result = analyzer.analyze(moreThanOneRewritten)(joinCtx)
+        val fusedResult = fuser.postAnalyze(result)
+        (fusedResult, joinColumnIdMap)
     }
   }
 
@@ -166,64 +177,14 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
     }
   }
 
-  private def analyzeQueryWithCompoundTypeFusion(query: String,
-                                                 fuser: SoQLRewrite,
-                                                 columnIdMapping: Map[ColumnName, String],
-                                                 schema: Map[String, SoQLType]):
-    AnalysisContext => Seq[SoQLAnalysis[ColumnName, SoQLType]] = {
-    val parsedStmts = new Parser().selectStatement(query)
-
-    // expand "select *"
-    val firstStmt = parsedStmts.head
-
-    val baseCtx = new UntypedDatasetContext {
-      override val columns: OrderedSet[ColumnName] = {
-        // exclude non-existing columns in the schema
-        val existedColumns = columnIdMapping.filter { case (k, v) => schema.contains(v) }
-        OrderedSet(existedColumns.keysIterator.toSeq: _*)
-      }
-    }
-
-    val expandedStmts = parsedStmts.foldLeft((Seq.empty[Select], toAnalysisContext(baseCtx))) { (acc, select) =>
-      val (selects, ctx) = acc
-      val expandedSelection = AliasAnalysis.expandSelection(select.selection)(ctx)
-      val expandedStmt = select.copy(selection = Selection(None, Seq.empty, expandedSelection))
-      val columnNames = expandedStmt.selection.expressions.map { se =>
-        se.name.map(_._1).getOrElse(ColumnName(se.expression.toString.replaceAllLiterally("`", "")))
-      }
-      val nextCtx = new UntypedDatasetContext {
-        override val columns: OrderedSet[ColumnName] = OrderedSet(columnNames: _*)
-      }
-      (selects :+ expandedStmt, toAnalysisContext(nextCtx))
-    }._1
-
-    // rewrite only the last statement.
-    val lastExpandedStmt = expandedStmts.last
-    val fusedStmts = expandedStmts.updated(expandedStmts.indexOf(lastExpandedStmt), fuser.rewrite(lastExpandedStmt))
-
-    analyzer.analyze(fusedStmts)(_)
-  }
-
   def apply(query: String,
             columnIdMapping: Map[ColumnName, String],
             schema: Map[String, SoQLType],
             selectedSecondaryInstanceBase: RequestBuilder,
             fuseMap: Map[String, String] = Map.empty,
             merged: Boolean = true): Result = {
-
-    // TODO: handle complex type fusion and join
-    def fakeAdapter(columnIdMapping: Map[ColumnName, String])(analyses: Seq[SoQLAnalysis[ColumnName, SoQLType]]): (Seq[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String]) = {
-      (analyses, columnIdMapping.map { case(k, v) => QualifiedColumnName(None, k) -> v })
-    }
-
-    val postAnalyze = CompoundTypeFuser(fuseMap) match {
-      case x if x.eq(NoopFuser) =>
-        analyzeQuery(query, columnIdMapping, selectedSecondaryInstanceBase)
-      case fuser: SoQLRewrite =>
-        val analyze = analyzeQueryWithCompoundTypeFusion(query, fuser, columnIdMapping, schema)
-        analyze andThen fuser.postAnalyze andThen fakeAdapter(columnIdMapping)
-    }
-
+    val compoundTypeFuser = CompoundTypeFuser(fuseMap)
+    val postAnalyze = analyzeQuery(query, columnIdMapping, selectedSecondaryInstanceBase, compoundTypeFuser, schema)
     val analyzeMaybeMerge = if (merged) { postAnalyze andThen soqlMerge } else { postAnalyze }
     go(columnIdMapping, schema)(analyzeMaybeMerge)
   }
