@@ -98,6 +98,11 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite with 
       val (selects, ctx) = acc
       val expandedSelection = AliasAnalysis.expandSelection(select.selection)(ctx)
       val expandedStmt = select.copy(selection = Selection(None, Seq.empty, expandedSelection))
+      // Column names collected are for building the context for the following SoQL in chained SoQLs like
+      // "SELECT phone as x,'Work' as x_type,name |> SELECT *"
+      // It is currently done using expression.toString or explicit column aliases.
+      // TODO: A more correct way to do this maybe Expression.toSyntheticIdentifierBase or AliasAnalysis.
+      // TODO: Similar processes/issues may exist somewhere else.
       val columnNames = expandedStmt.selection.expressions.map { se =>
         se.name.map(_._1).getOrElse(ColumnName(se.expression.toString.replaceAllLiterally("`", "")))
       }
