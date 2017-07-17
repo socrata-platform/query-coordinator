@@ -1,11 +1,12 @@
 package com.socrata.querycoordinator.fusion
 
 import com.socrata.soql.SoQLAnalysis
+import com.socrata.soql.aliases.AliasAnalysis
 import com.socrata.soql.ast._
-import com.socrata.soql.environment.ColumnName
+import com.socrata.soql.collection.OrderedSet
+import com.socrata.soql.environment.{ColumnName, UntypedDatasetContext}
 import com.socrata.soql.functions.SoQLFunctions
 import com.socrata.soql.parsing.standalone_exceptions.BadParse
-import com.socrata.soql.typed.Qualifier
 import com.socrata.soql.types.SoQLType
 import com.typesafe.scalalogging.slf4j.Logging
 
@@ -19,7 +20,11 @@ case object FTUrl extends FuseType
 case object FTRemove extends FuseType
 
 trait SoQLRewrite {
-  def rewrite(select: Select): Select
+  def rewrite(parsedStmts: Seq[Select],
+              columnIdMapping: Map[ColumnName, String],
+              schema: Map[String, SoQLType]): Seq[Select]
+
+  protected def rewrite(select: Select): Select
 
   def postAnalyze(analyses: Seq[SoQLAnalysis[ColumnName, SoQLType]]): Seq[SoQLAnalysis[ColumnName, SoQLType]]
 }
@@ -74,7 +79,46 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite with 
     }
   }
 
-  def rewrite(select: Select): Select = {
+  def rewrite(parsedStmts: Seq[Select],
+              columnIdMapping: Map[ColumnName, String],
+              schema: Map[String, SoQLType]): Seq[Select] = {
+
+    // expand "select *"
+    val firstStmt = parsedStmts.head
+
+    val baseCtx = new UntypedDatasetContext {
+      override val columns: OrderedSet[ColumnName] = {
+        // exclude non-existing columns in the schema
+        val existedColumns = columnIdMapping.filter { case (k, v) => schema.contains(v) }
+        OrderedSet(existedColumns.keysIterator.toSeq: _*)
+      }
+    }
+
+    val expandedStmts = parsedStmts.foldLeft((Seq.empty[Select], toAnalysisContext(baseCtx))) { (acc, select) =>
+      val (selects, ctx) = acc
+      val expandedSelection = AliasAnalysis.expandSelection(select.selection)(ctx)
+      val expandedStmt = select.copy(selection = Selection(None, Seq.empty, expandedSelection))
+      // Column names collected are for building the context for the following SoQL in chained SoQLs like
+      // "SELECT phone as x,'Work' as x_type,name |> SELECT *"
+      // It is currently done using expression.toString or explicit column aliases.
+      // TODO: A more correct way to do this maybe Expression.toSyntheticIdentifierBase or AliasAnalysis.
+      // TODO: Similar processes/issues may exist somewhere else.
+      val columnNames = expandedStmt.selection.expressions.map { se =>
+        se.name.map(_._1).getOrElse(ColumnName(se.expression.toString.replaceAllLiterally("`", "")))
+      }
+      val nextCtx = new UntypedDatasetContext {
+        override val columns: OrderedSet[ColumnName] = OrderedSet(columnNames: _*)
+      }
+      (selects :+ expandedStmt, toAnalysisContext(nextCtx))
+    }._1
+
+    // rewrite only the last statement.
+    val lastExpandedStmt = expandedStmts.last
+    val fusedStmts = expandedStmts.updated(expandedStmts.indexOf(lastExpandedStmt), rewrite(lastExpandedStmt))
+    fusedStmts
+  }
+
+  protected def rewrite(select: Select): Select = {
     val fusedSelectExprs = select.selection.expressions.flatMap {
       case SelectedExpression(expr: Expression, namePos) =>
         rewrite(expr) match {
