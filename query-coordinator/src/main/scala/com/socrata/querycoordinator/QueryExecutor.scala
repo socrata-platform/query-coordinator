@@ -96,7 +96,7 @@ class QueryExecutor(httpClient: HttpClient,
                   rollupName, obfuscateId, extraHeaders, rs, queryTimeoutSeconds)
 
     if((cacheSessionProvider == NoopCacheSessionProvider && !forceCacheEvenWhenNoop) ||
-       cacheSessionProvider.disabled {
+       cacheSessionProvider.disabled) {
       return go()
     }
     // checking preconditions will be handled below
