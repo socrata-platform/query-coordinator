@@ -1,9 +1,12 @@
 package com.socrata.querycoordinator.caching.cache.postgresql
 
-import java.sql.{SQLException, Connection}
+import java.sql.{Connection, SQLException}
 import javax.sql.DataSource
+
 import com.mchange.v2.resourcepool.TimeoutException
 import com.rojoma.simplearm.v2._
+
+import scala.concurrent.duration.FiniteDuration
 
 object PostgresqlCacheSchema {
   private def requireConnection(dataSource: DataSource): Connection = {
@@ -19,7 +22,13 @@ object PostgresqlCacheSchema {
     c
   }
 
-  def create(dataSource: DataSource): Unit = {
+  val table: String = "cache"
+
+  def dataTable(dataset: String): String = s"cache_${dataset}_data"
+
+  val pendingDeleteTable: String = "pending_deletes"
+
+  def create(dataSource: DataSource, dataset: Option[String]): Unit = {
     using(requireConnection(dataSource)) { conn =>
       conn.setAutoCommit(false)
 
@@ -41,17 +50,30 @@ object PostgresqlCacheSchema {
           //
           // pending_deletes exists so that we can mark an entry for deletion and be (reasonably) assured that anything
           // currently using that entry will finish successfully.  The actual delete happens asynchronously.
-          if(!exists("cache")) {
-            stmt.execute("create table cache (id bigserial not null primary key, key text unique, created_at timestamp with time zone not null, approx_last_access timestamp with time zone not null)")
-            stmt.execute("create index cache_created_at_idx on cache (created_at)")
-            stmt.execute("create index cache_access_idx on cache (approx_last_access)")
+          if (dataset.isEmpty) {
+            if (!exists(table)) {
+              stmt.execute(s"create table ${table} (id bigserial not null primary key, dataset text not null, key text unique, created_at timestamp with time zone not null, approx_last_access timestamp with time zone not null)")
+              stmt.execute(s"create index ${table}_created_at_idx on ${table}(created_at) where key is null")
+              stmt.execute(s"create index ${table}_access_idx on ${table}(approx_last_access)")
+              stmt.execute(s"create index ${table}_dataset_access_idx on ${table}(dataset, approx_last_access)")
+            }
+
+            if (!exists(pendingDeleteTable)) {
+              stmt.execute(s"create table ${pendingDeleteTable} (id bigserial not null primary key, dataset text not null, cache_id bigint not null, delete_queued timestamp with time zone not null)")
+              stmt.execute(s"create index ${pendingDeleteTable}_delete_queued_idx on ${pendingDeleteTable}(delete_queued)")
+              stmt.execute(s"create index ${pendingDeleteTable}_dataset_delete_queued_idx on ${pendingDeleteTable}(dataset, delete_queued)")
+            }
+
+            if (!exists("clean_run")) {
+              stmt.execute("create table clean_run(id text not null, active boolean unique, updated_at timestamp with time zone not null)")
+            }
           }
-          if(!exists("cache_data")) {
-            stmt.execute("create table cache_data (cache_id bigint not null references cache (id), chunknum int not null, data bytea not null, primary key(cache_id, chunknum))")
-          }
-          if(!exists("pending_deletes")) {
-            stmt.execute("create table pending_deletes (id bigserial not null primary key, cache_id bigint not null references cache(id), delete_queued timestamp with time zone not null)")
-            stmt.execute("create index pending_deletes_delete_queued_idx on pending_deletes(delete_queued)")
+
+          for (ds <- dataset) {
+            val dataTableName = dataTable(ds)
+            if (!exists(dataTableName)) {
+              stmt.execute(s"create table ${dataTableName} (cache_id bigint not null references $table(id), chunknum int not null, data bytea not null, primary key(cache_id, chunknum))")
+            }
           }
         }
 
@@ -59,6 +81,12 @@ object PostgresqlCacheSchema {
       } finally {
         conn.rollback()
       }
+    }
+  }
+
+  def setTimeout(conn: Connection, timeout: FiniteDuration): Unit = {
+    using (conn.createStatement()) { stmt =>
+      stmt.execute(s"SET statement_timeout TO ${timeout.toMillis}")
     }
   }
 }

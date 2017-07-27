@@ -76,7 +76,7 @@ object Main extends App {
     reporter <- MetricsReporter.managed(config.metrics)
     useBatchDelete <- managed(new ConfigWatch[Boolean](curator, "query-coordinator/use-batch-delete", true)).and(_.start())
     cacheSessionProvider <- CacheSessionProviderFromConfig(config.cache, useBatchDelete, StreamWrapper.gzip).and(_.init())
-    cacheCleaner <- managed(new CacheCleanerThread(cacheSessionProvider, config.cache.cleanInterval)).and(_.start())
+    cacheCleaner <- managed(new CacheCleanerThread(cacheSessionProvider, config.cache.cleanInterval, config.discovery.address)).and(_.start())
   } {
     def teeStream(in: InputStream): TeeToTempInputStream = new TeeToTempInputStream(in)
 

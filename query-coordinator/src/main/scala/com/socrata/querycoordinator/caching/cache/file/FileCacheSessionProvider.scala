@@ -18,6 +18,8 @@ class FileCacheSessionProvider(dir: File,
                                streamWrapper: StreamWrapper = StreamWrapper.noop)
   extends CacheSessionProvider with CacheCleanerProvider with CacheInit
 {
+  protected val log = org.slf4j.LoggerFactory.getLogger(classOf[FileCacheSessionProvider])
+
   private object FileCacheSessionResource extends Resource[FileCacheSession] {
     override def close(a: FileCacheSession): Unit = a.close()
   }
@@ -26,9 +28,9 @@ class FileCacheSessionProvider(dir: File,
     dir.mkdirs()
   }
 
-  override def open(rs: ResourceScope): CacheSession =
+  override def open(rs: ResourceScope, dataset: String): CacheSession =
     rs.open(new FileCacheSession(dir, updateATimeInterval, streamWrapper))(FileCacheSessionResource)
 
-  override def cleaner(): CacheCleaner =
+  override def cleaner(id: String, interval: FiniteDuration): CacheCleaner =
     new FileCacheCleaner(dir, survivorCutoff, assumeDeadCreateCutoff)
 }
