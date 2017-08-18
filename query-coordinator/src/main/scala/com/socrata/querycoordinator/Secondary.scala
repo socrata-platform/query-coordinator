@@ -28,18 +28,18 @@ class Secondary(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
   }
 
 
-  def serviceInstance(dataset: String, instanceName: Option[String]): ServiceInstance[AuxiliaryData] = {
+  def serviceInstance(dataset: String, instanceName: Option[String]): Option[ServiceInstance[AuxiliaryData]] = {
     val instance = for {
       name <- instanceName
       instance <- Option(secondaryProvider.provider(name).getInstance())
     } yield instance
 
-    instance.getOrElse {
+    if (instance.isEmpty) {
       instanceName.foreach { n => secondaryInstance.flagError(dataset, n) }
-      finishRequest(noSecondaryAvailable(dataset))
     }
-  }
 
+    instance
+  }
 
   def isInSecondary(name: String, dataset: String, copy: Option[String]): Option[Boolean] = {
     // TODO we should either create a separate less expensive method for checking if a dataset

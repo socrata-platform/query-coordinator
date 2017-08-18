@@ -2,7 +2,7 @@ package com.socrata.querycoordinator.resources
 
 import javax.servlet.http.HttpServletResponse
 
-import com.rojoma.json.v3.ast.{JNumber, JObject, JString, JValue}
+import com.rojoma.json.v3.ast.{Json => _, _}
 import com.rojoma.json.v3.codec.JsonEncode
 import com.socrata.http.server._
 import com.socrata.http.server.responses._
@@ -157,6 +157,13 @@ trait QueryService {
   def rowLimitExceeded(max: BigInt): HttpResponse = {
     BadRequest ~> errContent(RequestErrors.rowLimitExceeded, s"Row limit of $max exceeded",
                              Map(qpLimit -> JNumber(max)))
+  }
+
+  def joinedTableNotFound(dataset: String, resource: String, secondaries: Set[String]): HttpResponse = {
+    NotFound ~> errContent(QueryErrors.isNotCollocated, s"joined dataset $dataset is not collocated in secondaries",
+      Map("resource" -> JString(resource),
+          "dataset" -> JString(dataset),
+          "secondaries" -> JArray(secondaries.map(JString(_)).toSeq)))
   }
 
   def noContentTypeResponse: HttpResponse = {
