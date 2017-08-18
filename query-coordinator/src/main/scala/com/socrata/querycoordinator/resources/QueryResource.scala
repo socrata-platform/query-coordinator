@@ -102,9 +102,25 @@ class QueryResource(secondary: Secondary,
 
       final class QueryRetryState(retriesSoFar: Int, excludedSecondaryNames: Set[String]) {
         val chosenSecondaryName = secondary.chosenSecondaryName(forcedSecondaryName, dataset, copy, excludedSecondaryNames)
-        val second = secondary.serviceInstance(dataset, chosenSecondaryName)
+        val second = secondary.serviceInstance(dataset, chosenSecondaryName) match {
+          case Some(x) => x
+          case None =>
+            finishRequest(noSecondaryAvailable(dataset))
+        }
+
         val base = secondary.reqBuilder(second)
         log.debug("Base URI: " + base.url)
+
+        def checkTooManyRetries(): Unit = {
+          if(isTooManyRetries) {
+            log.error("Too many retries")
+            finishRequest(ranOutOfRetriesResponse)
+          }
+        }
+
+        def isTooManyRetries: Boolean = {
+          retriesSoFar >= 3
+        }
 
         def analyzeRequest(schemaWithFieldNames: Versioned[SchemaWithFieldName], isFresh: Boolean): Either[QueryRetryState, Versioned[(Schema, Seq[SoQLAnalysis[String, SoQLType]])]] = {
 
@@ -124,7 +140,13 @@ class QueryResource(secondary: Secondary,
             case QueryParser.RowLimitExceeded(max) =>
               finishRequest(rowLimitExceeded(max))
             case QueryParser.JoinedTableNotFound(j, s) =>
-              Left(nextRetry)
+              val excludedSecondaries = excludedSecondaryNames ++ chosenSecondaryName.toSet
+              val sec = secondary.chosenSecondaryName(forcedSecondaryName, dataset, copy, excludedSecondaries)
+              if (secondary.serviceInstance(dataset, sec).isEmpty) {
+                finishRequest(joinedTableNotFound(dataset, j, excludedSecondaries))
+              } else {
+                Left(nextRetry)
+              }
           }
         }
 
@@ -257,13 +279,10 @@ class QueryResource(secondary: Secondary,
 
         case class Versioned[T](payload: T, copyNumber: Long, dataVersion: Long, lastModified: DateTime)
 
-        def nextRetry: QueryRetryState =
-          if(retriesSoFar < 3) {
-            new QueryRetryState(retriesSoFar + 1, chosenSecondaryName.map(x => excludedSecondaryNames + x).getOrElse(excludedSecondaryNames))
-          } else {
-            log.error("Too many retries")
-            finishRequest(ranOutOfRetriesResponse)
-          }
+        def nextRetry: QueryRetryState = {
+          checkTooManyRetries()
+          new QueryRetryState(retriesSoFar + 1, chosenSecondaryName.map(x => excludedSecondaryNames + x).getOrElse(excludedSecondaryNames))
+        }
 
         def getSchema(dataset: String, copy: Option[String]): Either[QueryRetryState, Versioned[SchemaWithFieldName]] = {
           schemaFetcher(

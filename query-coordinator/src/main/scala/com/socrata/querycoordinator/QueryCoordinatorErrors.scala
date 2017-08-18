@@ -31,6 +31,7 @@ object QueryCoordinatorErrors {
   object QueryErrors extends QCErrors {
     val datasourceUnavailable = "query.datasource.unavailable"
     val doesNotExist = "query.dataset.does-not-exist"
+    val isNotCollocated = "query.dataset.is-not-collocated"
   }
 
   object RequestErrors extends QCErrors {
