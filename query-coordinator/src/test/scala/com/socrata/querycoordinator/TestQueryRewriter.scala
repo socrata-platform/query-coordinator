@@ -19,12 +19,13 @@ class TestQueryRewriter extends TestQueryRewriterBase {
   val rollups = Seq(
     ("r1", "SELECT `_dxyz-num1`, count(`_dxyz-num1`) GROUP BY `_dxyz-num1`"),
     ("r2", "SELECT count(`:wido-ward`), `:wido_ward` GROUP BY `:wido-ward`"),
-    ("r3", "SELECT `:wido-ward`, count(*) GROUP BY `:wido-ward`"),
+    ("r3", "SELECT `:wido-ward`, count(*), count(`_crim-typ3`) GROUP BY `:wido-ward`"),
     ("r4", "SELECT `:wido-ward`, `_crim-typ3`, count(*), `_dxyz-num1`, `_crim-date` GROUP BY `:wido-ward`, `_crim-typ3`, `_dxyz-num1`, `_crim-date`"),
     ("r5", "SELECT `_crim-typ3`, count(1) group by `_crim-typ3`"),
     ("r6", "SELECT `:wido-ward`, `_crim-typ3`"),
     ("r7", "SELECT `:wido-ward`, min(`_dxyz-num1`), max(`_dxyz-num1`), sum(`_dxyz-num1`), count(*) GROUP BY `:wido-ward`"),
-    ("r8", "SELECT date_trunc_ym(`_crim-date`), `:wido-ward`, count(*) GROUP BY date_trunc_ym(`_crim-date`), `:wido-ward`")
+    ("r8", "SELECT date_trunc_ym(`_crim-date`), `:wido-ward`, count(*) GROUP BY date_trunc_ym(`_crim-date`), `:wido-ward`"),
+    ("r9", "SELECT `_crim-typ3`, count(case(`_crim-date` IS NOT NULL, `_crim-date`, true, `_some-date`)) group by `_crim-typ3`")
   )
 
   val rollupInfos = rollups.map { x => new RollupInfo(x._1, x._2) }
@@ -176,6 +177,49 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     rewrites should have size 1
   }
 
+  // The simple case for turning a count(...) into a sum(...)
+  test("map query ward, count(crime_type) where") {
+    val q = "SELECT ward, count(crime_type) AS crime_type_count WHERE ward != 5 GROUP BY ward"
+    val queryAnalysis = analyzeQuery(q)
+
+    val rewrittenQuery = "SELECT c1 AS ward, sum(c3) AS crime_type_count WHERE c1 != 5 GROUP by c1"
+
+    val rewrittenQueryAnalysis = analyzeRewrittenQuery("r3", rewrittenQuery)
+
+    val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
+
+    rewrites should contain key "r3"
+    rewrites.get("r3").get should equal(rewrittenQueryAnalysis)
+
+    rewrites should have size 1
+  }
+
+  // Should also be able to turn an arbitrary count(...) into a sum(...)
+  test("map query crime_type, count(case(... matches ...))") {
+    val q = "SELECT crime_type, count(case(crime_date IS NOT NULL, crime_date, true, some_date)) AS c GROUP BY crime_type"
+    val queryAnalysis = analyzeQuery(q)
+
+    val rewrittenQuery = "SELECT c1 AS crime_type, sum(c2) AS c GROUP by c1"
+
+    val rewrittenQueryAnalysis = analyzeRewrittenQuery("r9", rewrittenQuery)
+
+    val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
+
+    rewrites should contain key "r9"
+    rewrites.get("r9").get should equal(rewrittenQueryAnalysis)
+
+    rewrites should have size 1
+  }
+
+  // Make sure we are validating the ... in count(...) matches the rollup
+  test("map query crime_type, count(case(... doesn't match ...))") {
+    val q = "SELECT crime_type, count(case(crime_date IS NOT NULL AND ward > 3, crime_date, true, some_date)) AS c GROUP BY crime_type"
+    val queryAnalysis = analyzeQuery(q)
+
+    val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
+
+    rewrites should have size 0
+  }
 
   test("order by - query crime_type, ward, count(*)") {
     val q =

@@ -255,6 +255,15 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
           newSumCol <- Some(typed.ColumnRef(NoQualifier, rollupColumnId(idx), SoQLNumber.t)(fc.position))
           newFc <- Some(typed.FunctionCall(mf, Seq(newSumCol))(fc.position, fc.position))
         } yield newFc
+      // A count(...) on q gets mapped to a sum(...) on a matching column in the rollup.  We still need the count(*)
+      // case above to ensure we can do things like map count(1) and count(*) which aren't exact matches.
+      case fc@typed.FunctionCall(MonomorphicFunction(Count, _), _) =>
+        val mf = MonomorphicFunction(Sum, Map("a" -> SoQLNumber))
+        for {
+          idx <- rollupColIdx.get(fc) // find count(...) in rollup that matches exactly
+          newSumCol <- Some(typed.ColumnRef(NoQualifier, rollupColumnId(idx), SoQLNumber.t)(fc.position))
+          newFc <- Some(typed.FunctionCall(mf, Seq(newSumCol))(fc.position, fc.position))
+        } yield newFc
       // If this is a between function operating on floating timestamps, and arguments b and c are both date aggregates,
       // then try to rewrite argument a to use a rollup.
       case fc: FunctionCall
