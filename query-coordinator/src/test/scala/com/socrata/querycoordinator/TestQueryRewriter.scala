@@ -152,7 +152,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     rewrites should contain key "r4"
     rewrites.get("r4").get should equal(rewrittenQueryAnalysisR4)
 
-    val rewrittenQueryR5 = "SELECT c1 AS crime_type, sum(c2) as crimes, sum(c2) as crimes_potato GROUP by c1"
+    val rewrittenQueryR5 = "SELECT c1 AS crime_type, c2 as crimes, c2 as crimes_potato"
     val rewrittenQueryAnalysisR5 = analyzeRewrittenQuery("r5", rewrittenQueryR5)
     rewrites should contain key "r5"
     rewrites.get("r5").get should equal(rewrittenQueryAnalysisR5)
@@ -177,12 +177,12 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     rewrites should have size 1
   }
 
-  // The simple case for turning a count(...) into a sum(...)
+  // The simple case for rewriting a count(*)
   test("map query ward, count(crime_type) where") {
     val q = "SELECT ward, count(crime_type) AS crime_type_count WHERE ward != 5 GROUP BY ward"
     val queryAnalysis = analyzeQuery(q)
 
-    val rewrittenQuery = "SELECT c1 AS ward, sum(c3) AS crime_type_count WHERE c1 != 5 GROUP by c1"
+    val rewrittenQuery = "SELECT c1 AS ward, c3 AS crime_type_count WHERE c1 != 5"
 
     val rewrittenQueryAnalysis = analyzeRewrittenQuery("r3", rewrittenQuery)
 
@@ -199,7 +199,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val q = "SELECT crime_type, count(case(crime_date IS NOT NULL, crime_date, true, some_date)) AS c GROUP BY crime_type"
     val queryAnalysis = analyzeQuery(q)
 
-    val rewrittenQuery = "SELECT c1 AS crime_type, sum(c2) AS c GROUP by c1"
+    val rewrittenQuery = "SELECT c1 AS crime_type, c2 AS c"
 
     val rewrittenQueryAnalysis = analyzeRewrittenQuery("r9", rewrittenQuery)
 
@@ -240,6 +240,35 @@ class TestQueryRewriter extends TestQueryRewriterBase {
   }
 
 
+  test("order by with grouping removal - query crime_type, count(*)") {
+    val q = "SELECT crime_type, count(*) AS c GROUP BY crime_type ORDER BY c DESC"
+    val queryAnalysis = analyzeQuery(q)
+
+    val rewrittenQuery = "SELECT c1 AS crime_type, c2 AS c ORDER BY c2 DESC"
+
+    val rewrittenQueryAnalysis = analyzeRewrittenQuery("r9", rewrittenQuery)
+
+    val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
+
+    rewrites should contain key "r5"
+    rewrites.get("r5").get should equal(rewrittenQueryAnalysis)
+
+    rewrites should contain key "r4"
+
+    rewrites should have size 2
+  }
+
+  // We haven't implemented support for rewriting HAVING properly so ensure we don't try
+  test("order by with having - query crime_type, count(*)") {
+    val q = "SELECT crime_type, count(*) AS c GROUP BY crime_type HAVING c > 5"
+    val queryAnalysis = analyzeQuery(q)
+
+    val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
+
+    rewrites should have size 0
+  }
+
+
   test("map query ward, date_trunc_ym(crime_date), count(*)") {
     val q =
       "SELECT ward, date_trunc_ym(crime_date) as d, count(*) AS ward_count GROUP BY ward, date_trunc_ym(crime_date)"
@@ -269,7 +298,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val q = "SELECT ward, max(number1) as max_num, min(number1) as min_num, count(*) AS ward_count GROUP BY ward"
     val queryAnalysis = analyzeQuery(q)
 
-    val rewrittenQuery = "SELECT c1 AS ward, max(c3) as max_num, min(c2) as min_num, sum(c5) AS ward_count GROUP by c1"
+    val rewrittenQuery = "SELECT c1 AS ward, c3 as max_num, c2 as min_num, c5 AS ward_count"
 
     val rewrittenQueryAnalysis = analyzeRewrittenQuery("r7", rewrittenQuery)
 
