@@ -17,7 +17,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
 
   import com.socrata.querycoordinator.util.Join._
 
-  val log = org.slf4j.LoggerFactory.getLogger(classOf[QueryRewriter])
+  private val log = org.slf4j.LoggerFactory.getLogger(classOf[QueryRewriter])
 
   def ensure(expr: Boolean, msg: String): Option[String] = if (!expr) Some(msg) else None
 
@@ -38,11 +38,39 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     }
   }
 
+  private def removeAggregates(opt: Option[Seq[OrderBy]]): Option[Seq[OrderBy]] = {
+    opt.map { seq =>
+      seq.map(o => o.copy(expression = removeAggregates(o.expression)))
+    }
+  }
+
+  /**
+    * Used to remove aggregate functions from the expression in the case where the rollup and query groupings match
+    * exactly.
+    */
+  private def removeAggregates(e: Expr): Expr = {
+    e match {
+      // If we have reached this point in the rewrite and have mapped things, I think all aggregate functions can
+      // only have one argument.  We don't have any multi argument ones right now though so that is hard to test.
+      // Given that, falling back to not rewriting and probably generating a query that fails to parse and errors
+      // out seems better than throwing away other arguments and returning wrong results if we do need to consider them.
+      case fc: FunctionCall if fc.function.isAggregate && fc.parameters.size == 1 =>
+        fc.parameters.head
+      case fc: FunctionCall =>
+        // recurse in case we have a function on top of an aggregation
+        fc.copy(parameters = fc.parameters.map(p => removeAggregates(p)))(fc.position,fc.position)
+      case _ => e
+    }
+  }
+
   def rewriteGroupBy(qOpt: GroupBy, rOpt: GroupBy, qSelection: Selection,
       rollupColIdx: Map[Expr, Int]): Option[GroupBy] = {
     (qOpt, rOpt) match {
       // If the query has no group by and the rollup has no group by then all is well
       case (None, None) => Some(None)
+      // If the query and the rollup are grouping on the same columns then we can just leave the grouping
+      // off when querying the rollup to make it less expensive.
+      case (Some(q), Some(r)) if q == r => Some(None)
       // If the query isn't grouped but the rollup is, everything in the selection must be an aggregate.
       // For example, a "SELECT sum(cost) where type='Boat'" could be satisfied by a rollup grouped by type.
       // We rely on the selection rewrite to ensure the columns are there, validate if it is self aggregatable, etc.
@@ -366,16 +394,43 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
       // this lets us lookup the column and get the 0 based index in the select list
       val rollupColIdx = r.selection.values.zipWithIndex.toMap
 
-      val selection = rewriteSelection(q.selection, r.selection, rollupColIdx)
       val groupBy = rewriteGroupBy(q.groupBy, r.groupBy, q.selection, rollupColIdx)
       val where = rewriteWhere(q.where, r, rollupColIdx)
-      val orderBy = rewriteOrderBy(q.orderBy, rollupColIdx)
+
+      /*
+       * As an optimization for query performance, the group rewrite code can turn a grouped query into an ungrouped
+       * query if the grouping matches.  If it did that, we need to fix up the selection and ordering (and having if it
+       * we supported it)  We need to ensure we don't remove aggregates from a query without any group bys to
+       * start with, eg. "SELECT count(*)".  The rewriteGroupBy call above will indicate we can do this by returning
+       * a Some(None) for the group bys.
+       *
+       * For example:
+       * rollup: SELECT crime_type AS c1, count(*) AS c2, max(severity) AS c3 GROUP BY crime_type
+       * query: SELECT crime_type, count(*), max(severity) GROUP BY crime_type
+       * previous rollup query: SELECT c1, sum(c2), max(c3) GROUP BY c1
+       * desired rollup query:  SELECT c1, c2, c3
+       */
+      val shouldRemoveAggregates = groupBy match {
+        case Some(None) => q.groupBy.isDefined
+        case _ => false
+      }
+
+      val selection = rewriteSelection(q.selection, r.selection, rollupColIdx) map { s =>
+        if (shouldRemoveAggregates) s.mapValues(removeAggregates)
+        else s
+      }
+
+      val orderBy = rewriteOrderBy(q.orderBy, rollupColIdx) map { o =>
+        if (shouldRemoveAggregates) removeAggregates(o)
+        else o
+      }
 
       val mismatch =
         ensure(selection.isDefined, "mismatch on select") orElse
           ensure(where.isDefined, "mismatch on where") orElse
           ensure(groupBy.isDefined, "mismatch on groupBy") orElse
           ensure(q.having == r.having, "mismatch on having") orElse
+          ensure(!shouldRemoveAggregates || q.having.isEmpty, "tried to remove aggregates but don't support having") orElse
           ensure(orderBy.isDefined, "mismatch on orderBy") orElse
           // For limit and offset, we can always apply them from the query  as long as the rollup
           // doesn't have any.  For certain cases it would be possible to rewrite even if the rollup
@@ -388,6 +443,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
       mismatch match {
         case None =>
           Some(r.copy(
+            isGrouped = if (shouldRemoveAggregates) groupBy.get.isDefined else q.isGrouped,
             selection = selection.get,
             groupBy = groupBy.get,
             orderBy = orderBy.get,
