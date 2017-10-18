@@ -58,7 +58,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
         fc.parameters.head
       case fc: FunctionCall =>
         // recurse in case we have a function on top of an aggregation
-        fc.copy(parameters = fc.parameters.map(p => removeAggregates(p)))(fc.position,fc.position)
+        fc.copy(parameters = fc.parameters.map(p => removeAggregates(p)))
       case _ => e
     }
   }
@@ -186,7 +186,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
             typed.ColumnRef(NoQualifier, rollupColumnId(idx), SoQLFloatingTimestamp.t)(fc.position),
             lowerRewrite,
             upperRewrite))
-        } yield fc.copy(parameters = newParams)(fc.position, fc.position)
+        } yield fc.copy(parameters = newParams)
       case _ => None
     }
   }
@@ -256,7 +256,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
                 NoQualifier,
                 rollupColumnId(rollupColIdx),
                 SoQLFloatingTimestamp.t)(fc.position), right))
-            } yield fc.copy(parameters = newParams)(fc.position, fc.position)
+            } yield fc.copy(parameters = newParams)
           case _ => None
         }
       case _ => None
@@ -274,7 +274,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     e match {
       case literal: typed.TypedLiteral[_] => Some(literal) // This is literally a literal, so so literal.
       // for a column reference we just need to map the column id
-      case cr: ColumnRef => for {idx <- rollupColIdx.get(cr)} yield cr.copy(column = rollupColumnId(idx))(cr.position)
+      case cr: ColumnRef => for {idx <- rollupColIdx.get(cr)} yield cr.copy(column = rollupColumnId(idx))
       // A count(*) or count(non-null-literal) on q gets mapped to a sum on any such column in rollup
       case fc: FunctionCall if isCountStarOrLiteral(fc) =>
         val mf = MonomorphicFunction(Sum, Map("a" -> SoQLNumber))
@@ -312,15 +312,15 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
         if findFunctionOnColumn(rollupColIdx, dateTruncHierarchy, colRef).isDefined =>
         for {
           colIdx <- findFunctionOnColumn(rollupColIdx, dateTruncHierarchy, colRef)
-        } yield fc.copy(parameters =
-          Seq(typed.ColumnRef(NoQualifier, rollupColumnId(colIdx), colRef.typ)(fc.position)))(fc.position, fc.functionNamePosition)
+        } yield fc.copy(
+          parameters = Seq(typed.ColumnRef(NoQualifier, rollupColumnId(colIdx), colRef.typ)(fc.position)))
       case fc: FunctionCall if !fc.function.isAggregate => rewriteNonagg(rollupColIdx, fc)
       // If the function is "self aggregatable" we can apply it on top of an already aggregated rollup
       // column, eg. select foo, bar, max(x) max_x group by foo, bar --> select foo, max(max_x) group by foo
       // If we have a matching column, we just need to update its argument to reference the rollup column.
       case fc: FunctionCall if isSelfAggregatableAggregate(fc.function.function) =>
-        for {idx <- rollupColIdx.get(fc)} yield fc.copy(parameters =
-          Seq(typed.ColumnRef(NoQualifier, rollupColumnId(idx), fc.typ)(fc.position)))(fc.position, fc.position)
+        for {idx <- rollupColIdx.get(fc)} yield fc.copy(
+          parameters = Seq(typed.ColumnRef(NoQualifier, rollupColumnId(idx), fc.typ)(fc.position)))
       case _ => None
     }
   }
@@ -338,7 +338,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
       log.trace("mapped expr params {} {} -> {}", "", fc.parameters, mapped)
       if (mapped.forall(fe => fe.isDefined)) {
         log.trace("expr params all defined")
-        Some(fc.copy(parameters = mapped.flatten)(fc.position, fc.position))
+        Some(fc.copy(parameters = mapped.flatten))
       } else {
         None
       }
