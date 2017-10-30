@@ -18,7 +18,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     */
   val rollups = Seq(
     ("r1", "SELECT `_dxyz-num1`, count(`_dxyz-num1`) GROUP BY `_dxyz-num1`"),
-    ("r2", "SELECT count(`:wido-ward`), `:wido_ward` GROUP BY `:wido-ward`"),
+    ("r2", "SELECT count(`:wido-ward`), `:wido-ward` GROUP BY `:wido-ward`"),
     ("r3", "SELECT `:wido-ward`, count(*), count(`_crim-typ3`) GROUP BY `:wido-ward`"),
     ("r4", "SELECT `:wido-ward`, `_crim-typ3`, count(*), `_dxyz-num1`, `_crim-date` GROUP BY `:wido-ward`, `_crim-typ3`, `_dxyz-num1`, `_crim-date`"),
     ("r5", "SELECT `_crim-typ3`, count(1) group by `_crim-typ3`"),
@@ -258,17 +258,6 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     rewrites should have size 2
   }
 
-  // We haven't implemented support for rewriting HAVING properly so ensure we don't try
-  test("order by with having - query crime_type, count(*)") {
-    val q = "SELECT crime_type, count(*) AS c GROUP BY crime_type HAVING c > 5"
-    val queryAnalysis = analyzeQuery(q)
-
-    val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
-
-    rewrites should have size 0
-  }
-
-
   test("map query ward, date_trunc_ym(crime_date), count(*)") {
     val q =
       "SELECT ward, date_trunc_ym(crime_date) as d, count(*) AS ward_count GROUP BY ward, date_trunc_ym(crime_date)"
@@ -358,6 +347,38 @@ class TestQueryRewriter extends TestQueryRewriterBase {
 
     rewrites should contain key "r6"
     rewrites.get("r6").get should equal(rewrittenQueryAnalysis)
+
+    rewrites should have size 1
+  }
+
+  test("rewrite where and having") {
+    val q = "SELECT ward, count(*) AS c WHERE number1 > 100 GROUP BY ward HAVING count(*) > 5"
+    val queryAnalysis = analyzeQuery(q)
+
+    val rewrittenQuery = "SELECT c1 AS ward, sum(c3) AS c WHERE c4 > 100 GROUP BY c1 HAVING c > 5"
+
+    val rewrittenQueryAnalysis = analyzeRewrittenQuery("r4", rewrittenQuery)
+
+    val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
+
+    rewrites should contain key "r4"
+    rewrites.get("r4").get should equal(rewrittenQueryAnalysis)
+
+    rewrites should have size 1
+  }
+
+  test("rewrite where and having to where with grouping removal") {
+    val q = "SELECT ward, count(ward) AS c WHERE ward > 100 GROUP BY ward HAVING count(ward) > 5"
+    val queryAnalysis = analyzeQuery(q)
+
+    val rewrittenQuery = "SELECT c2 AS ward, c1 AS c WHERE c2 > 100 AND c1 > 5"
+
+    val rewrittenQueryAnalysis = analyzeRewrittenQuery("r2", rewrittenQuery)
+
+    val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
+
+    rewrites should contain key "r2"
+    rewrites.get("r2").get should equal(rewrittenQueryAnalysis)
 
     rewrites should have size 1
   }

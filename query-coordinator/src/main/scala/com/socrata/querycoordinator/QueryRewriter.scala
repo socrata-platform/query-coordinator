@@ -11,6 +11,7 @@ import com.socrata.soql.types._
 import com.socrata.soql.{SoQLAnalysis, SoQLAnalyzer, typed}
 import org.joda.time.{DateTimeConstants, LocalDateTime}
 
+import scala.util.parsing.input.NoPosition
 import scala.util.{Failure, Success, Try}
 
 class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
@@ -359,6 +360,19 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     }
   }
 
+  def rewriteHaving(qeOpt: Option[Expr], r: Anal, rollupColIdx: Map[Expr, Int]): Option[Having] = {
+    log.debug(s"Attempting to map query having expression '${qeOpt}' to rollup ${r}")
+
+    (qeOpt, r.having) match {
+      // don't support rollups with having clauses yet.  To do so, we need to validate that r.having
+      // is also contained in q.having.
+      case (_, Some(re)) => None
+      // no having on query or rollup, so good!  No work to do.
+      case (None, None) => Some(None)
+      // have a having on query so try to map recursively
+      case (Some(qe), None) => rewriteExpr(qe, rollupColIdx).map(Some(_))
+    }
+  }
 
   def rewriteOrderBy(obsOpt: Option[Seq[OrderBy]], rollupColIdx: Map[Expr, Int]): Option[Option[Seq[OrderBy]]] = {
     log.debug(s"Attempting to map order by expression '${obsOpt}'") // scalastyle:ignore multiple.string.literals
@@ -425,12 +439,16 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
         else o
       }
 
+      val having = rewriteHaving(q.having, r, rollupColIdx) map { h =>
+        if (shouldRemoveAggregates) h.map(removeAggregates)
+        else h
+      }
+
       val mismatch =
         ensure(selection.isDefined, "mismatch on select") orElse
           ensure(where.isDefined, "mismatch on where") orElse
           ensure(groupBy.isDefined, "mismatch on groupBy") orElse
-          ensure(q.having == r.having, "mismatch on having") orElse
-          ensure(!shouldRemoveAggregates || q.having.isEmpty, "tried to remove aggregates but don't support having") orElse
+          ensure(having.isDefined, "mismatch on having") orElse
           ensure(orderBy.isDefined, "mismatch on orderBy") orElse
           // For limit and offset, we can always apply them from the query  as long as the rollup
           // doesn't have any.  For certain cases it would be possible to rewrite even if the rollup
@@ -447,7 +465,10 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
             selection = selection.get,
             groupBy = groupBy.get,
             orderBy = orderBy.get,
-            where = where.get,
+            // If we are removing aggregates then we are no longer grouping and need to put the condition
+            // in the where instead of the having.
+            where = if (shouldRemoveAggregates) andExpr(where.get, having.get) else where.get,
+            having = if (shouldRemoveAggregates) None else having.get,
             limit = q.limit,
             offset = q.offset
           ))
@@ -459,6 +480,15 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
 
     log.debug("Final candidates: {}", candidates)
     candidates.collect { case (k, Some(v)) => k -> v }
+  }
+
+  def andExpr(a: Option[Expr], b: Option[Expr]): Option[Expr] = {
+    (a, b) match {
+      case (None, None) => None
+      case (Some(a), None) => Some(a)
+      case (None, Some(b)) => Some(b)
+      case (Some(a), Some(b)) => Some(typed.FunctionCall(SoQLFunctions.And.monomorphic.get, List(a, b))(NoPosition, NoPosition))
+    }
   }
 
 
@@ -542,4 +572,5 @@ object QueryRewriter {
   type RollupName = String
   type Selection = OrderedMap[ColumnName, Expr]
   type Where = Option[Expr]
+  type Having = Option[Expr]
 }
