@@ -69,9 +69,9 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     (qOpt, rOpt) match {
       // If the query has no group by and the rollup has no group by then all is well
       case (None, None) => Some(None)
-      // If the query and the rollup are grouping on the same columns then we can just leave the grouping
-      // off when querying the rollup to make it less expensive.
-      case (Some(q), Some(r)) if q == r => Some(None)
+      // If the query and the rollup are grouping on the same columns (possibly in a different order) then
+      // we can just leave the grouping off when querying the rollup to make it less expensive.
+      case (Some(q), Some(r)) if q.toSet == r.toSet => Some(None)
       // If the query isn't grouped but the rollup is, everything in the selection must be an aggregate.
       // For example, a "SELECT sum(cost) where type='Boat'" could be satisfied by a rollup grouped by type.
       // We rely on the selection rewrite to ensure the columns are there, validate if it is self aggregatable, etc.
