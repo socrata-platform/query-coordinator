@@ -258,6 +258,22 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     rewrites should have size 2
   }
 
+  test("grouping removal with different column ordering") {
+    val q = "SELECT ward, date_trunc_ym(crime_date) AS d, count(*) GROUP BY ward, date_trunc_ym(crime_date)"
+    val queryAnalysis = analyzeQuery(q)
+
+    val rewrittenQuery = "SELECT c2 AS ward, c1 AS d, c3 AS count"
+
+    val rewrittenQueryAnalysis = analyzeRewrittenQuery("r8", rewrittenQuery)
+
+    val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
+
+    rewrites should contain key "r8"
+    rewrites.get("r8").get should equal(rewrittenQueryAnalysis)
+
+    rewrites should have size 2
+  }
+
   test("map query ward, date_trunc_ym(crime_date), count(*)") {
     val q =
       "SELECT ward, date_trunc_ym(crime_date) as d, count(*) AS ward_count GROUP BY ward, date_trunc_ym(crime_date)"
@@ -269,7 +285,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val rewrittenQueryAnalysisR4 = analyzeRewrittenQuery("r4", rewrittenQueryR4)
 
     // in this case, we map the function call directly to the column ref
-    val rewrittenQueryR8 = "SELECT c2 as ward, c1 as d, sum(c3) as ward_count GROUP BY c2, c1"
+    val rewrittenQueryR8 = "SELECT c2 as ward, c1 as d, c3 as ward_count"
     val rewrittenQueryAnalysisR8 = analyzeRewrittenQuery("r8", rewrittenQueryR8)
 
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
