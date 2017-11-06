@@ -383,6 +383,15 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     rewrites should have size 1
   }
 
+  test("don't rewrite having if having expression is not in rollup") {
+    val q = "SELECT ward, count(*) AS c WHERE number1 > 100 GROUP BY ward HAVING count(crime_date) > 5"
+    val queryAnalysis = analyzeQuery(q)
+
+    val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
+
+    rewrites should have size 0
+  }
+
   test("rewrite where and having to where with grouping removal") {
     val q = "SELECT ward, count(ward) AS c WHERE ward > 100 GROUP BY ward HAVING count(ward) > 5"
     val queryAnalysis = analyzeQuery(q)
