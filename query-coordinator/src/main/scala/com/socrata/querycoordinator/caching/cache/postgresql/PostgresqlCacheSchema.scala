@@ -72,7 +72,7 @@ object PostgresqlCacheSchema {
           for (ds <- dataset) {
             val dataTableName = dataTable(ds)
             if (!exists(dataTableName)) {
-              stmt.execute(s"create table ${dataTableName} (cache_id bigint not null references $table(id), chunknum int not null, data bytea not null, primary key(cache_id, chunknum))")
+              stmt.execute(s"create table ${dataTableName} (cache_id bigint not null, chunknum int not null, data bytea not null, primary key(cache_id, chunknum))")
             }
           }
         }
