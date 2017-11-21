@@ -17,6 +17,7 @@ class CacheConfig(config: Config, root: String) extends ConfigClass(config, root
   val rowsPerWindow = getInt("rows-per-window")
   val maxWindows = getInt("max-windows")
   val cleanInterval = getDuration("clean-interval")
+  val minQueryTime = getDuration("min-query-time").toMillis
 }
 
 sealed trait CacheImplConfig

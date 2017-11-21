@@ -11,6 +11,8 @@ trait CacheSessionProvider {
 
   def open(rs: ResourceScope, dataset: String): CacheSession
 
+  val minQueryTimeMs: Long = -1
+
   private var disableTil = new DateTime(0)
 
   def disable() = {
@@ -33,5 +35,9 @@ trait CacheSessionProvider {
         a.search.isDefined ||
         a.distinct
       }
+  }
+
+  def shouldSkip(queryTimeMs: Long): Boolean = {
+    queryTimeMs > minQueryTimeMs
   }
 }
