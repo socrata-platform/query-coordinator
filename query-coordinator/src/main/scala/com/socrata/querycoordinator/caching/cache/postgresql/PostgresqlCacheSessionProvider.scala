@@ -16,10 +16,13 @@ class PostgresqlCacheSessionProvider(ds: DataSource,
                                      assumeDeadCreateCutoff: FiniteDuration,
                                      deleteChunkSize: Int,
                                      useBatchDelete: () => Boolean,
-                                     streamWrapper: StreamWrapper = StreamWrapper.noop)
+                                     streamWrapper: StreamWrapper = StreamWrapper.noop,
+                                     minimumQueryTimeMs: Long)
   extends CacheSessionProvider with CacheCleanerProvider with CacheInit
 {
   protected val log: Logger = org.slf4j.LoggerFactory.getLogger(classOf[PostgresqlCacheSessionProvider])
+
+  override val minQueryTimeMs: Long = minimumQueryTimeMs
 
   private object JdbcCacheSessionResource extends Resource[PostgresqlCacheSession] {
     override def close(a: PostgresqlCacheSession): Unit = a.close()

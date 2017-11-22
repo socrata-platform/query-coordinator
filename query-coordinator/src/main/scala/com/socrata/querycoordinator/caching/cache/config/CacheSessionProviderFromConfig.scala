@@ -15,7 +15,7 @@ object CacheSessionProviderFromConfig {
       case fs: FilesystemCacheConfig =>
         fromFilesystem(fs, streamWrapper)
       case pg: PostgresqlCacheConfig =>
-        fromPostgres(pg, useBatchDelete, streamWrapper)
+        fromPostgres(pg, useBatchDelete, streamWrapper, config.minQueryTime)
       case NoopCacheConfig =>
         unmanaged(NoopCacheSessionProvider)
     }
@@ -28,7 +28,7 @@ object CacheSessionProviderFromConfig {
       assumeDeadCreateCutoff = fs.assumeDeadCreateCutoff,
       streamWrapper = streamWrapper))
 
-  def fromPostgres(pg: PostgresqlCacheConfig, useBatchDelete: () => Boolean, streamWrapper: StreamWrapper) =
+  def fromPostgres(pg: PostgresqlCacheConfig, useBatchDelete: () => Boolean, streamWrapper: StreamWrapper, minQueryTimeMs: Long) =
     for(ds <- managed(new ComboPooledDataSource(false))) yield {
       ds.setDriverClass("org.postgresql.Driver")
       ds.setJdbcUrl("jdbc:postgresql://" + pg.db.host + ":" + pg.db.port + "/" + pg.db.database)
@@ -47,6 +47,7 @@ object CacheSessionProviderFromConfig {
         deleteDelay = pg.deleteDelay,
         deleteChunkSize = pg.deleteChunkSize,
         useBatchDelete = useBatchDelete,
-        streamWrapper = streamWrapper)
+        streamWrapper = streamWrapper,
+        minimumQueryTimeMs = minQueryTimeMs)
     }
 }

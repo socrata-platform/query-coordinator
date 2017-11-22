@@ -209,6 +209,7 @@ class QueryExecutor(httpClient: HttpClient,
           result
         case None =>
           log.info("Not in cache!")
+          val startTimeMs = System.currentTimeMillis()
           val relimitedAnalyses = analyses.dropRight(1) :+
             analyses.last.copy[String, SoQLType](limit = Some(newLimit), offset = Some(newOffset))
           go(theAnalyses = relimitedAnalyses) match {
@@ -224,7 +225,8 @@ class QueryExecutor(httpClient: HttpClient,
                 override def run(): Unit = {
                   using(resourceScopeHandle.duplicate()) { handle =>
                     ready.release()
-                    doCache(dataset, unlimitedAnalyses, schema, rollupName, obfuscateId, rowCount, headers, forCache, handle.get, cacheSession, startWindow.window, endWindow.window)
+                    doCache(dataset, unlimitedAnalyses, relimitedAnalyses, schema, rollupName, obfuscateId, rowCount, headers, forCache,
+                            handle.get, cacheSession, startWindow.window, endWindow.window, startTimeMs)
                   }
                 }
               }
@@ -259,8 +261,14 @@ class QueryExecutor(httpClient: HttpClient,
     }
   }
 
+  private def offsetLimitInfo(analyses: Seq[SoQLAnalysis[String, SoQLType]]) = {
+    analyses.map { analysis => s"offset ${analysis.offset.getOrElse("").toString} limit ${analysis.limit.getOrElse("").toString}" }
+            .mkString(" |> ")
+  }
+
   private def doCache(dataset: String,
                       unlimitedAnalyses: Seq[SoQLAnalysis[String, SoQLType]],
+                      relimitedAnalyses: Seq[SoQLAnalysis[String, SoQLType]],
                       schema: Schema,
                       rollupName: Option[String],
                       obfuscateId: Boolean,
@@ -270,7 +278,8 @@ class QueryExecutor(httpClient: HttpClient,
                       rs: ResourceScope,
                       cacheSession: CacheSession,
                       startWindow: BigInt,
-                      endWindow: BigInt): Unit = {
+                      endWindow: BigInt,
+                      startTimeMs: Long): Unit = {
     val abort = { (why: String) => log.warn(why); return } // this "return" needs to return from doCache, not abort.  Thus val not def
     val jvalues = JsonArrayIterator.fromEvents[JValue](new FusedBlockJsonEventIterator(
         new InputStreamReader(body, StandardCharsets.UTF_8)))
@@ -286,15 +295,23 @@ class QueryExecutor(httpClient: HttpClient,
 
     val firstBlock = take(jvalues, windower.windowSize)
     val isGroupBy = unlimitedAnalyses.exists(_.groupBy.isDefined)
+
+    val queryTimeMs = System.currentTimeMillis() - startTimeMs
+
     if(!isGroupBy && firstBlock.size < windower.windowSize) {
-      log.info("Not caching; the query returned fewer than one window worth of rows and it wasn't a group-by")
+      log.info(s"Not caching; the query returned fewer than one window worth of rows and it wasn't a group-by. ${queryTimeMs}ms $startWindow $endWindow ${offsetLimitInfo(relimitedAnalyses)}")
       return
     }
-    // at this point `firstBlock` is definitely non-empty (because a group-by query will always
-    // return at least one row).  But let's be paranoid!  The worst that happens is that we'll
-    // fail to cache something.
+
+    // It is normal that queries whether group by or not to return no rows.
+    // But let's be paranoid!  The worst that happens is that we'll fail to cache something.
     if(firstBlock.isEmpty) {
-      log.error("Unexpected empty block!  Not caching.")
+      log.info(s"Empty block!  Not caching. ${queryTimeMs}ms $startWindow $endWindow ${offsetLimitInfo(relimitedAnalyses)}" )
+      return
+    }
+
+    if(cacheSessionProvider.shouldSkip(queryTimeMs)) {
+      log.info(s"Query does not take long!  Not caching. ${queryTimeMs}ms $startWindow $endWindow ${offsetLimitInfo(relimitedAnalyses)}" )
       return
     }
 
