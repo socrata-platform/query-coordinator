@@ -38,6 +38,6 @@ trait CacheSessionProvider {
   }
 
   def shouldSkip(queryTimeMs: Long): Boolean = {
-    queryTimeMs > minQueryTimeMs
+    queryTimeMs < minQueryTimeMs
   }
 }
