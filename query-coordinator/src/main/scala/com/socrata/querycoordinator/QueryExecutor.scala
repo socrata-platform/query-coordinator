@@ -299,7 +299,7 @@ class QueryExecutor(httpClient: HttpClient,
     val queryTimeMs = System.currentTimeMillis() - startTimeMs
 
     if(!isGroupBy && firstBlock.size < windower.windowSize) {
-      log.info(s"Not caching; the query returned fewer than one window worth of rows and it wasn't a group-by. ${queryTimeMs}ms $startWindow $endWindow ${offsetLimitInfo(relimitedAnalyses)}")
+      log.debug(s"Not caching; the query returned fewer than one window worth of rows and it wasn't a group-by. ${queryTimeMs}ms $startWindow $endWindow ${offsetLimitInfo(relimitedAnalyses)}")
       return
     }
 
