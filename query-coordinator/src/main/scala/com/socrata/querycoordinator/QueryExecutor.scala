@@ -208,7 +208,6 @@ class QueryExecutor(httpClient: HttpClient,
         case Some(result) =>
           result
         case None =>
-          log.info("Not in cache!")
           val startTimeMs = System.currentTimeMillis()
           val relimitedAnalyses = analyses.dropRight(1) :+
             analyses.last.copy[String, SoQLType](limit = Some(newLimit), offset = Some(newOffset))
@@ -225,8 +224,11 @@ class QueryExecutor(httpClient: HttpClient,
                 override def run(): Unit = {
                   using(resourceScopeHandle.duplicate()) { handle =>
                     ready.release()
-                    doCache(dataset, unlimitedAnalyses, relimitedAnalyses, schema, rollupName, obfuscateId, rowCount, headers, forCache,
+                    val isCached = doCache(dataset, unlimitedAnalyses, relimitedAnalyses, schema, rollupName, obfuscateId, rowCount, headers, forCache,
                             handle.get, cacheSession, startWindow.window, endWindow.window, startTimeMs)
+                    if (isCached) { // only do logging if it is not in cache and we do decide to cache.
+                      log.info("Not in cache!")
+                    }
                   }
                 }
               }
@@ -266,6 +268,9 @@ class QueryExecutor(httpClient: HttpClient,
             .mkString(" |> ")
   }
 
+  /**
+    * @return whether cache happens or not
+    */
   private def doCache(dataset: String,
                       unlimitedAnalyses: Seq[SoQLAnalysis[String, SoQLType]],
                       relimitedAnalyses: Seq[SoQLAnalysis[String, SoQLType]],
@@ -279,8 +284,8 @@ class QueryExecutor(httpClient: HttpClient,
                       cacheSession: CacheSession,
                       startWindow: BigInt,
                       endWindow: BigInt,
-                      startTimeMs: Long): Unit = {
-    val abort = { (why: String) => log.warn(why); return } // this "return" needs to return from doCache, not abort.  Thus val not def
+                      startTimeMs: Long): Boolean = {
+    val abort = { (why: String) => log.warn(why); return false} // this "return" needs to return from doCache, not abort.  Thus val not def
     val jvalues = JsonArrayIterator.fromEvents[JValue](new FusedBlockJsonEventIterator(
         new InputStreamReader(body, StandardCharsets.UTF_8)))
     val cjsonHeader = jvalues.next()
@@ -300,19 +305,19 @@ class QueryExecutor(httpClient: HttpClient,
 
     if(!isGroupBy && firstBlock.size < windower.windowSize) {
       log.debug(s"Not caching; the query returned fewer than one window worth of rows and it wasn't a group-by. ${queryTimeMs}ms $startWindow $endWindow ${offsetLimitInfo(relimitedAnalyses)}")
-      return
+      return false
     }
 
     // It is normal that queries whether group by or not to return no rows.
     // But let's be paranoid!  The worst that happens is that we'll fail to cache something.
     if(firstBlock.isEmpty) {
       log.info(s"Empty block!  Not caching. ${queryTimeMs}ms $startWindow $endWindow ${offsetLimitInfo(relimitedAnalyses)}" )
-      return
+      return false
     }
 
     if(cacheSessionProvider.shouldSkip(queryTimeMs)) {
       log.info(s"Query does not take long!  Not caching. ${queryTimeMs}ms $startWindow $endWindow ${offsetLimitInfo(relimitedAnalyses)}" )
-      return
+      return false
     }
 
     cacheSession.createText(cacheKey(cacheKeyBase, "headers")) {
@@ -322,7 +327,7 @@ class QueryExecutor(httpClient: HttpClient,
         cacheSessionProvider.disable()
         log.warn("Timeout writing the response headers into the cache!")
         rs.close(body)
-        return
+        return false
     }
     var nextWindowNum = startWindow
 
@@ -337,7 +342,7 @@ class QueryExecutor(httpClient: HttpClient,
           // then we won't time out trying to open it for writing again.
           log.warn("Got a CacheSession.Timeout after successfully writing headers?  This shouldn't have happened!")
           rs.close(body)
-          return
+          return false
       }
       nextWindowNum += 1
     }
@@ -352,6 +357,7 @@ class QueryExecutor(httpClient: HttpClient,
       }
     }
     rs.close(body)
+    true
   }
 
   // This does NOT invalidate the input iterator
