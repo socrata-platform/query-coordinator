@@ -10,6 +10,6 @@ fi
 local_config_dir="$(dirname "$(realpath "$0")")/../config"
 docker run \
   -v "$local_config_dir":/srv/query-coordinator/config \
-  -e SERVER_CONFIG="config/local-query-coordinator.conf" \
+  -e SERVER_CONFIG="config/query-coordinator.conf" \
   -p 6030:6030 \
   -d -t "$image"
