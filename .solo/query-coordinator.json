@@ -1,0 +1,6 @@
+{
+  "aliases": [ "qc" ],
+  "ports": [ 6030 ],
+  "start_container": "bin/start_qc_docker.sh",
+  "start_process": "bin/start_qc.sh"
+}

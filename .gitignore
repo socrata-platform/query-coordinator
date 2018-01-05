@@ -1,4 +1,4 @@
-/docker/query-coordinator-assembly.jar
+query-coordinator-assembly.jar
 /.idea/
 /.idea_modules/
 local-query-coordinator.conf

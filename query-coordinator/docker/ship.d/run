@@ -7,7 +7,13 @@ if [ -e $CREDSFILE ]; then
     . $CREDSFILE
 fi
 
-/bin/env_parse ${SERVER_CONFIG}.j2
+if [ -z "$MARATHON_APP_ID" ]; then
+    echo "Not running in marathon, so I will not compile the config template file!"
+    echo "If you want to force config template compilation, set the \$MARATHON_APP_ID env var."
+else
+    echo "Compiling ${SERVER_CONFIG} file..."
+    /bin/env_parse ${SERVER_CONFIG}.j2
+fi
 
 exec su socrata -c '/usr/bin/java \
     -Xmx${JAVA_XMX} \
