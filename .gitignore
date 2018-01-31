@@ -1,5 +1,6 @@
 query-coordinator-assembly.jar
 /.idea/
 /.idea_modules/
+configs/local-query-coordinator.conf
 local-query-coordinator.conf
 /**/target/
