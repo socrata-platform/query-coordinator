@@ -7,9 +7,9 @@ if [ -z "$image" ]; then
   exit 1
 fi
 
-local_config_dir="$(dirname "$(realpath "$0")")/../config"
+local_config_dir="$(dirname "$(realpath "$0")")/../configs"
 docker run \
-  -v "$local_config_dir":/srv/query-coordinator/config \
-  -e SERVER_CONFIG="configs/application.conf" \
+  -v "$local_config_dir":/srv/query-coordinator/configs \
+  -e SERVER_CONFIG="/srv/query-coordinator/configs/application.conf" \
   -p 6030:6030 \
   -d -t "$image"
