@@ -12,4 +12,4 @@ docker run \
   -v "$local_config_dir":/srv/query-coordinator/configs \
   -e SERVER_CONFIG="/srv/query-coordinator/configs/application.conf" \
   -p 6030:6030 \
-  -d -t "$image"
+  -t "$image"
