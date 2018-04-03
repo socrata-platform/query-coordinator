@@ -3,14 +3,12 @@ package com.socrata.querycoordinator
 import com.socrata.http.client.RequestBuilder
 import com.socrata.querycoordinator.SchemaFetcher.{NoSuchDatasetInSecondary, Successful}
 import com.socrata.querycoordinator.exceptions.JoinedDatasetNotColocatedException
-import com.socrata.querycoordinator.fusion.{CompoundTypeFuser, NoopFuser, SoQLRewrite}
-import com.socrata.soql.aliases.AliasAnalysis
-import com.socrata.soql.ast.{Expression, Select, Selection}
-import com.socrata.soql.collection.{OrderedMap, OrderedSet}
+import com.socrata.querycoordinator.fusion.{CompoundTypeFuser, SoQLRewrite}
+import com.socrata.soql.collection.{OrderedMap}
 import com.socrata.soql.environment._
 import com.socrata.soql.exceptions.SoQLException
 import com.socrata.soql.functions.SoQLFunctions
-import com.socrata.soql.parsing.Parser
+import com.socrata.soql.parsing.{AbstractParser, Parser}
 import com.socrata.soql.typed._
 import com.socrata.soql.types.SoQLType
 import com.socrata.soql.{SoQLAnalysis, SoQLAnalyzer}
@@ -118,7 +116,12 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
                                schema: Map[String, SoQLType])(ctx: AnalysisContext):
     (Seq[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String]) = {
 
-    val parsed = new Parser().selectStatement(query)
+
+    val parserParams =
+      new AbstractParser.Parameters(
+        allowJoins = true,
+        systemColumnAliasesAllowed = systemColumns ++ columnIdMap.keySet.filter(_.caseFolded.startsWith(":@")))
+    val parsed = new Parser(parserParams).selectStatement(query)
 
     val joins = com.socrata.querycoordinator.util.Join.expandJoins(parsed)
 
@@ -233,4 +236,6 @@ object QueryParser extends Logging {
 
   // And function is used for chain SoQL merge.
   private val andFn = SoQLFunctions.And.monomorphic.get
+
+  private val systemColumns = Set(":id", ":created_at", ":updated_at").map(ColumnName(_))
 }
