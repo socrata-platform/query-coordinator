@@ -89,11 +89,12 @@ class QueryExecutor(httpClient: HttpClient,
             currentDataVersion: Long,
             currentLastModified: DateTime,
             resourceScopeHandle: SharedHandle[ResourceScope],
-            queryTimeoutSeconds: Option[String]): Result = {
+            queryTimeoutSeconds: Option[String],
+            debug: Boolean): Result = {
     val rs = resourceScopeHandle.get
     def go(theAnalyses: Seq[SoQLAnalysis[String, SoQLType]] = analyses): Result =
       reallyApply(base, dataset, theAnalyses, schema, precondition, ifModifiedSince, rowCount, copy,
-                  rollupName, obfuscateId, extraHeaders, rs, queryTimeoutSeconds)
+                  rollupName, obfuscateId, extraHeaders, rs, queryTimeoutSeconds, debug)
 
     if((cacheSessionProvider == NoopCacheSessionProvider && !forceCacheEvenWhenNoop) ||
        cacheSessionProvider.disabled) {
@@ -405,7 +406,8 @@ class QueryExecutor(httpClient: HttpClient,
                           obfuscateId: Boolean,
                           extraHeaders: Map[String, String],
                           resourceScope: ResourceScope,
-                          queryTimeoutSeconds: Option[String]): Result = {
+                          queryTimeoutSeconds: Option[String],
+                          debug: Boolean): Result = {
     val serializedAnalyses = serializeAnalysis(analyses)
     val params = List(
       qpDataset -> dataset,
@@ -415,7 +417,8 @@ class QueryExecutor(httpClient: HttpClient,
       rowCount.map(rc => List(qpRowCount -> rc)).getOrElse(Nil) ++
       copy.map(c => List(qpCopy -> c)).getOrElse(Nil) ++
       rollupName.map(c => List(qpRollupName -> c)).getOrElse(Nil) ++
-      (if (!obfuscateId) List(qpObfuscateId -> "false" ) else Nil)
+      (if (!obfuscateId) List(qpObfuscateId -> "false" ) else Nil) ++
+      (if (debug) List("X-Socrata-Debug" -> "true" ) else Nil)
     val request = base.p(qpQuery).
       addHeaders(PreconditionRenderer(precondition) ++ ifModifiedSince.map("If-Modified-Since" -> _.toHttpDate)).
       addHeaders(extraHeaders).
