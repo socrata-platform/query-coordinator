@@ -83,10 +83,10 @@ class QueryResource(secondary: Secondary,
       val rowCount = Option(servReq.getParameter("rowCount"))
       val copy = Option(servReq.getParameter("copy"))
       val queryTimeoutSeconds = Option(servReq.getParameter(qpQueryTimeoutSeconds))
+      val debug = req.header("X-Socrata-Debug").isDefined
 
       val precondition = req.precondition
       val ifModifiedSince = req.dateTimeHeader("If-Modified-Since")
-
 
       // A little spaghetti never hurt anybody!
       // Ok, so the general flow of this code is:
@@ -188,7 +188,8 @@ class QueryResource(secondary: Secondary,
             schema.dataVersion,
             schema.lastModified,
             extendedScope,
-            queryTimeoutSeconds
+            queryTimeoutSeconds,
+            debug
           ) match {
             case QueryExecutor.Retry =>
               Left(nextRetry)
