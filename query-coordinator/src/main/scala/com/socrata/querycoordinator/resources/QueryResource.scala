@@ -129,8 +129,14 @@ class QueryResource(secondary: Secondary,
           val parsedQuery = queryParser(query, columnIdMap, schema.schema, base, fuseMap)
 
           parsedQuery match {
-            case QueryParser.SuccessfulParse(analysis) =>
-              Right(schemaWithFieldNames.copy(payload = (schema, analysis)))
+            case QueryParser.SuccessfulParse(analysis, largestLastModifiedOfJoins) =>
+              val lastModified =
+                if (schemaWithFieldNames.lastModified.isAfter(largestLastModifiedOfJoins)) {
+                  schemaWithFieldNames.lastModified
+                } else {
+                  largestLastModifiedOfJoins
+                }
+              Right(schemaWithFieldNames.copy(payload = (schema, analysis), lastModified = lastModified))
             case QueryParser.AnalysisError(_: DuplicateAlias | _: NoSuchColumn | _: TypecheckException) if !isFresh =>
               getSchema(dataset, copy).right.flatMap(analyzeRequest(_, true))
             case QueryParser.AnalysisError(e) =>
@@ -213,15 +219,22 @@ class QueryResource(secondary: Secondary,
               // Log data version difference if response is OK.  Ignore not modified response and others.
               responseCode match {
                 case HttpStatus.SC_OK =>
+                  val lastModifiedOption: Option[DateTime] =
                   (headers("x-soda2-dataversion").headOption, headers("x-soda2-secondary-last-modified").headOption) match {
                     case (Some(qsDataVersion), Some(qsLastModified)) =>
                       val qsdv = qsDataVersion.toLong
                       val qslm = HttpUtils.parseHttpDate(qsLastModified)
-                      logSchemaFreshness(second.getAddress, sfDataVersion, sfLastModified, qsdv, qslm)
+                      val qslmOrlastModifiedJoin = if (qslm.isAfter(schema.lastModified)) qslm else schema.lastModified
+                      logSchemaFreshness(second.getAddress, sfDataVersion, sfLastModified, qsdv, qslmOrlastModifiedJoin)
+                      Some(qslmOrlastModifiedJoin)
                     case _ =>
                       log.warn("version related data not available from secondary")
+                      None
                   }
-                  Right(transferHeaders(Status(responseCode), headers) ~> Stream(out => transferResponse(out, body)))
+                  val headersWithUpdatedLastModified = lastModifiedOption.map { x =>
+                    headers + ("last-modified" -> Seq(ISODateTimeFormat.dateTime.print(x.getMillis)))
+                  }.getOrElse(headers)
+                  Right(transferHeaders(Status(responseCode), headersWithUpdatedLastModified) ~> Stream(out => transferResponse(out, body)))
                 case HttpStatus.SC_INTERNAL_SERVER_ERROR if
                   (analyzedQuery.ne(analyzedQueryNoRollup) && rollupName.isDefined) =>
                   // Rollup soql analysis passed but the sql asset behind in the secondary
