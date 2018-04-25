@@ -18,12 +18,12 @@ class RowsLimitTest extends TestBase {
     val cols = Map[ColumnName, String](ColumnName("c") -> "c")
     val schema = Map[String, SoQLType]("c" -> SoQLText)
     (qp.apply("select *", cols, schema, fakeRequestBuilder) match {
-      case SuccessfulParse(analyses) => analyses.last.limit
+      case SuccessfulParse(analyses, _) => analyses.last.limit
       case _ =>
     }) should be(Some(defaultRowLimit))
 
     (qp.apply(s"select * limit $maxRowLimit", cols, schema, fakeRequestBuilder) match {
-      case SuccessfulParse(analyses) => analyses.last.limit
+      case SuccessfulParse(analyses, _) => analyses.last.limit
       case _ =>
     }) should be(Some(maxRowLimit))
 
@@ -42,12 +42,12 @@ class RowsLimitTest extends TestBase {
     val cols = Map[ColumnName, String](ColumnName("c") -> "c")
     val schema = Map[String, SoQLType]("c" -> SoQLText)
     (qp.apply("select *", cols, schema, fakeRequestBuilder) match {
-      case SuccessfulParse(analyses) => analyses.last.limit
+      case SuccessfulParse(analyses, _) => analyses.last.limit
       case _ =>
     }) should be(Some(defaultRowLimit))
 
     (qp.apply("select * limit 100000", cols, schema, fakeRequestBuilder) match {
-      case SuccessfulParse(analyses) => analyses.last.limit
+      case SuccessfulParse(analyses, _) => analyses.last.limit
       case _ =>
     }) should be(Some(100000))
   }

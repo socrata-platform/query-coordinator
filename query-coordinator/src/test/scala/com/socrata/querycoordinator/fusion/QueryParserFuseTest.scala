@@ -28,7 +28,7 @@ class QueryParserFuseTest extends TestBase {
     )
 
     val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, fuse) match {
-      case SuccessfulParse(analyses) =>
+      case SuccessfulParse(analyses, _) =>
         val actual = SoQLAnalysisDepositioner(analyses.head)
         actual.selection should be(expectedSelection)
         actual.where should be(Some(expectedWhere))
@@ -45,7 +45,7 @@ class QueryParserFuseTest extends TestBase {
     )
 
     val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, fuse) match {
-      case SuccessfulParse(analyses) =>
+      case SuccessfulParse(analyses, _) =>
         val actual = SoQLAnalysisDepositioner(analyses.head)
         actual.selection should be(expectedSelection)
         actual.where should be(None)
@@ -63,7 +63,7 @@ class QueryParserFuseTest extends TestBase {
     )
 
     val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, fuse) match {
-      case SuccessfulParse(analyses) =>
+      case SuccessfulParse(analyses, _) =>
         val actual = SoQLAnalysisDepositioner(analyses.head)
         actual.selection should be(expectedSelection)
         actual.where should be(None)
@@ -83,7 +83,7 @@ class QueryParserFuseTest extends TestBase {
     )
 
     val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, Map.empty) match {
-      case SuccessfulParse(analyses) =>
+      case SuccessfulParse(analyses, _) =>
         val actual = SoQLAnalysisDepositioner(analyses.head)
         actual.selection should be(expectedSelection)
         actual.where should be(None)
@@ -100,7 +100,7 @@ class QueryParserFuseTest extends TestBase {
     )
 
     val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, Map.empty) match {
-      case SuccessfulParse(analyses) =>
+      case SuccessfulParse(analyses, _) =>
         val actual = SoQLAnalysisDepositioner(analyses.head)
       case x: QueryParser.Result =>
         fail("fail to parse soql: " + x)
