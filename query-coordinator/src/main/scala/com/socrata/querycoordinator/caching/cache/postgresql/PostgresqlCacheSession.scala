@@ -112,7 +112,7 @@ class PostgresqlCacheSession(ds: DataSource, dataset: String, updateATimeInterva
 
               def onChunk(bytes: Array[Byte]): Unit = {
                 stmt.setLong(1, id)
-                stmt.setInt(2, chunkNum);
+                stmt.setInt(2, chunkNum)
                 chunkNum += 1
                 stmt.setBytes(3, bytes)
                 stmt.execute()

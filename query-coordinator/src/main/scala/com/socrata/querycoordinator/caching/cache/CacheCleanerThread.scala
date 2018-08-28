@@ -27,7 +27,7 @@ class CacheCleanerThread(cleanerProvider: CacheCleanerProvider, interval: Finite
     }
   }
 
-  def start() {
+  def start(): Unit = {
     worker.start()
   }
 

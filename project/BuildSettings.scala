@@ -5,8 +5,6 @@ import sbtassembly.AssemblyKeys
 object BuildSettings {
   def buildSettings: Seq[Setting[_]] =
     Defaults.itSettings ++ Seq(
-      com.socrata.sbtplugins.StylePlugin.StyleKeys.styleCheck in Test := {},
-      com.socrata.sbtplugins.StylePlugin.StyleKeys.styleCheck in Compile := {},
       scoverage.ScoverageSbtPlugin.ScoverageKeys.coverageFailOnMinimum := false,
       scalaVersion := "2.10.4",
       resolvers ++= Seq(

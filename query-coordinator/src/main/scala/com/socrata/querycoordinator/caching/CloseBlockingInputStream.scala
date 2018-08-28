@@ -12,5 +12,5 @@ class CloseBlockingInputStream(underlying: InputStream) extends InputStream {
   override def mark(limit: Int) = underlying.mark(limit)
   override def reset() = underlying.reset()
 
-  override def close() {}
+  override def close(): Unit = {}
 }

@@ -12,7 +12,7 @@ abstract class ChunkingOutputStream(size: Int) extends OutputStream {
   private def ensureNotClosed(): Unit =
     if(closed) throw new IOException("Write to closed stream")
 
-  def onChunk(bytes: Array[Byte])
+  def onChunk(bytes: Array[Byte]): Unit
 
   def write(b: Int) = synchronized {
     ensureNotClosed()

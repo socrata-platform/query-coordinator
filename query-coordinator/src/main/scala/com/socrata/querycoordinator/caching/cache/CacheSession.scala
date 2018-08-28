@@ -18,7 +18,7 @@ trait CacheSession {
 
   /** Create or replace a key.  It will not be visible until `filler` returns,
     * and MAY not be visible for some time thereafter. */
-  def create(key: String)(filler: CacheSession.Result[OutputStream] => Unit)
+  def create(key: String)(filler: CacheSession.Result[OutputStream] => Unit): Unit
 
   final def createText(key: String)(filler: CacheSession.Result[Writer] => Unit) =
     create(key) { osr =>

@@ -75,7 +75,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
         }
       def toColumnNameJoinAlias(joinAlias: Option[String], columnName: ColumnName) = (columnName, joinAlias)
       def toColumnIdJ(columnName: ColumnName) = columnName.name
-      
+
       val a: SoQLAnalysis[String, SoQLType] = analysis.mapColumnIds(newMappingTupled, toColumnNameJoinAlias, toColumnIdJ, toColumnIdJ)
       (mappingWithNewColumns, convertedAnalyses :+ a)
     }
