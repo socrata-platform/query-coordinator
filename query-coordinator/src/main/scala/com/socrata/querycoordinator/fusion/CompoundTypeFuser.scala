@@ -136,14 +136,12 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite with 
     }
 
     val fusedWhere = select.where.map(e => rewrite(e).getOrElse(e))
-    val fusedGroupBy = select.groupBy.map(gbs => gbs.flatMap(e => rewrite(e).toSeq))
+    val fusedGroupBy = select.groupBy.flatMap(e => rewrite(e).toList)
     val fusedHaving = select.having.map(e => rewrite(e).getOrElse(e))
-    val fusedOrderBy = select.orderBy.map { obs =>
-      obs.flatMap { ob =>
-        rewrite(ob.expression) match {
-          case Some(obe) => Seq(ob.copy(expression = obe))
-          case None => None
-        }
+    val fusedOrderBy = select.orderBy.flatMap { ob =>
+      rewrite(ob.expression) match {
+        case Some(obe) => Seq(ob.copy(expression = obe))
+        case None => None
       }
     }
 

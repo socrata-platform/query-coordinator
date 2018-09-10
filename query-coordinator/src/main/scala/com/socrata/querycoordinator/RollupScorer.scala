@@ -46,7 +46,7 @@ private object RollupScorer extends Logging {
 
   def scoreGroup(r: Anal): Long = {
     r.groupBy match {
-      case None =>
+      case Nil =>
         r.selection.forall {
           case (_, fc: FunctionCall) if fc.function.isAggregate => true
           case _ => false
@@ -58,7 +58,7 @@ private object RollupScorer extends Logging {
         }
       // assume each group by increases the size.  This is assuming a linear increase even
       // though it typically isn't that simple.
-      case Some(g) => 100 * g.length
+      case g => 100 * g.length
     }
   }
 

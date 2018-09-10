@@ -4,14 +4,14 @@ import com.socrata.http.client.RequestBuilder
 import com.socrata.querycoordinator.SchemaFetcher.{NoSuchDatasetInSecondary, Successful}
 import com.socrata.querycoordinator.exceptions.JoinedDatasetNotColocatedException
 import com.socrata.querycoordinator.fusion.{CompoundTypeFuser, SoQLRewrite}
-import com.socrata.soql.collection.{OrderedMap}
+import com.socrata.soql.collection.OrderedMap
 import com.socrata.soql.environment._
 import com.socrata.soql.exceptions.SoQLException
 import com.socrata.soql.functions.SoQLFunctions
 import com.socrata.soql.parsing.{AbstractParser, Parser}
 import com.socrata.soql.typed._
 import com.socrata.soql.types.SoQLType
-import com.socrata.soql.{SoQLAnalysis, SoQLAnalyzer}
+import com.socrata.soql.{SoQLAnalysis, SoQLAnalyzer, typed}
 import com.typesafe.scalalogging.slf4j.Logging
 
 
@@ -129,12 +129,12 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
 
     val (joinColumnIdMap, joinCtx) =
       joins.foldLeft((primaryColumnIdMap, ctx)) { (acc, join) =>
-        val joinTableName = join.tableLike.head.from.get
+        val joinTableName = join.from.source.asInstanceOf[com.socrata.soql.environment.TableName] // TODO: make nicer
         val schemaResult = schemaFetcher(selectedSecondaryInstanceBase, joinTableName.name, None, useResourceName = true)
         schemaResult match {
           case Successful(schema, copyNumber, dataVersion, lastModified) =>
-            val joinTableAliasOrName = joinTableName.alias.getOrElse(joinTableName.name)
-            val joinAlias = join.alias.getOrElse(joinTableAliasOrName)
+            val joinTableAliasOrName = join.from.alias.getOrElse(joinTableName.name)
+            val joinAlias = join.from.alias.getOrElse(joinTableAliasOrName)
             val combinedCtx = acc._2 + (joinTableAliasOrName -> schemaToDatasetContext(schema)) +
               (joinAlias -> schemaToDatasetContext(schema))
             val combinedIdMap = acc._1 ++ schema.schema.map {
@@ -160,7 +160,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
         (fusedResult, joinColumnIdMap)
       case moreThanOne =>
         val moreThanOneRewritten = fuser.rewrite(moreThanOne, columnIdMap, schema)
-        val result = analyzer.analyze(moreThanOneRewritten)(joinCtx)
+        val result = analyzer.analyze(moreThanOneRewritten.toList)(joinCtx)
         val fusedResult = fuser.postAnalyze(result)
         (fusedResult, joinColumnIdMap)
     }
