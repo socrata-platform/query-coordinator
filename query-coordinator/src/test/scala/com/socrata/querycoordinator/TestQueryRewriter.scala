@@ -49,6 +49,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
 
     val rollupDsContext = QueryParser.dsContext(rollupNoopColumnNameMap, rewrittenRawSchema)
 
+    println(analyzer.analyzeUnchainedQuery(q)(toAnalysisContext(rollupDsContext)))
     val rewrittenQueryAnalysis = analyzer.analyzeUnchainedQuery(q)(toAnalysisContext(rollupDsContext)).mapColumnIds(mapIgnoringQualifier(rollupNoopColumnNameMap))
     rewrittenQueryAnalysis
   }
@@ -64,6 +65,11 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
 
     rewrites should contain key "r4"
+    println("zzz")
+    println(rewrittenQueryAnalysis)
+    println(rewrites.get("r4"))
+    println(rollupAnalysis.get("r4"))
+    println("zzz")
     rewrites.get("r4").get should equal(rewrittenQueryAnalysis)
 
     rewrites should contain key "r3"
@@ -155,6 +161,10 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val rewrittenQueryR5 = "SELECT c1 AS crime_type, c2 as crimes, c2 as crimes_potato"
     val rewrittenQueryAnalysisR5 = analyzeRewrittenQuery("r5", rewrittenQueryR5)
     rewrites should contain key "r5"
+    println("zzz")
+    println(rewrites("r5"))
+    println(rewrittenQueryAnalysisR5)
+    println("zzz")
     rewrites.get("r5").get should equal(rewrittenQueryAnalysisR5)
 
     // TODO should be 3 eventually... should also rewrite from table w/o group by
