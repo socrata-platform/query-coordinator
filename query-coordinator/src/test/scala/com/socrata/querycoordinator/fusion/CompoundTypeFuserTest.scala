@@ -56,7 +56,7 @@ class CompoundTypeFuserTest extends TestBase {
     val fuser = CompoundTypeFuser(Map("location" -> "location"))
     val q = "SELECT location WHERE location.latitude = 1.1"
     val parsed = new Parser().selectStatement(q)
-    val rewritten: Seq[Select] = fuser.rewrite(parsed, columnIdMapping, rawSchema)
+    val rewritten: List[Select] = fuser.rewrite(parsed, columnIdMapping, rawSchema)
     val analysis = analyzer.analyze(rewritten)(toAnalysisContext(dsContext))
     val rewrittenAnalysis = fuser.postAnalyze(analysis)
     rewrittenAnalysis.size should be (1)

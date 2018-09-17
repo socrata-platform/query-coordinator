@@ -7,14 +7,14 @@ import com.socrata.soql.types.SoQLType
 
 object NoopFuser extends SoQLRewrite {
 
-  def rewrite(parsedStmts: Seq[Select],
+  def rewrite(parsedStmts: List[Select],
               columnIdMapping: Map[ColumnName, String],
-              schema: Map[String, SoQLType]): Seq[Select] = {
+              schema: Map[String, SoQLType]): List[Select] = {
     parsedStmts
   }
 
   protected def rewrite(select: Select): Select = select
 
   def postAnalyze(analyses: Seq[SoQLAnalysis[ColumnName, SoQLType]]):
-    Seq[SoQLAnalysis[ColumnName, SoQLType]] = analyses
+    List[SoQLAnalysis[ColumnName, SoQLType]] = analyses.toList
 }

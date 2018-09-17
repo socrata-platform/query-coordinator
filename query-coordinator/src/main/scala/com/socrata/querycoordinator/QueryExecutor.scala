@@ -300,7 +300,7 @@ class QueryExecutor(httpClient: HttpClient,
     val cacheKeyBase = makeCacheKeyBase(dataset, unlimitedAnalyses, schema.hash, lastModified, copyNumber, dataVersion, rollupName, obfuscateId, rowCount)
 
     val firstBlock = take(jvalues, windower.windowSize)
-    val isGroupBy = unlimitedAnalyses.exists(_.groupBy.isDefined)
+    val isGroupBy = unlimitedAnalyses.exists(_.groupBys.nonEmpty)
 
     val queryTimeMs = System.currentTimeMillis() - startTimeMs
 

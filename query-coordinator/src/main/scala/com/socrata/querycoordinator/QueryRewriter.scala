@@ -39,10 +39,8 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     }
   }
 
-  private def removeAggregates(opt: Option[Seq[OrderBy]]): Option[Seq[OrderBy]] = {
-    opt.map { seq =>
-      seq.map(o => o.copy(expression = removeAggregates(o.expression)))
-    }
+  private def removeAggregates(opt: OrderBy): OrderBy = {
+    opt.copy(expression = removeAggregates(opt.expression))
   }
 
   /**
@@ -68,25 +66,25 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
       rollupColIdx: Map[Expr, Int]): Option[GroupBy] = {
     (qOpt, rOpt) match {
       // If the query has no group by and the rollup has no group by then all is well
-      case (None, None) => Some(None)
+      case (Nil, Nil) => Some(Nil)
       // If the query and the rollup are grouping on the same columns (possibly in a different order) then
       // we can just leave the grouping off when querying the rollup to make it less expensive.
-      case (Some(q), Some(r)) if q.toSet == r.toSet => Some(None)
+      case (q, r) if q.nonEmpty && r.nonEmpty && q.toSet == r.toSet => Some(Nil)
       // If the query isn't grouped but the rollup is, everything in the selection must be an aggregate.
       // For example, a "SELECT sum(cost) where type='Boat'" could be satisfied by a rollup grouped by type.
       // We rely on the selection rewrite to ensure the columns are there, validate if it is self aggregatable, etc.
-      case (None, Some(_)) if qSelection.forall {
+      case (Nil, r) if r.nonEmpty && qSelection.forall {
         case (_, f: FunctionCall) if f.function.isAggregate => true
         case _ => false
-      } => Some(None)
+      } => Some(Nil)
       // if the query is grouping, every grouping in the query must grouped in the rollup.
       // The analysis already validated there are no un-grouped columns in the selection
       // that aren't in the group by.
-      case (Some(q), _) =>
-        val grouped: Seq[Option[Expr]] = q.map { expr => rewriteExpr(expr, rollupColIdx) }
+      case (q, _) if q.nonEmpty =>
+        val grouped = q.map { expr => rewriteExpr(expr, rollupColIdx) }
 
-        if (grouped.forall(g => g.isDefined)) {
-          Some(Some(grouped.flatten))
+        if (grouped.forall(_.isDefined)) {
+          Some(grouped.flatten)
         } else {
           None
         }
@@ -374,24 +372,24 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     }
   }
 
-  def rewriteOrderBy(obsOpt: Option[Seq[OrderBy]], rollupColIdx: Map[Expr, Int]): Option[Option[Seq[OrderBy]]] = {
+  def rewriteOrderBy(obsOpt: List[OrderBy], rollupColIdx: Map[Expr, Int]): Option[List[OrderBy]] = {
     log.debug(s"Attempting to map order by expression '${obsOpt}'") // scalastyle:ignore multiple.string.literals
 
     // it is silly if the rollup has an order by, but we really don't care.
     obsOpt match {
-      case Some(obs) =>
+      case Nil => Some(Nil)
+      case obs =>
         val mapped = obs.map { ob =>
           rewriteExpr(ob.expression, rollupColIdx) match {
             case Some(e) => Some(ob.copy(expression = e))
             case None => None
           }
         }
-        if (mapped.forall { ob => ob.isDefined }) {
-          Some(Some(mapped.flatten))
+        if (mapped.forall { ob => ob.nonEmpty }) {
+          Some(mapped.flatten)
         } else {
           None
         }
-      case None => Some(None)
     }
   }
 
@@ -408,7 +406,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
       // this lets us lookup the column and get the 0 based index in the select list
       val rollupColIdx = r.selection.values.zipWithIndex.toMap
 
-      val groupBy = rewriteGroupBy(q.groupBy, r.groupBy, q.selection, rollupColIdx)
+      val groupBy = rewriteGroupBy(q.groupBys, r.groupBys, q.selection, rollupColIdx)
       val where = rewriteWhere(q.where, r, rollupColIdx)
 
       /*
@@ -425,7 +423,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
        * desired rollup query:  SELECT c1, c2, c3
        */
       val shouldRemoveAggregates = groupBy match {
-        case Some(None) => q.groupBy.isDefined
+        case Some(Nil) => q.groupBys.nonEmpty
         case _ => false
       }
 
@@ -434,8 +432,8 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
         else s
       }
 
-      val orderBy = rewriteOrderBy(q.orderBy, rollupColIdx) map { o =>
-        if (shouldRemoveAggregates) removeAggregates(o)
+      val orderBy = rewriteOrderBy(q.orderBys, rollupColIdx) map { o =>
+        if (shouldRemoveAggregates) o.map(removeAggregates)
         else o
       }
 
@@ -447,9 +445,9 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
       val mismatch =
         ensure(selection.isDefined, "mismatch on select") orElse
           ensure(where.isDefined, "mismatch on where") orElse
-          ensure(groupBy.isDefined, "mismatch on groupBy") orElse
+          ensure(groupBy.nonEmpty, "mismatch on groupBy") orElse
           ensure(having.isDefined, "mismatch on having") orElse
-          ensure(orderBy.isDefined, "mismatch on orderBy") orElse
+          ensure(orderBy.nonEmpty, "mismatch on orderBy") orElse
           // For limit and offset, we can always apply them from the query  as long as the rollup
           // doesn't have any.  For certain cases it would be possible to rewrite even if the rollup
           // has a limit or offset, but we currently don't.
@@ -461,10 +459,10 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
       mismatch match {
         case None =>
           Some(r.copy(
-            isGrouped = if (shouldRemoveAggregates) groupBy.get.isDefined else q.isGrouped,
+            isGrouped = if (shouldRemoveAggregates) groupBy.exists(_.nonEmpty) else q.isGrouped,
             selection = selection.get,
-            groupBy = groupBy.get,
-            orderBy = orderBy.get,
+            groupBys = groupBy.get,
+            orderBys = orderBy.get,
             // If we are removing aggregates then we are no longer grouping and need to put the condition
             // in the where instead of the having.
             where = if (shouldRemoveAggregates) andExpr(where.get, having.get) else where.get,
@@ -567,7 +565,7 @@ object QueryRewriter {
   type ColumnRef = typed.ColumnRef[ColumnId, SoQLType]
   type Expr = CoreExpr[ColumnId, SoQLType]
   type FunctionCall = typed.FunctionCall[ColumnId, SoQLType]
-  type GroupBy = Option[Seq[Expr]]
+  type GroupBy = List[Expr]
   type OrderBy = typed.OrderBy[ColumnId, SoQLType]
   type RollupName = String
   type Selection = OrderedMap[ColumnName, Expr]

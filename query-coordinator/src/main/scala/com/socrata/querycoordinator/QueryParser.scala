@@ -129,20 +129,20 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
 
     val (joinColumnIdMap, joinCtx) =
       joins.foldLeft((primaryColumnIdMap, ctx)) { (acc, join) =>
-        val joinTableName = join.tableLike.head.from.get
+        val joinTableName = join.from.fromTable
         val schemaResult = schemaFetcher(selectedSecondaryInstanceBase, joinTableName.name, None, useResourceName = true)
         schemaResult match {
           case Successful(schema, copyNumber, dataVersion, lastModified) =>
-            val joinTableAliasOrName = joinTableName.alias.getOrElse(joinTableName.name)
-            val joinAlias = join.alias.getOrElse(joinTableAliasOrName)
-            val combinedCtx = acc._2 + (joinTableAliasOrName -> schemaToDatasetContext(schema)) +
+            val joinTableRef = joinTableName.qualifier
+            val joinAlias = join.from.aliasOpt.getOrElse(joinTableName.qualifier)
+            val combinedCtx = acc._2 + (joinTableRef -> schemaToDatasetContext(schema)) +
               (joinAlias -> schemaToDatasetContext(schema))
             val combinedIdMap = acc._1 ++ schema.schema.map {
               case (columnId, (_, fieldName)) =>
-                (QualifiedColumnName(Some(joinTableAliasOrName), new ColumnName(fieldName)) -> columnId)
+                QualifiedColumnName(Some(joinTableRef), new ColumnName(fieldName)) -> columnId
             } ++ schema.schema.map {
               case (columnId, (_, fieldName)) =>
-              (QualifiedColumnName(Some(joinAlias), new ColumnName(fieldName)) -> columnId)
+              QualifiedColumnName(Some(joinAlias), new ColumnName(fieldName)) -> columnId
             }
             (combinedIdMap, combinedCtx)
           case NoSuchDatasetInSecondary =>
@@ -154,7 +154,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
 
     parsed match {
       case Seq(one) =>
-        val rewrittenOne = fuser.rewrite(Seq(one), columnIdMap, schema).head
+        val rewrittenOne = fuser.rewrite(List(one), columnIdMap, schema).head
         val result = analyzer.analyzeWithSelection(rewrittenOne)(joinCtx)
         val fusedResult = fuser.postAnalyze(Seq(result))
         (fusedResult, joinColumnIdMap)

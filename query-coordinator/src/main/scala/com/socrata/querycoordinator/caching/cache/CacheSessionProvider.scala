@@ -29,9 +29,9 @@ trait CacheSessionProvider {
     rollupName.isDefined ||
       !analyses.exists { a =>
         a.where.isDefined ||
-        a.groupBy.isDefined ||
+        a.groupBys.nonEmpty ||
         a.having.isDefined ||
-        (a.orderBy.isDefined && a.orderBy.get.size > 1) ||
+        (a.orderBys.size > 1) ||
         a.search.isDefined ||
         a.distinct
       }

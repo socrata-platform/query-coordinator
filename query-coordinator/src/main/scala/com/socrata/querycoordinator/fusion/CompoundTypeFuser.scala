@@ -20,9 +20,9 @@ case object FTUrl extends FuseType
 case object FTRemove extends FuseType
 
 trait SoQLRewrite {
-  def rewrite(parsedStmts: Seq[Select],
+  def rewrite(parsedStmts: List[Select],
               columnIdMapping: Map[ColumnName, String],
-              schema: Map[String, SoQLType]): Seq[Select]
+              schema: Map[String, SoQLType]): List[Select]
 
   protected def rewrite(select: Select): Select
 
@@ -79,9 +79,9 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite with 
     }
   }
 
-  def rewrite(parsedStmts: Seq[Select],
+  def rewrite(parsedStmts: List[Select],
               columnIdMapping: Map[ColumnName, String],
-              schema: Map[String, SoQLType]): Seq[Select] = {
+              schema: Map[String, SoQLType]): List[Select] = {
 
     // expand "select *"
     val firstStmt = parsedStmts.head
@@ -94,7 +94,7 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite with 
       }
     }
 
-    val expandedStmts = parsedStmts.foldLeft((Seq.empty[Select], toAnalysisContext(baseCtx))) { (acc, select) =>
+    val expandedStmts = parsedStmts.foldLeft((List.empty[Select], toAnalysisContext(baseCtx))) { (acc, select) =>
       val (selects, ctx) = acc
       val expandedSelection = AliasAnalysis.expandSelection(select.selection)(ctx)
       val expandedStmt = select.copy(selection = Selection(None, Seq.empty, expandedSelection))
@@ -121,7 +121,7 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite with 
   protected def rewrite(select: Select): Select = {
     val fusedSelectExprs = select.selection.expressions.flatMap {
       case SelectedExpression(expr: Expression, namePos) =>
-        rewrite(expr) match {
+        rewriteExpr(expr) match {
           case Some(rwExpr) =>
             val alias =
               if (expr.eq(rwExpr)) { // Do not change the original name if the expression is not rewritten.
@@ -135,24 +135,19 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite with 
         }
     }
 
-    val fusedWhere = select.where.map(e => rewrite(e).getOrElse(e))
-    val fusedGroupBy = select.groupBy.map(gbs => gbs.flatMap(e => rewrite(e).toSeq))
-    val fusedHaving = select.having.map(e => rewrite(e).getOrElse(e))
-    val fusedOrderBy = select.orderBy.map { obs =>
-      obs.flatMap { ob =>
-        rewrite(ob.expression) match {
-          case Some(obe) => Seq(ob.copy(expression = obe))
-          case None => None
-        }
-      }
-    }
+    val fusedWhere = select.where.map(e => rewriteExpr(e).getOrElse(e))
+    val fusedGroupBy = select.groupBys.map(rewriteExpr).flatten
+    val fusedHaving = select.having.map(e => rewriteExpr(e).getOrElse(e))
+    val fusedOrderBy = select.orderBys.map { ob =>
+      rewriteExpr(ob.expression).map(e => ob.copy(expression = e))
+    }.flatten
 
     select.copy(
       selection = select.selection.copy(expressions = fusedSelectExprs),
       where = fusedWhere,
-      groupBy = fusedGroupBy,
+      groupBys = fusedGroupBy,
       having = fusedHaving,
-      orderBy = fusedOrderBy
+      orderBys = fusedOrderBy
     )
   }
 
@@ -163,13 +158,13 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite with 
     val last = analyses.last
     val newSelect = last.selection map {
       case (cn, expr) =>
-        (ColumnName(cn.name.replaceFirst(ColumnPrefix, "")) -> expr)
+        ColumnName(cn.name.replaceFirst(ColumnPrefix, "")) -> expr
     }
 
     analyses.updated(analyses.size - 1, last.copy(selection = newSelect))
   }
 
-  private def rewrite(expr: Expression): Option[Expression] = {
+  private def rewriteExpr(expr: Expression): Option[Expression] = {
     expr match {
       case baseColumn@ColumnOrAliasRef(NoQualifier, name: ColumnName) =>
         fuse.get(name.name) match {
@@ -240,7 +235,7 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite with 
             Some(fc)
         }
       case fc@FunctionCall(fnName, params) =>
-         val rwParams: Seq[Expression] = params.map(e => rewrite(e).getOrElse(e))
+         val rwParams: Seq[Expression] = params.map(e => rewriteExpr(e).getOrElse(e))
          Some(fc.copy(parameters = rwParams)(fc.functionNamePosition, fc.position))
       case _ =>
         Some(expr)

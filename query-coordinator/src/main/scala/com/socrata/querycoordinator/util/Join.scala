@@ -21,16 +21,13 @@ object Join {
     map(columnName)
   }
 
-  def expandJoins(join: ast.Join): Seq[ast.Join] = {
-    if (SimpleSelect.isSimple(join.tableLike)) Seq(join)
-    else expandJoins(join.tableLike) :+ join
+  def expandJoins(join: ast.Join): List[ast.Join] = {
+    val subSelects = join.from.selects
+    if (subSelects.isEmpty) List(join)
+    else (join :: expandJoins(subSelects)).reverse // TODO: does it need to be reversed?
   }
 
-  def expandJoins(selects: Seq[Select]): Seq[ast.Join] = {
-    selects.flatMap { select =>
-      select.join.toSeq.flatten.flatMap { j =>
-        expandJoins(j)
-      }
-    }
+  def expandJoins(selects: List[Select]): List[ast.Join] = {
+    selects.flatMap(_.joins.flatMap(expandJoins))
   }
 }
