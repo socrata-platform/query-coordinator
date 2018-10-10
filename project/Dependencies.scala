@@ -3,7 +3,7 @@ import sbt._
 object Dependencies {
 
   object versions {
-    val postgresql = "9.4.1207.jre7"
+    val postgresql = "42.2.5"
     val c3p0 = "0.9.5.2"
     val socrataHttpVersion = "3.10.1"
     val protobuf = "2.4.1"
