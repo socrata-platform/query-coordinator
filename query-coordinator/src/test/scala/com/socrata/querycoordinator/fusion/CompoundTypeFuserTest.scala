@@ -1,5 +1,6 @@
 package com.socrata.querycoordinator.fusion
 
+import com.socrata.NonEmptySeq
 import com.socrata.querycoordinator.QueryRewriter._
 import com.socrata.querycoordinator.caching.SoQLAnalysisDepositioner
 import com.socrata.querycoordinator.{QueryParser, QueryRewriter, Schema, TestBase}
@@ -56,11 +57,11 @@ class CompoundTypeFuserTest extends TestBase {
     val fuser = CompoundTypeFuser(Map("location" -> "location"))
     val q = "SELECT location WHERE location.latitude = 1.1"
     val parsed = new Parser().selectStatement(q)
-    val rewritten: List[Select] = fuser.rewrite(parsed, columnIdMapping, rawSchema)
+    val rewritten: NonEmptySeq[Select] = fuser.rewrite(parsed, columnIdMapping, rawSchema)
     val analysis = analyzer.analyze(rewritten)(toAnalysisContext(dsContext))
     val rewrittenAnalysis = fuser.postAnalyze(analysis)
     rewrittenAnalysis.size should be (1)
-    rewrittenAnalysis.foreach { analysis =>
+    rewrittenAnalysis.seq.foreach { analysis =>
       val da = SoQLAnalysisDepositioner(analysis)
       val args = Seq(ColumnRef(None, ColumnName("location"), SoQLPoint.t)(NoPosition),
                      ColumnRef(None, ColumnName("location_address"), SoQLText.t)(NoPosition),

@@ -1,6 +1,7 @@
 package com.socrata.querycoordinator.caching.cache
 
 import com.rojoma.simplearm.v2.ResourceScope
+import com.socrata.NonEmptySeq
 import com.socrata.soql.SoQLAnalysis
 import com.socrata.soql.types.SoQLType
 import org.joda.time.DateTime
@@ -24,10 +25,10 @@ trait CacheSessionProvider {
     disableTil.isAfterNow
   }
 
-  def shouldSkip(analyses: Seq[SoQLAnalysis[String, SoQLType]], rollupName: Option[String]): Boolean = {
+  def shouldSkip(analyses: NonEmptySeq[SoQLAnalysis[String, SoQLType]], rollupName: Option[String]): Boolean = {
     analyses.last.limit.isEmpty ||
     rollupName.isDefined ||
-      !analyses.exists { a =>
+      !analyses.seq.exists { a =>
         a.where.isDefined ||
         a.groupBys.nonEmpty ||
         a.having.isDefined ||

@@ -40,13 +40,13 @@ object SoQLAnalysisDepositioner {
 
   private def depositionOptExpr[ColumnId,Type](expr: Option[CoreExpr[ColumnId, Type]]) = expr.map(depositionExpr)
 
-  private def depositionGroupBys[ColumnId,Type](expr: List[CoreExpr[ColumnId, Type]]) = expr.map(depositionExpr)
+  private def depositionGroupBys[ColumnId,Type](expr: Seq[CoreExpr[ColumnId, Type]]) = expr.map(depositionExpr)
 
-  private def depositionOrderBys[ColumnId,Type](expr: List[OrderBy[ColumnId, Type]]) = expr.map(depositionOrderBy)
+  private def depositionOrderBys[ColumnId,Type](expr: Seq[OrderBy[ColumnId, Type]]) = expr.map(depositionOrderBy)
 
   private def depositionOrderBy[ColumnId,Type](ob: OrderBy[ColumnId, Type]) = ob.copy(expression = depositionExpr(ob.expression))
 
-  private def depsoitionOptJoins[ColumnId, Type](joins: List[Join[ColumnId, Type]]) = {
+  private def depsoitionOptJoins[ColumnId, Type](joins: Seq[Join[ColumnId, Type]]) = {
     joins.map { join =>
       val mappedSubAna = join.from.subAnalysis.map(sa => sa.copy(analyses = sa.analyses.map(SoQLAnalysisDepositioner.apply)))
       Join(join.typ, join.from.copy(subAnalysis = mappedSubAna), depositionExpr(join.on))

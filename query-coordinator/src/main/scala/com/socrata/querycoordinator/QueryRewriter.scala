@@ -372,7 +372,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     }
   }
 
-  def rewriteOrderBy(obsOpt: List[OrderBy], rollupColIdx: Map[Expr, Int]): Option[List[OrderBy]] = {
+  def rewriteOrderBy(obsOpt: Seq[OrderBy], rollupColIdx: Map[Expr, Int]): Option[Seq[OrderBy]] = {
     log.debug(s"Attempting to map order by expression '${obsOpt}'") // scalastyle:ignore multiple.string.literals
 
     // it is silly if the rollup has an order by, but we really don't care.
@@ -392,7 +392,6 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
         }
     }
   }
-
 
   def possibleRewrites(schema: Schema, q: Anal, rollups: Seq[RollupInfo], project: Map[String, String]): Map[RollupName, Anal] = {
     possibleRewrites(q, analyzeRollups(schema, rollups, project))
@@ -565,7 +564,7 @@ object QueryRewriter {
   type ColumnRef = typed.ColumnRef[ColumnId, SoQLType]
   type Expr = CoreExpr[ColumnId, SoQLType]
   type FunctionCall = typed.FunctionCall[ColumnId, SoQLType]
-  type GroupBy = List[Expr]
+  type GroupBy = Seq[Expr]
   type OrderBy = typed.OrderBy[ColumnId, SoQLType]
   type RollupName = String
   type Selection = OrderedMap[ColumnName, Expr]

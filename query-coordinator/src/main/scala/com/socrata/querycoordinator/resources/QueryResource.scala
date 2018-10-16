@@ -1,9 +1,10 @@
 package com.socrata.querycoordinator.resources
 
 import java.io.{InputStream, OutputStream}
-import javax.servlet.http.HttpServletResponse
 
+import javax.servlet.http.HttpServletResponse
 import com.rojoma.simplearm.v2.ResourceScope
+import com.socrata.NonEmptySeq
 import com.socrata.http.common.util.HttpUtils
 import com.socrata.http.server._
 import com.socrata.http.server.implicits._
@@ -18,7 +19,6 @@ import com.socrata.soql.types.SoQLType
 import org.apache.http.HttpStatus
 import org.joda.time.format.ISODateTimeFormat
 import org.joda.time.{DateTime, Interval}
-
 
 import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
@@ -122,7 +122,7 @@ class QueryResource(secondary: Secondary,
           retriesSoFar >= 3
         }
 
-        def analyzeRequest(schemaWithFieldNames: Versioned[SchemaWithFieldName], isFresh: Boolean): Either[QueryRetryState, Versioned[(Schema, Seq[SoQLAnalysis[String, SoQLType]])]] = {
+        def analyzeRequest(schemaWithFieldNames: Versioned[SchemaWithFieldName], isFresh: Boolean): Either[QueryRetryState, Versioned[(Schema, NonEmptySeq[SoQLAnalysis[String, SoQLType]])]] = {
 
           val schema = stripFieldNamesFromSchema(schemaWithFieldNames.payload)
           val columnIdMap = extractColumnIdMap(schemaWithFieldNames.payload)
@@ -163,8 +163,8 @@ class QueryResource(secondary: Secondary,
          * @param analyzedQueryNoRollup original analysis without rollup
          */
         def executeQuery(schema: Versioned[Schema],
-                         analyzedQuery: Seq[SoQLAnalysis[String, SoQLType]],
-                         analyzedQueryNoRollup: Seq[SoQLAnalysis[String, SoQLType]],
+                         analyzedQuery: NonEmptySeq[SoQLAnalysis[String, SoQLType]],
+                         analyzedQueryNoRollup: NonEmptySeq[SoQLAnalysis[String, SoQLType]],
                          rollupName: Option[String],
                          requestId: String,
                          resourceName: Option[String],
@@ -240,9 +240,9 @@ class QueryResource(secondary: Secondary,
          * Scan from left to right (inner to outer), rewrite the first possible one.
          * TODO: Find a better way to apply rollup?
          */
-        def possiblyRewriteOneAnalysisInQuery(schema: Schema, analyzedQuery: Seq[SoQLAnalysis[String, SoQLType]])
-          : (Seq[SoQLAnalysis[String, SoQLType]], Option[String]) = {
-          if (noRollup || analyzedQuery.exists(_.joins.nonEmpty)) {
+        def possiblyRewriteOneAnalysisInQuery(schema: Schema, analyzedQuery: NonEmptySeq[SoQLAnalysis[String, SoQLType]])
+          : (NonEmptySeq[SoQLAnalysis[String, SoQLType]], Option[String]) = {
+          if (noRollup || analyzedQuery.seq.exists(_.joins.nonEmpty)) {
             (analyzedQuery, None)
           } else {
             rollupInfoFetcher(base.receiveTimeoutMS(schemaTimeout.toMillis.toInt), dataset, copy) match {
@@ -272,7 +272,7 @@ class QueryResource(secondary: Secondary,
           : (SoQLAnalysis[String, SoQLType], Option[String]) = {
           val rewritten = RollupScorer.bestRollup(
             queryRewriter.possibleRewrites(schema, analyzedQuery, rollups, project).toSeq)
-          val (rollupName, analysis) = rewritten map { x => (Some(x._1), x._2) } getOrElse ((None, analyzedQuery))
+          val (rollupName, analysis) = rewritten map { x => (Option(x._1), x._2) } getOrElse ((None, analyzedQuery))
           rollupName.foreach(ru => log.info(s"Rewrote query on dataset $dataset to rollup $ru")) // only log rollup name if it is defined.
           log.debug(s"Rewritten analysis: $analysis")
           (analysis, rollupName)
