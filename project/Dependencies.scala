@@ -7,7 +7,7 @@ object Dependencies {
     val c3p0 = "0.9.5.2"
     val socrataHttpVersion = "3.10.1"
     val protobuf = "2.4.1"
-    val rojomaJson = "3.5.0"
+    val rojomaJson = "3.9.1"
     val socrataCuratorUtils = "1.1.1"
     val socrataThirdpartyUtils = "4.0.1"
     val socrataUtils = "0.10.0"
