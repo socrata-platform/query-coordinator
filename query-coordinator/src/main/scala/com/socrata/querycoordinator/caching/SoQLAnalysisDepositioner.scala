@@ -9,16 +9,15 @@ import scala.util.parsing.input.NoPosition
 
 object SoQLAnalysisDepositioner {
   def apply[ColumnId,Type](sa: SoQLAnalysis[ColumnId,Type]): SoQLAnalysis[ColumnId,Type] = {
-    val SoQLAnalysis(isGrouped, distinct, selection, from, join, where, groupBy, having, orderBy, limit, offset, search) = sa
+    val SoQLAnalysis(isGrouped, distinct, selection, joins, where, groupBys, having, orderBys, limit, offset, search) = sa
     SoQLAnalysis(isGrouped = isGrouped,
                  distinct = distinct,
                  selection = depositionSelection(selection),
-                 from = from,
-                 join = depsoitionOptJoins(join),
+                 joins = depsoitionOptJoins(joins),
                  where = depositionOptExpr(where),
-                 groupBy = depositionGroupBys(groupBy),
+                 groupBys = depositionGroupBys(groupBys),
                  having = depositionOptExpr(having),
-                 orderBy = depositionOrderBys(orderBy),
+                 orderBys = depositionOrderBys(orderBys),
                  limit = limit,
                  offset = offset,
                  search = search)
@@ -41,17 +40,16 @@ object SoQLAnalysisDepositioner {
 
   private def depositionOptExpr[ColumnId,Type](expr: Option[CoreExpr[ColumnId, Type]]) = expr.map(depositionExpr)
 
-  private def depositionGroupBys[ColumnId,Type](expr: Option[Seq[CoreExpr[ColumnId, Type]]]) = expr.map(_.map(depositionExpr))
+  private def depositionGroupBys[ColumnId,Type](expr: Seq[CoreExpr[ColumnId, Type]]) = expr.map(depositionExpr)
 
-  private def depositionOrderBys[ColumnId,Type](expr: Option[Seq[OrderBy[ColumnId, Type]]]) = expr.map(_.map(depositionOrderBy))
+  private def depositionOrderBys[ColumnId,Type](expr: Seq[OrderBy[ColumnId, Type]]) = expr.map(depositionOrderBy)
 
   private def depositionOrderBy[ColumnId,Type](ob: OrderBy[ColumnId, Type]) = ob.copy(expression = depositionExpr(ob.expression))
 
-  private def depsoitionOptJoins[ColumnId, Type](joinsOpt: Option[List[Join[ColumnId, Type]]]) = {
-    joinsOpt.map { joins =>
-      joins.map { join =>
-        Join(join.typ, join.tableLike.map(SoQLAnalysisDepositioner(_)), join.alias, depositionExpr(join.expr))
-      }
+  private def depsoitionOptJoins[ColumnId, Type](joins: Seq[Join[ColumnId, Type]]) = {
+    joins.map { join =>
+      val mappedSubAna = join.from.subAnalysis.map(sa => sa.copy(analyses = sa.analyses.map(SoQLAnalysisDepositioner.apply)))
+      Join(join.typ, join.from.copy(subAnalysis = mappedSubAna), depositionExpr(join.on))
     }
   }
 }
