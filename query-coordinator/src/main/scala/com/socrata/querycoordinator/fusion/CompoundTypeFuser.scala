@@ -203,7 +203,7 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite with 
                 Some(FunctionCall(SoQLFunctions.PointToLatitude.name, args)(NoPosition, NoPosition))
               case "longitude" =>
                 val args = Seq(ColumnOrAliasRef(NoQualifier, ColumnName(s"${name.name}"))(NoPosition))
-                Some(FunctionCall(SoQLFunctions.PointToLatitude.name, args)(NoPosition, NoPosition))
+                Some(FunctionCall(SoQLFunctions.PointToLongitude.name, args)(NoPosition, NoPosition))
               case "human_address" =>
                 val args = Seq("address", "city", "state", "zip")
                   .map(subProp => ColumnOrAliasRef(NoQualifier, ColumnName(s"${name.name}_$subProp"))(NoPosition))
