@@ -1,6 +1,5 @@
 package com.socrata.querycoordinator.fusion
 
-import com.ibm.icu.text.SimpleDateFormat.ContextType
 import com.socrata.NonEmptySeq
 import com.socrata.soql.SoQLAnalysis
 import com.socrata.soql.aliases.AliasAnalysis
