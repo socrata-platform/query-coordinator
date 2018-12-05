@@ -412,8 +412,8 @@ class QueryExecutor(httpClient: HttpClient,
     val params = List(
       qpDataset -> dataset,
       qpQuery -> serializedAnalyses,
-      qpSchemaHash -> schema.hash) ++
-      queryTimeoutSeconds.map(qpQueryTimeoutSeconds -> _) ++
+      qpSchemaHash -> schema.hash,
+      qpQueryTimeoutSeconds -> queryTimeoutSeconds.getOrElse((60 * 60 * 12).toString)) ++
       rowCount.map(rc => List(qpRowCount -> rc)).getOrElse(Nil) ++
       copy.map(c => List(qpCopy -> c)).getOrElse(Nil) ++
       rollupName.map(c => List(qpRollupName -> c)).getOrElse(Nil) ++
