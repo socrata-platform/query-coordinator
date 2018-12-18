@@ -11,7 +11,7 @@ object BuildSettings {
       scalaVersion := "2.10.4",
       resolvers ++= Seq(
         "Open Source Geospatial Foundation Repository" at "http://download.osgeo.org/webdav/geotools",
-        "socrata releases" at "https://repository-socrata-oss.forge.cloudbees.com/release"
+        "socrata releases" at "https://repo.socrata.com/artifactory/libs-release"
       ),
       scalacOptions ++= Seq("-deprecation", "-feature")
     )
