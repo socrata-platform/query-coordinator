@@ -4,13 +4,13 @@ import com.socrata.soql.functions.SoQLFunctions._
 import com.socrata.soql.types.SoQLFloatingTimestamp
 
 class TestQueryRewriterDateTruncLtGte extends TestQueryRewriterDateTruncBase {
-  val rewrittenQueryRymd = "SELECT c2 as ward, sum(c3) as count WHERE c1 >= '2011-03-08' AND c1 < '2019-08-02' GROUP BY c2"
+  val rewrittenQueryRymd = "SELECT c2 as ward, coalesce(sum(c3), 0) as count WHERE c1 >= '2011-03-08' AND c1 < '2019-08-02' GROUP BY c2"
   val rewrittenQueryAnalysisRymd = analyzeRewrittenQuery("r_ymd", rewrittenQueryRymd)
 
-  val rewrittenQueryRym = "SELECT c2 as ward, sum(c3) as count WHERE c1 >= '2011-03-01' AND c1 < '2019-08-01' GROUP BY c2"
+  val rewrittenQueryRym = "SELECT c2 as ward, coalesce(sum(c3), 0) as count WHERE c1 >= '2011-03-01' AND c1 < '2019-08-01' GROUP BY c2"
   val rewrittenQueryAnalysisRym = analyzeRewrittenQuery("r_ymd", rewrittenQueryRym)
 
-  val rewrittenQueryRy = "SELECT c2 as ward, sum(c3) as count WHERE c1 >= '2011-01-01' AND c1 < '2019-01-01' GROUP BY c2"
+  val rewrittenQueryRy = "SELECT c2 as ward, coalesce(sum(c3), 0) as count WHERE c1 >= '2011-01-01' AND c1 < '2019-01-01' GROUP BY c2"
   val rewrittenQueryAnalysisRy = analyzeRewrittenQuery("r_y", rewrittenQueryRy)
 
   test("year") {
@@ -56,7 +56,7 @@ class TestQueryRewriterDateTruncLtGte extends TestQueryRewriterDateTruncBase {
 
     rewrites should contain key "r_ymd"
     rewrites.get("r_ymd").get should equal(analyzeRewrittenQuery("r_ymd",
-      "SELECT c2 as ward, sum(c3) as count WHERE c1 >= '2011-03-08' AND c1 < '2019-08-02' AND c1 < '9999-01-01' GROUP BY c2"))
+      "SELECT c2 as ward, coalesce(sum(c3), 0) as count WHERE c1 >= '2011-03-08' AND c1 < '2019-08-02' AND c1 < '9999-01-01' GROUP BY c2"))
     rewrites should have size 1
   }
 
@@ -68,7 +68,7 @@ class TestQueryRewriterDateTruncLtGte extends TestQueryRewriterDateTruncBase {
 
     rewrites should contain key "r_ymd"
     rewrites.get("r_ymd").get should equal(analyzeRewrittenQuery("r_ymd",
-      "SELECT c2 as ward, sum(c3) as count WHERE c1 >= '2011-03-08' AND c1 < '2019-08-02' AND c1 IS NOT NULL GROUP BY c2"))
+      "SELECT c2 as ward, coalesce(sum(c3), 0) as count WHERE c1 >= '2011-03-08' AND c1 < '2019-08-02' AND c1 IS NOT NULL GROUP BY c2"))
     rewrites should have size 1
   }
 

@@ -1,19 +1,19 @@
 package com.socrata.querycoordinator
 
 class TestQueryRewriterDateTrunc extends TestQueryRewriterDateTruncBase {
-  val rewrittenQueryRymd = "SELECT c2 as ward, sum(c3) as count WHERE c1 BETWEEN date_trunc_ymd('2011-02-01') " +
+  val rewrittenQueryRymd = "SELECT c2 as ward, coalesce(sum(c3), 0) as count WHERE c1 BETWEEN date_trunc_ymd('2011-02-01') " +
     "AND date_trunc_ymd('2012-05-02') GROUP BY c2"
   val rewrittenQueryAnalysisRymd = analyzeRewrittenQuery("r_ymd", rewrittenQueryRymd)
 
-  val rewrittenQueryRym = "SELECT c2 as ward, sum(c3) as count WHERE c1 BETWEEN date_trunc_ym('2011-02-01') " +
+  val rewrittenQueryRym = "SELECT c2 as ward, coalesce(sum(c3), 0) as count WHERE c1 BETWEEN date_trunc_ym('2011-02-01') " +
     "AND date_trunc_ym('2012-05-02') GROUP BY c2"
   val rewrittenQueryAnalysisRym = analyzeRewrittenQuery("r_ymd", rewrittenQueryRym)
 
-  val rewrittenQueryNotBetweenRym = "SELECT c2 as ward, sum(c3) as count WHERE c1 NOT BETWEEN " +
+  val rewrittenQueryNotBetweenRym = "SELECT c2 as ward, coalesce(sum(c3), 0) as count WHERE c1 NOT BETWEEN " +
     "date_trunc_ym('2011-02-01') AND date_trunc_ym('2012-05-02') GROUP BY c2"
   val rewrittenQueryAnalysisNotBetweenRym = analyzeRewrittenQuery("r_ymd", rewrittenQueryNotBetweenRym)
 
-  val rewrittenQueryRy = "SELECT c2 as ward, sum(c3) as count WHERE c1 BETWEEN date_trunc_y('2011-02-01') " +
+  val rewrittenQueryRy = "SELECT c2 as ward, coalesce(sum(c3), 0) as count WHERE c1 BETWEEN date_trunc_y('2011-02-01') " +
     "AND date_trunc_y('2012-05-02') GROUP BY c2"
   val rewrittenQueryAnalysisRy = analyzeRewrittenQuery("r_y", rewrittenQueryRy)
 
