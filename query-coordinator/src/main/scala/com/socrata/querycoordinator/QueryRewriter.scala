@@ -278,8 +278,8 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
       case fc: FunctionCall if isCountStarOrLiteral(fc) =>
         for {
           idx <- findCountStarOrLiteral(rollupColIdx) // find count(*) column in rollup
-          newSumCol <- Some(typed.ColumnRef(NoQualifier, rollupColumnId(idx), SoQLNumber.t)(fc.position))
         } yield {
+          val newSumCol = typed.ColumnRef(NoQualifier, rollupColumnId(idx), SoQLNumber.t)(fc.position)
           val sum = MonomorphicFunction(Sum, Map("a" -> SoQLNumber))
           val coalesce = MonomorphicFunction(Coalesce, Map("a" -> SoQLNumber))
           typed.FunctionCall(coalesce, Seq(typed.FunctionCall(sum, Seq(newSumCol))(fc.position, fc.position),
@@ -288,12 +288,15 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
       // A count(...) on q gets mapped to a sum(...) on a matching column in the rollup.  We still need the count(*)
       // case above to ensure we can do things like map count(1) and count(*) which aren't exact matches.
       case fc@typed.FunctionCall(MonomorphicFunction(Count, _), _) =>
-        val mf = MonomorphicFunction(Sum, Map("a" -> SoQLNumber))
         for {
           idx <- rollupColIdx.get(fc) // find count(...) in rollup that matches exactly
-          newSumCol <- Some(typed.ColumnRef(NoQualifier, rollupColumnId(idx), SoQLNumber.t)(fc.position))
-          newFc <- Some(typed.FunctionCall(mf, Seq(newSumCol))(fc.position, fc.position))
-        } yield newFc
+        } yield {
+          val newSumCol = typed.ColumnRef(NoQualifier, rollupColumnId(idx), SoQLNumber.t)(fc.position)
+          val sum = MonomorphicFunction(Sum, Map("a" -> SoQLNumber))
+          val coalesce = MonomorphicFunction(Coalesce, Map("a" -> SoQLNumber))
+          typed.FunctionCall(coalesce, Seq(typed.FunctionCall(sum, Seq(newSumCol))(fc.position, fc.position),
+                                           typed.NumberLiteral(0, SoQLNumber.t)(fc.position)))(fc.position, fc.position)
+        }
       // If this is a between function operating on floating timestamps, and arguments b and c are both date aggregates,
       // then try to rewrite argument a to use a rollup.
       case fc: FunctionCall
