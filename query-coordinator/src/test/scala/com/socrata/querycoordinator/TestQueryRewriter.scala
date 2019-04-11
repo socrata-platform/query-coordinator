@@ -57,7 +57,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val q = "SELECT ward, count(*) AS ward_count GROUP BY ward"
     val queryAnalysis = analyzeQuery(q)
 
-    val rewrittenQuery = "SELECT c1 AS ward, sum(c3) AS ward_count GROUP by c1"
+    val rewrittenQuery = "SELECT c1 AS ward, coalesce(sum(c3), 0) AS ward_count GROUP by c1"
 
     val rewrittenQueryAnalysis = analyzeRewrittenQuery("r4", rewrittenQuery)
 
@@ -76,7 +76,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val q = "SELECT crime_type, ward, count(*) AS ward_count GROUP BY crime_type, ward"
     val queryAnalysis = analyzeQuery(q)
 
-    val rewrittenQuery = "SELECT c2 AS crime_type, c1 as ward, sum(c3) AS ward_count GROUP by c2, c1"
+    val rewrittenQuery = "SELECT c2 AS crime_type, c1 as ward, coalesce(sum(c3), 0) AS ward_count GROUP by c2, c1"
 
     val rewrittenQueryAnalysis = analyzeRewrittenQuery("r4", rewrittenQuery)
 
@@ -128,7 +128,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val queryAnalysis = analyzeQuery(q)
 
     val rewrittenQuery =
-      "SELECT c2 AS crime_type, c1 as ward, 1, sum(c3) AS ward_count GROUP by c2, c1 LIMIT 100 OFFSET 200"
+      "SELECT c2 AS crime_type, c1 as ward, 1, coalesce(sum(c3), 0) AS ward_count GROUP by c2, c1 LIMIT 100 OFFSET 200"
 
     val rewrittenQueryAnalysis = analyzeRewrittenQuery("r4", rewrittenQuery)
 
@@ -147,12 +147,12 @@ class TestQueryRewriter extends TestQueryRewriterBase {
 
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
 
-    val rewrittenQueryR4 = "SELECT c2 AS crime_type, sum(c3) as crimes, sum(c3) as crimes_potato GROUP by c2"
+    val rewrittenQueryR4 = "SELECT c2 AS crime_type, coalesce(sum(c3), 0) as crimes, coalesce(sum(c3), 0) as crimes_potato GROUP by c2"
     val rewrittenQueryAnalysisR4 = analyzeRewrittenQuery("r4", rewrittenQueryR4)
     rewrites should contain key "r4"
     rewrites.get("r4").get should equal(rewrittenQueryAnalysisR4)
 
-    val rewrittenQueryR5 = "SELECT c1 AS crime_type, c2 as crimes, c2 as crimes_potato"
+    val rewrittenQueryR5 = "SELECT c1 AS crime_type, coalesce(c2, 0) as crimes, coalesce(c2, 0) as crimes_potato"
     val rewrittenQueryAnalysisR5 = analyzeRewrittenQuery("r5", rewrittenQueryR5)
     rewrites should contain key "r5"
     rewrites.get("r5").get should equal(rewrittenQueryAnalysisR5)
@@ -165,7 +165,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val q = "SELECT ward, count(*) AS ward_count WHERE crime_type = 'Clownicide' AND number1 > 5 GROUP BY ward"
     val queryAnalysis = analyzeQuery(q)
 
-    val rewrittenQuery = "SELECT c1 AS ward, sum(c3) AS ward_count WHERE c2 = 'Clownicide' AND c4 > 5 GROUP by c1"
+    val rewrittenQuery = "SELECT c1 AS ward, coalesce(sum(c3), 0) AS ward_count WHERE c2 = 'Clownicide' AND c4 > 5 GROUP by c1"
 
     val rewrittenQueryAnalysis = analyzeRewrittenQuery("r4", rewrittenQuery)
 
@@ -182,7 +182,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val q = "SELECT ward, count(crime_type) AS crime_type_count WHERE ward != 5 GROUP BY ward"
     val queryAnalysis = analyzeQuery(q)
 
-    val rewrittenQuery = "SELECT c1 AS ward, c3 AS crime_type_count WHERE c1 != 5"
+    val rewrittenQuery = "SELECT c1 AS ward, coalesce(c3, 0) AS crime_type_count WHERE c1 != 5"
 
     val rewrittenQueryAnalysis = analyzeRewrittenQuery("r3", rewrittenQuery)
 
@@ -199,7 +199,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val q = "SELECT crime_type, count(case(crime_date IS NOT NULL, crime_date, true, some_date)) AS c GROUP BY crime_type"
     val queryAnalysis = analyzeQuery(q)
 
-    val rewrittenQuery = "SELECT c1 AS crime_type, c2 AS c"
+    val rewrittenQuery = "SELECT c1 AS crime_type, coalesce(c2, 0) AS c"
 
     val rewrittenQueryAnalysis = analyzeRewrittenQuery("r9", rewrittenQuery)
 
@@ -227,7 +227,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val queryAnalysis = analyzeQuery(q)
 
     val rewrittenQuery =
-      "SELECT c2 AS crime_type, c1 as ward, sum(c3) AS ward_count GROUP by c2, c1 ORDER BY sum(c3) desc, c2"
+      "SELECT c2 AS crime_type, c1 as ward, coalesce(sum(c3), 0) AS ward_count GROUP by c2, c1 ORDER BY coalesce(sum(c3), 0) desc, c2"
 
     val rewrittenQueryAnalysis = analyzeRewrittenQuery("r4", rewrittenQuery)
 
@@ -244,7 +244,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val q = "SELECT crime_type, count(*) AS c GROUP BY crime_type ORDER BY c DESC"
     val queryAnalysis = analyzeQuery(q)
 
-    val rewrittenQuery = "SELECT c1 AS crime_type, c2 AS c ORDER BY c2 DESC"
+    val rewrittenQuery = "SELECT c1 AS crime_type, coalesce(c2, 0) AS c ORDER BY coalesce(c2, 0) DESC"
 
     val rewrittenQueryAnalysis = analyzeRewrittenQuery("r9", rewrittenQuery)
 
@@ -262,7 +262,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val q = "SELECT ward, date_trunc_ym(crime_date) AS d, count(*) GROUP BY ward, date_trunc_ym(crime_date)"
     val queryAnalysis = analyzeQuery(q)
 
-    val rewrittenQuery = "SELECT c2 AS ward, c1 AS d, c3 AS count"
+    val rewrittenQuery = "SELECT c2 AS ward, c1 AS d, coalesce(c3, 0) AS count"
 
     val rewrittenQueryAnalysis = analyzeRewrittenQuery("r8", rewrittenQuery)
 
@@ -280,12 +280,12 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val queryAnalysis = analyzeQuery(q)
 
     val rewrittenQueryR4 =
-      "SELECT c1 AS ward, date_trunc_ym(c5) as d, sum(c3) AS ward_count GROUP by c1, date_trunc_ym(c5)"
+      "SELECT c1 AS ward, date_trunc_ym(c5) as d, coalesce(sum(c3), 0) AS ward_count GROUP by c1, date_trunc_ym(c5)"
 
     val rewrittenQueryAnalysisR4 = analyzeRewrittenQuery("r4", rewrittenQueryR4)
 
     // in this case, we map the function call directly to the column ref
-    val rewrittenQueryR8 = "SELECT c2 as ward, c1 as d, c3 as ward_count"
+    val rewrittenQueryR8 = "SELECT c2 as ward, c1 as d, coalesce(c3, 0) as ward_count"
     val rewrittenQueryAnalysisR8 = analyzeRewrittenQuery("r8", rewrittenQueryR8)
 
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
@@ -303,7 +303,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val q = "SELECT ward, max(number1) as max_num, min(number1) as min_num, count(*) AS ward_count GROUP BY ward"
     val queryAnalysis = analyzeQuery(q)
 
-    val rewrittenQuery = "SELECT c1 AS ward, c3 as max_num, c2 as min_num, c5 AS ward_count"
+    val rewrittenQuery = "SELECT c1 AS ward, c3 as max_num, c2 as min_num, coalesce(c5, 0) AS ward_count"
 
     val rewrittenQueryAnalysis = analyzeRewrittenQuery("r7", rewrittenQuery)
 
@@ -324,12 +324,12 @@ class TestQueryRewriter extends TestQueryRewriterBase {
 
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
 
-    val rewrittenQueryR4 = "SELECT sum(c3) as countess WHERE c2 = 'NARCOTICS'"
+    val rewrittenQueryR4 = "SELECT coalesce(sum(c3), 0) as countess WHERE c2 = 'NARCOTICS'"
     val rewrittenQueryAnalysisR4 = analyzeRewrittenQuery("r4", rewrittenQueryR4)
     rewrites should contain key "r4"
     rewrites.get("r4").get should equal(rewrittenQueryAnalysisR4)
 
-    val rewrittenQueryR5 = "SELECT sum(c2) as countess WHERE c1 = 'NARCOTICS'"
+    val rewrittenQueryR5 = "SELECT coalesce(sum(c2), 0) as countess WHERE c1 = 'NARCOTICS'"
     val rewrittenQueryAnalysisR5 = analyzeRewrittenQuery("r5", rewrittenQueryR5)
     rewrites should contain key "r5"
     rewrites.get("r5").get should equal(rewrittenQueryAnalysisR5)
@@ -371,7 +371,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val q = "SELECT ward, count(*) AS c WHERE number1 > 100 GROUP BY ward HAVING count(*) > 5"
     val queryAnalysis = analyzeQuery(q)
 
-    val rewrittenQuery = "SELECT c1 AS ward, sum(c3) AS c WHERE c4 > 100 GROUP BY c1 HAVING c > 5"
+    val rewrittenQuery = "SELECT c1 AS ward, coalesce(sum(c3), 0) AS c WHERE c4 > 100 GROUP BY c1 HAVING c > 5"
 
     val rewrittenQueryAnalysis = analyzeRewrittenQuery("r4", rewrittenQuery)
 
@@ -396,7 +396,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val q = "SELECT ward, count(ward) AS c WHERE ward > 100 GROUP BY ward HAVING count(ward) > 5"
     val queryAnalysis = analyzeQuery(q)
 
-    val rewrittenQuery = "SELECT c2 AS ward, c1 AS c WHERE c2 > 100 AND c1 > 5"
+    val rewrittenQuery = "SELECT c2 AS ward, coalesce(c1, 0) AS c WHERE c2 > 100 AND coalesce(c1, 0) > 5"
 
     val rewrittenQueryAnalysis = analyzeRewrittenQuery("r2", rewrittenQuery)
 
