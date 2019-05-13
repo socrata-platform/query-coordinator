@@ -5,7 +5,6 @@ import java.util.concurrent.Executors
 
 import com.socrata.querycoordinator.caching.cache.CacheCleanerThread
 import com.socrata.querycoordinator.caching.cache.config.CacheSessionProviderFromConfig
-
 import com.rojoma.json.ast.JString
 import com.rojoma.simplearm.v2._
 import com.socrata.http.client.HttpClientHttpClient
@@ -14,9 +13,9 @@ import com.socrata.http.server.SocrataServerJetty
 import com.socrata.http.server.curator.CuratorBroker
 import com.socrata.http.server.livenesscheck.LivenessCheckResponder
 import com.socrata.http.server.util.RequestId.ReqIdHeader
-import com.socrata.http.server.util.handlers.{NewLoggingHandler, ThreadRenamingHandler}
+import com.socrata.http.server.util.handlers.{LoggingOptions, NewLoggingHandler, ThreadRenamingHandler}
 import com.socrata.querycoordinator.caching.Windower
-import com.socrata.querycoordinator.resources.{VersionResource, QueryResource}
+import com.socrata.querycoordinator.resources.{QueryResource, VersionResource}
 import com.socrata.querycoordinator.util.TeeToTempInputStream
 import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
 import com.socrata.soql.types.SoQLType
@@ -28,6 +27,7 @@ import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.curator.x.discovery.{ServiceInstanceBuilder, strategies}
 import org.apache.log4j.PropertyConfigurator
 import com.socrata.util.io.StreamWrapper
+import org.slf4j.LoggerFactory
 
 final abstract class Main
 
@@ -112,8 +112,8 @@ object Main extends App {
 
     val auxData = new AuxiliaryData(Some(pongProvider.livenessCheckInfo))
 
-    val logOptions = NewLoggingHandler.defaultOptions.copy(
-                       logRequestHeaders = Set(ReqIdHeader, "X-Socrata-Resource"))
+    val logOptions = LoggingOptions(LoggerFactory.getLogger(""),
+                                    logRequestHeaders = Set(ReqIdHeader, "X-Socrata-Resource"))
 
     val broker = new CuratorBroker(discovery, config.discovery.address, config.discovery.name,
                                    Some(auxData))
