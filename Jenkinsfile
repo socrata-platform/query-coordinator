@@ -30,19 +30,21 @@ RUN_SBT_IT_TEST - If true, call sbtbuild.setRunITTest(true) in the Build stage
 Note:  If your project has multiple sbt-build calls, you will need multiple clones of the SBTBuild library object
 */
 
-def service = "query-coordinator"
-def project_wd = "query-coordinator"
-def deploy_service_pattern = "query-coordinator"
-def deploy_environment = "staging"
+def service = "query-coordinator" // This will be the PROJECT parameter in the sbt-build call for your project
+def project_wd = "query-coordinator" // This will be the PROJECT_WD parameter in the sbt-build call
+def deploy_service_pattern = "query-coordinator" // This will be the OVERRIDE_SERVICE_NAME_PATTERN in the sbt-build call (or likely the same as 'service' otherwise)
+def deploy_environment = "staging" // master builds default to staging deploy, if cutting to rc this will be changed in the "Cut" stage below
 
 def service_sha = env.GIT_COMMIT
 
+// variables that determine which stages we run based on what triggered the job
 def stage_cut = false
 def stage_build = false
 def stage_test = false
 def stage_dockerize = false
 def stage_deploy = false
 
+// instanciate libraries
 def sbtbuild = new com.socrata.SBTBuild(steps, service, project_wd)
 def dockerize = new com.socrata.Dockerize(steps, service, BUILD_NUMBER)
 def deploy = new com.socrata.MarathonDeploy(steps)
@@ -59,7 +61,6 @@ pipeline {
   }
 
   stages {
-    // all execution paths will require this
     stage('Setup') {
       steps {
         script {
@@ -75,7 +76,7 @@ pipeline {
           else if (env.CHANGE_ID != null) { // we're running a PR builder
             stage_build = true
             // Query-coordinator just uses sbt clean/compile/test for testing (these are the default sbt build operations)
-            // If your service has additional testing, you may want to use the Test stage to implement that:
+            // If your service has additional testing, you may want to use the Test stage to implement that and uncomment the next line:
             // stage_test = true
           }
           else if (BRANCH_NAME == "master") { // we're running a build on master branch to deploy to staging
@@ -85,7 +86,7 @@ pipeline {
           }
           else {
             // we're not sure what we're doing...
-            echo "Unknown build type - Exiting as Failure"
+            echo "Unknown build trigger - Exiting as Failure"
             currentBuild.result = 'FAILURE'
             return
           }
@@ -116,8 +117,9 @@ pipeline {
             }
           }
           else {
-            echo 'Run sbt-release'
+            echo 'Running sbt-release'
 
+            // The git config setup required for your project prior to running 'sbt release with-defaults' may vary:
             sh(returnStdout: true, script: "git config remote.origin.fetch +refs/heads/*:refs/remotes/origin/*")
             sh(returnStdout: true, script: "git config branch.master.remote origin")
             sh(returnStdout: true, script: "git config branch.master.merge refs/heads/master")
@@ -205,6 +207,7 @@ pipeline {
 
 
           // build
+          echo "Building sbt project..."
           sbtbuild.build()
         }
       }
@@ -240,6 +243,8 @@ pipeline {
           // docker_path:      the path to where the Dockerfile lives in the project repo (default is ./<project_wd>/docker and is set by SBTBuild
           // docker_artifacts: a comma separated list of artifacts to build into the docker container - SBTBuild provides a default list
           // registry_push:    (Optional argument) - set to false if you do NOT want docker images pushed to internal, EU, and Fedramp registries
+          //                                         NOTE:  Not pushing to registries will make apps-marathon deployments fail
+          echo "Building docker container..."
           dockerize.docker_build(sbtbuild.getServiceVersion(), service_sha, sbtbuild.getDockerPath(), sbtbuild.getDockerArtifact())
         }
       }
@@ -248,6 +253,10 @@ pipeline {
       when { expression { return stage_deploy == true } }
       steps {
         script {
+          // Checkout and run bundle install in the apps-marathon repo
+          deploy.checkoutAndInstall()
+
+          // deploy the service to the specified environment
           deploy.deploy(deploy_service_pattern, deploy_environment, dockerize.getDeployTag())
         }
       }
