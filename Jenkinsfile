@@ -124,7 +124,8 @@ pipeline {
             sh(returnStdout: true, script: "git config branch.master.remote origin")
             sh(returnStdout: true, script: "git config branch.master.merge refs/heads/master")
 
-            echo sh(returnStdout: true, script: "echo y | sbt \"release with-defaults\"")
+            echo "Would run sbt \"release with defaults\" here - disabled for debugging"
+            //echo sh(returnStdout: true, script: "echo y | sbt \"release with-defaults\"")
 
             cutNeeded = true
           }
@@ -257,7 +258,8 @@ pipeline {
           deploy.checkoutAndInstall()
 
           // deploy the service to the specified environment
-          deploy.deploy(deploy_service_pattern, deploy_environment, dockerize.getDeployTag())
+          echo "Would deploy ${deploy_service_pattern} to ${deploy_environment} with image ${dockerize.getDeployTag()} here - disabled for debugging"
+          //deploy.deploy(deploy_service_pattern, deploy_environment, dockerize.getDeployTag())
         }
       }
     }
