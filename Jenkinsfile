@@ -18,8 +18,13 @@ pipeline {
   options {
     ansiColor('xterm')
   }
+  parameters {
+    booleanParam(name: 'RELEASE_CUT', defaultValue: false, description: 'Are we cutting a new release candidate?')
+    booleanParam(name: 'FORCE_BUILD', defaultValue: false, description: 'Force build from latest tag if sbt release needed to be run between cuts')
+    string(name: 'AGENT', defaultValue: 'build-worker', description: 'Which build agent to use?')
+  }
   agent {
-    label 'build-worker'
+    label params.AGENT
   }
   environment {
     PATH = "${WORKER_PATH}"
