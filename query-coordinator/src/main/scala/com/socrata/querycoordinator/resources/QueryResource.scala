@@ -139,7 +139,13 @@ class QueryResource(secondary: Secondary,
           val parsedQuery = queryParser(query, columnIdMap, schema.schema, base, fuseMap)
 
           parsedQuery match {
-            case QueryParser.SuccessfulParse(analysis, largestLastModifiedOfJoins) =>
+            case QueryParser.SuccessfulParse(analysis, analysisInNames, largestLastModifiedOfJoins) =>
+              // TODO: Analyse analysisInNames and update header info about which columns are used in where in order to tell SF to add index
+              val filterColumns = queryParser.collectFilterColumns(analysisInNames)
+              filterColumns.foreach { column =>
+                log.info("FILTER USING: " + column)
+              }
+
               val lastModified =
                 if (schemaWithFieldNames.lastModified.isAfter(largestLastModifiedOfJoins)) {
                   schemaWithFieldNames.lastModified

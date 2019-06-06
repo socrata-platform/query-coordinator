@@ -18,7 +18,8 @@ import com.socrata.soql.ast
 import org.joda.time.DateTime
 
 
-class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher, maxRows: Option[Int], defaultRowsLimit: Int) {
+class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher, maxRows: Option[Int], defaultRowsLimit: Int)
+  extends FiltersCollector {
   import QueryParser._ // scalastyle:ignore import.grouping
   import com.socrata.querycoordinator.util.Join._
 
@@ -33,7 +34,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
       limitRows(analyses) match {
         case Right(analyses) =>
           val analysesInColumnIds = remapAnalyses(joinColumnIdMapping, analyses)
-          SuccessfulParse(analysesInColumnIds, dateTime)
+          SuccessfulParse(analysesInColumnIds, analyses, dateTime)
         case Left(result) => result
       }
     } catch {
@@ -141,8 +142,8 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
 
     val primaryColumnIdMap = columnIdMap.map { case (k, v) => QualifiedColumnName(None, k) -> v }
 
-    val (joinColumnIdMap, joinCtx, largestLastModifiedOfJoins) =
-      joins.foldLeft((primaryColumnIdMap, ctx, new DateTime(0))) { (acc, join) =>
+    val (joinColumnIdMap, joinCtx, joinTableNames, largestLastModifiedOfJoins) =
+      joins.foldLeft((primaryColumnIdMap, ctx, Set.empty[TableName], new DateTime(0))) { (acc, join) =>
         val joinTableName = join.from.fromTable
         val schemaResult = schemaFetcher(selectedSecondaryInstanceBase, joinTableName.name, None, useResourceName = true)
         schemaResult match {
@@ -158,14 +159,19 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
               case (columnId, (_, fieldName)) =>
               QualifiedColumnName(Some(joinAlias), new ColumnName(fieldName)) -> columnId
             }
-            val largestLastModified = if (lastModified.isAfter(acc._3)) lastModified else acc._3
-            (combinedIdMap, combinedCtx, largestLastModified)
+            val largestLastModified = if (lastModified.isAfter(acc._4)) lastModified else acc._4
+            val combinedTableNames = acc._3 + joinTableName
+            (combinedIdMap, combinedCtx, combinedTableNames, largestLastModified)
           case NoSuchDatasetInSecondary =>
             throw new JoinedDatasetNotColocatedException(joinTableName.name, selectedSecondaryInstanceBase.host)
           case _ =>
             acc
         }
       }
+
+//    joinTableNames.foreach { jtn =>
+//      println(s"JOIN ${jtn.name}  ${jtn.alias}")
+//    }
 
     //TODO: Write unapply for NonEmptySeq
     parsed match {
@@ -220,7 +226,7 @@ object QueryParser {
 
   sealed abstract class Result
 
-  case class SuccessfulParse(analyses: NonEmptySeq[SoQLAnalysis[String, SoQLType]], largestLastModifiedOfJoins: DateTime) extends Result
+  case class SuccessfulParse(analyses: NonEmptySeq[SoQLAnalysis[String, SoQLType]], analysesInNames: NonEmptySeq[SoQLAnalysis[ColumnName, SoQLType]], largestLastModifiedOfJoins: DateTime) extends Result
 
   case class AnalysisError(problem: SoQLException) extends Result
 
