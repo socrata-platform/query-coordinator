@@ -3,6 +3,10 @@
 def deploy_environment = "staging"
 def service_sha = env.GIT_COMMIT
 
+def service = "query-coordinator"
+def project_wd = "query-coordinator"
+def deploy_service_pattern = "query-coordinator"
+
 // Stage control variables to simplify stage selection by build cause
 def stage_cut = false
 def stage_build = false
@@ -10,8 +14,8 @@ def stage_dockerize = false
 def stage_deploy = false
 
 // Utility Libraries
-def sbtbuild = new com.socrata.SBTBuild(steps, "query-coordinator", "query-coordinator")
-def dockerize = new com.socrata.Dockerize(steps, "query-coordinator", BUILD_NUMBER)
+def sbtbuild = new com.socrata.SBTBuild(steps, service, project_wd)
+def dockerize = new com.socrata.Dockerize(steps, service, BUILD_NUMBER)
 def deploy = new com.socrata.MarathonDeploy(steps)
 
 pipeline {
@@ -39,7 +43,7 @@ pipeline {
 
           // determine what triggered the build and what stages need to be run
           if (params.RELEASE_CUT == true) { // we're running a release cut
-            stage_cut = true  // other stages will be turned on in the cut stage if needed
+            stage_cut = true  // other stages will be enabled in the cut stage if needed
             deploy_environment = "rc"
           }
           else if (env.CHANGE_ID != null) { // we're running a PR test
@@ -86,8 +90,7 @@ pipeline {
             sh(returnStdout: true, script: "git config branch.master.remote origin")
             sh(returnStdout: true, script: "git config branch.master.merge refs/heads/master")
 
-            echo "Would run sbt \"release with defaults\" here - disabled for debugging"
-            //echo sh(returnStdout: true, script: "echo y | sbt \"release with-defaults\"")
+            echo sh(returnStdout: true, script: "echo y | sbt \"release with-defaults\"")
 
             cutNeeded = true
           }
@@ -138,8 +141,7 @@ pipeline {
           deploy.checkoutAndInstall()
 
           // deploy the service to the specified environment
-          echo "Would deploy query-coordinator to ${deploy_environment} with image ${dockerize.getDeployTag()} here - disabled for debugging"
-          //deploy.deploy("query-coordinator", deploy_environment, dockerize.getDeployTag())
+          deploy.deploy(deploy_service_pattern, deploy_environment, dockerize.getDeployTag())
         }
       }
     }
