@@ -8,10 +8,10 @@ def project_wd = "query-coordinator"
 def deploy_service_pattern = "query-coordinator"
 
 // Stage control variables to simplify stage selection by build cause
-def stage_cut = false
-def stage_build = false
-def stage_dockerize = false
-def stage_deploy = false
+def boolean stage_cut = false
+def boolean stage_build = false
+def boolean stage_dockerize = false
+def boolean stage_deploy = false
 
 // Utility Libraries
 def sbtbuild = new com.socrata.SBTBuild(steps, service, project_wd)
@@ -64,7 +64,7 @@ pipeline {
       }
     }
     stage('Cut') {
-      when { expression { return stage_cut == true } }
+      when { expression { stage_cut } }
       steps {
         script {
           def cutNeeded = false
@@ -116,7 +116,7 @@ pipeline {
       }
     }
     stage('Build') {
-      when { expression { return stage_build == true } }
+      when { expression { stage_build } }
       steps {
         script {
           echo "Building sbt project..."
@@ -125,7 +125,7 @@ pipeline {
       }
     }
     stage('Dockerize') {
-      when { expression { return stage_dockerize == true } }
+      when { expression { stage_dockerize } }
       steps {
         script {
           echo "Building docker container..."
@@ -134,7 +134,7 @@ pipeline {
       }
     }
     stage('Deploy') {
-      when { expression { return stage_deploy == true } }
+      when { expression { stage_deploy } }
       steps {
         script {
           // Checkout and run bundle install in the apps-marathon repo so we're running the latest config
