@@ -41,6 +41,9 @@ pipeline {
           // checkout the repo
           checkout scm
 
+          // set the service sha to what was checked out (GIT_COMMIT isn't always set)
+          service_sha = sh(returnStdout: true, script: "git rev-parse HEAD").trim()
+
           // determine what triggered the build and what stages need to be run
           if (params.RELEASE_CUT == true) { // we're running a release cut
             stage_cut = true  // other stages will be enabled in the cut stage if needed
@@ -104,7 +107,7 @@ pipeline {
             // checkout the tag so we're performing subsequent actions on it
             sh "git checkout ${branchSpecifier}"
 
-            // set the service_sha to the current tag because it might not be the same as env.GIT_COMMIT
+            // set the service_sha to the current tag because it might not be the same as what was checked out
             service_sha = sh(returnStdout: true, script: "git rev-parse HEAD").trim()
 
             // set stages to run since we're cutting
