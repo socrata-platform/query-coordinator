@@ -48,6 +48,7 @@ pipeline {
           }
           else if (env.CHANGE_ID != null) { // we're running a PR test
             stage_build = true
+            stage_dockerize = true // debugging
           }
           else if (BRANCH_NAME == "master") { // we're doing a master branch build for integration deploy
             stage_build = true
@@ -129,6 +130,10 @@ pipeline {
       steps {
         script {
           echo "Building docker container..."
+          echo "version: ${sbtbuild.getServiceVersion()}"
+          echo "sha: ${service_sha}"
+          echo "path: ${sbtbuild.getDockerPath()}"
+          echo "artifact: ${sbtbuild.getDockerArtifact()}"
           dockerize.docker_build(sbtbuild.getServiceVersion(), service_sha, sbtbuild.getDockerPath(), sbtbuild.getDockerArtifact())
         }
       }
