@@ -168,8 +168,8 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
 
     //TODO: Write unapply for NonEmptySeq
     parsed match {
-      case NonEmptySeq(one, Seq.empty) =>
-        val rewrittenOne = fuser.rewrite(NonEmptySeq(one), columnIdMap, schema).head
+      case justOne if parsed.length == 1 =>
+        val rewrittenOne = fuser.rewrite(justOne, columnIdMap, schema).head
         val result = analyzer.analyzeWithSelection(rewrittenOne)(joinCtx)
         val fusedResult = fuser.postAnalyze(NonEmptySeq(result))
         (fusedResult, joinColumnIdMap, largestLastModifiedOfJoins)
