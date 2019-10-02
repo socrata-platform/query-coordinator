@@ -10,6 +10,10 @@ import com.socrata.querycoordinator.caching.cache.postgresql.PostgresqlCacheSess
 import org.postgresql.ds.PGSimpleDataSource
 
 object CacheSessionProviderFromConfig {
+  private implicit object DSResource extends Resource[ComboPooledDataSource] {
+    def close(ds: ComboPooledDataSource) = ds.close()
+  }
+
   def apply(config: CacheConfig, useBatchDelete: () => Boolean, streamWrapper: StreamWrapper = StreamWrapper.noop): Managed[CacheSessionProvider with CacheCleanerProvider with CacheInit] =
     config.realConfig match {
       case fs: FilesystemCacheConfig =>
