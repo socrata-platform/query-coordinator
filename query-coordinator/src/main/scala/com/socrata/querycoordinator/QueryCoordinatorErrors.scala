@@ -11,6 +11,7 @@ object QueryCoordinatorErrors {
     val repeatedException = "query.soql.repeated-exception"
     val duplicateAlias = "query.soql.duplicate-alias"
     val noSuchColumn = "query.soql.no-such-column"
+    val noSuchTable = "query.soql.no-such-table"
     val circularAliasDefinition = "query.soql.circular-alias-definition"
     val unexpectedEscape = "query.soql.unexpected-escape"
     val badUnicodeEscapeCharacter = "query.soql.bad-unicode-escape-character"
