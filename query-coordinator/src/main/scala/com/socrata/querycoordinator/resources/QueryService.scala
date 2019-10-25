@@ -33,6 +33,7 @@ trait QueryService {
   val qpLimit = "limit"
   val qpPosition = "position"
   val qpLine = "line"
+  val qpTable = "table"
   val qpObfuscateId = "obfuscateId"
   val qpQueryTimeoutSeconds = "queryTimeoutSeconds"
 
@@ -61,6 +62,9 @@ trait QueryService {
      case NoSuchColumn(column, _) =>
        (noSuchColumn, s"No such column: ${column.name}; position: $position",
         Map(qpColumn -> JString(column.name)), position)
+     case NoSuchTable(table, _) =>
+       (noSuchTable, s"No such table: ${table}; position: $position",
+        Map(qpTable -> JString(table)), position)
      case CircularAliasDefinition(name, _) =>
        (circularAliasDefinition, s"Circular alias definition: ${name.name}; position: $position",
         Map(qpName -> JString(name.name)), position)
