@@ -91,11 +91,12 @@ class QueryExecutor(httpClient: HttpClient,
             currentLastModified: DateTime,
             resourceScopeHandle: SharedHandle[ResourceScope],
             queryTimeoutSeconds: Option[String],
-            debug: Boolean): Result = {
+            debug: Boolean,
+            explain: Boolean): Result = {
     val rs = resourceScopeHandle.get
     def go(theAnalyses: NonEmptySeq[SoQLAnalysis[String, SoQLType]] = analyses): Result =
       reallyApply(base, dataset, theAnalyses, schema, precondition, ifModifiedSince, rowCount, copy,
-                  rollupName, obfuscateId, extraHeaders, rs, queryTimeoutSeconds, debug)
+                  rollupName, obfuscateId, extraHeaders, rs, queryTimeoutSeconds, debug, explain)
 
     if((cacheSessionProvider == NoopCacheSessionProvider && !forceCacheEvenWhenNoop) ||
        cacheSessionProvider.disabled) {
@@ -407,7 +408,8 @@ class QueryExecutor(httpClient: HttpClient,
                           extraHeaders: Map[String, String],
                           resourceScope: ResourceScope,
                           queryTimeoutSeconds: Option[String],
-                          debug: Boolean): Result = {
+                          debug: Boolean,
+                          explain: Boolean): Result = {
     val serializedAnalyses = serializeAnalysis(analyses)
     val params = List(
       qpDataset -> dataset,
@@ -419,7 +421,9 @@ class QueryExecutor(httpClient: HttpClient,
       rollupName.map(c => List(qpRollupName -> c)).getOrElse(Nil) ++
       (if (!obfuscateId) List(qpObfuscateId -> "false" ) else Nil) ++
       (if (debug) List("X-Socrata-Debug" -> "true" ) else Nil)
-    val request = base.p(qpQuery).
+
+    val route = if(explain) "info" else qpQuery
+    val request = base.p(route).
       addHeaders(PreconditionRenderer(precondition) ++ ifModifiedSince.map("If-Modified-Since" -> _.toHttpDate)).
       addHeaders(extraHeaders).
       form(params)
