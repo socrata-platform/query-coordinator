@@ -85,6 +85,9 @@ class QueryResource(secondary: Secondary,
       val queryTimeoutSeconds = Option(servReq.getParameter(qpQueryTimeoutSeconds))
       val debug = req.header("X-Socrata-Debug").isDefined
 
+      val explain = req.header("X-Socrata-Explain").isDefined
+      val analyze = req.header("X-Socrata-Analyze").isDefined
+
       val precondition = req.precondition
       val ifModifiedSince = req.dateTimeHeader("If-Modified-Since")
 
@@ -168,28 +171,32 @@ class QueryResource(secondary: Secondary,
                          rollupName: Option[String],
                          requestId: String,
                          resourceName: Option[String],
-                         resourceScope: ResourceScope): Either[QueryRetryState, HttpResponse] = {
+                         resourceScope: ResourceScope,
+                         explain: Boolean,
+                         analyze: Boolean): Either[QueryRetryState, HttpResponse] = {
           val extendedScope = resourceScope.open(SharedHandle(new ResourceScope))
           val extraHeaders = Map(RequestId.ReqIdHeader -> requestId) ++
-            resourceName.map(fbf => Map(headerSocrataResource -> fbf)).getOrElse(Nil)
+            resourceName.map(fbf => Map(headerSocrataResource -> fbf)).getOrElse(Nil) ++
+            (if (analyze) List("X-Socrata-Analyze" -> "true" ) else Nil)
           queryExecutor(
-            base.receiveTimeoutMS(receiveTimeout.toMillis.toInt).connectTimeoutMS(connectTimeout.toMillis.toInt),
-            dataset,
-            analyzedQuery,
-            schema.payload,
-            precondition,
-            ifModifiedSince,
-            rowCount,
-            copy,
-            rollupName,
-            obfuscateId,
-            extraHeaders,
-            schema.copyNumber,
-            schema.dataVersion,
-            schema.lastModified,
-            extendedScope,
-            queryTimeoutSeconds,
-            debug
+            base = base.receiveTimeoutMS(receiveTimeout.toMillis.toInt).connectTimeoutMS(connectTimeout.toMillis.toInt),
+            dataset = dataset,
+            analyses = analyzedQuery,
+            schema = schema.payload,
+            precondition = precondition,
+            ifModifiedSince = ifModifiedSince,
+            rowCount = rowCount,
+            copy = copy,
+            rollupName = rollupName,
+            obfuscateId = obfuscateId,
+            extraHeaders = extraHeaders,
+            currentCopyNumber = schema.copyNumber,
+            currentDataVersion = schema.dataVersion,
+            currentLastModified = schema.lastModified,
+            resourceScopeHandle = extendedScope,
+            queryTimeoutSeconds = queryTimeoutSeconds,
+            debug = debug,
+            explain = explain
           ) match {
             case QueryExecutor.Retry =>
               Left(nextRetry)
@@ -206,7 +213,7 @@ class QueryResource(secondary: Secondary,
                   val (finalSchema, analyses) = versionedInfo.payload
                   val (rewrittenAnalyses, rollupName) = possiblyRewriteOneAnalysisInQuery(finalSchema, analyses)
                   executeQuery(versionedInfo.copy(payload = finalSchema),
-                    rewrittenAnalyses, analyses, rollupName, requestId, resourceName, resourceScope)
+                    rewrittenAnalyses, analyses, rollupName, requestId, resourceName, resourceScope, explain, analyze)
                 }
               }
             case QueryExecutor.ToForward(responseCode, headers, body) =>
@@ -229,7 +236,7 @@ class QueryResource(secondary: Secondary,
                   // Retry w/o rollup to make queries more resilient.
                   log.warn(s"error in query with rollup ${rollupName.get}.  retry w/o rollup - $body")
                   executeQuery(schema, analyzedQueryNoRollup, analyzedQueryNoRollup,
-                               None, requestId, resourceName, resourceScope)
+                               None, requestId, resourceName, resourceScope, explain, analyze)
                 case _ =>
                   Right(transferHeaders(Status(responseCode), headers) ~> Stream(out => transferResponse(out, body)))
               }
@@ -313,7 +320,7 @@ class QueryResource(secondary: Secondary,
             val (rewrittenAnalyses, rollupName) = possiblyRewriteOneAnalysisInQuery(finalSchema, analyses)
             executeQuery(versionInfo.copy(payload = finalSchema),
               rewrittenAnalyses, analyses, rollupName,
-              requestId, req.header(headerSocrataResource), req.resourceScope)
+              requestId, req.header(headerSocrataResource), req.resourceScope, explain, analyze)
           }
         }
       }
