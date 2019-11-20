@@ -95,8 +95,8 @@ class QueryExecutor(httpClient: HttpClient,
             explain: Boolean): Result = {
     val rs = resourceScopeHandle.get
     def go(theAnalyses: NonEmptySeq[SoQLAnalysis[String, SoQLType]] = analyses): Result =
-      reallyApply(base, dataset, theAnalyses, schema, precondition, ifModifiedSince, rowCount, copy,
-                  rollupName, obfuscateId, extraHeaders, rs, queryTimeoutSeconds, debug, explain)
+      reallyApply(base = base, dataset = dataset, analyses = theAnalyses, schema = schema, precondition = precondition, ifModifiedSince = ifModifiedSince, rowCount = rowCount, copy = copy,
+                  rollupName = rollupName, obfuscateId = obfuscateId, extraHeaders = extraHeaders, resourceScope = rs, queryTimeoutSeconds = queryTimeoutSeconds, debug = debug, explain = explain)
 
     if((cacheSessionProvider == NoopCacheSessionProvider && !forceCacheEvenWhenNoop) ||
        cacheSessionProvider.disabled) {
@@ -142,10 +142,19 @@ class QueryExecutor(httpClient: HttpClient,
         // ok, we have the headers from last time.  If the preconditions _fail_, we'll pass the request
         // to the real secondary so we don't have to mock up identical responses.  (It is just vaguely
         // possible that those requests will still succeed, but if so... ok, such is life.)
+        if (debug) {
+          log.info(s"QC precondition: $precondition")
+          log.info(s"QC Cached etag header: ${headers.http.get("etag").flatMap(_.headOption)}")
+        }
         val etag = headers.http.get("etag").flatMap(_.headOption).map(EntityTagParser.parse(_))
         if(precondition.check(etag, sideEffectFree = true) != Precondition.Passed) return Some(go())
+
         val lastModified = headers.http.get("last-modified").flatMap(_.headOption)
         if(ifModifiedSince.map(HttpUtils.HttpDateFormat.print) == lastModified) return Some(go())
+
+        if (debug) {
+          log.info(s"QC passed precondition check, looking up from row cache...")
+        }
 
         def isEnd(vr: ValueRef) = {
           val is = vr.open(rs)
