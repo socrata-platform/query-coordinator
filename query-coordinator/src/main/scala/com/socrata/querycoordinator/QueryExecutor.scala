@@ -24,6 +24,7 @@ import com.socrata.querycoordinator.QueryExecutor.{SchemaHashMismatch, ToForward
 import com.socrata.querycoordinator.util.TeeToTempInputStream
 import com.socrata.querycoordinator.caching.cache.{CacheSession, CacheSessionProvider, ValueRef}
 import com.socrata.querycoordinator.caching.SharedHandle
+import com.socrata.soql.typed.FunctionCall
 import com.socrata.util.io.SplitStream
 import com.socrata.soql.types.SoQLType
 import com.socrata.soql.{AnalysisSerializer, SoQLAnalysis}
@@ -94,6 +95,16 @@ class QueryExecutor(httpClient: HttpClient,
             debug: Boolean,
             explain: Boolean): Result = {
     val rs = resourceScopeHandle.get
+
+    // Validate that there aren't any insane joins
+    analyses.head.joins.foreach {
+      _.on match {
+        case FunctionCall(_, parameters) if parameters.length == 2 && parameters(0) == parameters(1) =>
+            return InvalidJoin
+        case _ =>
+      }
+    }
+
     def go(theAnalyses: NonEmptySeq[SoQLAnalysis[String, SoQLType]] = analyses): Result =
       reallyApply(base = base, dataset = dataset, analyses = theAnalyses, schema = schema, precondition = precondition, ifModifiedSince = ifModifiedSince, rowCount = rowCount, copy = copy,
                   rollupName = rollupName, obfuscateId = obfuscateId, extraHeaders = extraHeaders, resourceScope = rs, queryTimeoutSeconds = queryTimeoutSeconds, debug = debug, explain = explain)
@@ -525,6 +536,8 @@ object QueryExecutor {
   case class SchemaHashMismatch(newSchema: Schema) extends Result
 
   case class ToForward(responseCode: Int, headers: Map[String, Seq[String]], body: InputStream) extends Result
+
+  case object InvalidJoin extends Result
 
   def checkSchemaHashMismatch(json: JValue): Option[Schema] = {
     for {
