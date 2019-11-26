@@ -170,6 +170,10 @@ trait QueryService {
           "secondaries" -> JArray(secondaries.map(JString(_)).toSeq)))
   }
 
+  def invalidJoinResponse: HttpResponse = {
+    BadRequest ~> errContent(RequestErrors.invalidJoin, "Can not join using the same expression on both sides of the operator", Map())
+  }
+
   def noContentTypeResponse: HttpResponse = {
     internalServerError
   }

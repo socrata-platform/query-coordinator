@@ -240,6 +240,8 @@ class QueryResource(secondary: Secondary,
                 case _ =>
                   Right(transferHeaders(Status(responseCode), headers) ~> Stream(out => transferResponse(out, body)))
               }
+            case QueryExecutor.InvalidJoin =>
+              finishRequest(invalidJoinResponse)
           }
         }
 
