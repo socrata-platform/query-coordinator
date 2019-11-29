@@ -65,7 +65,10 @@ object Main extends App {
   val threadPoolSize = 5
   for {
     executor <- managed(Executors.newFixedThreadPool(threadPoolSize))
-    httpClientConfig <- unmanaged(HttpClientHttpClient.defaultOptions.withUserAgent("Query Coordinator"))
+    httpClientConfig <- unmanaged(HttpClientHttpClient.
+      defaultOptions.
+      withContentCompression(true).
+      withUserAgent("Query Coordinator"))
     httpClient <- managed(new HttpClientHttpClient(executor, httpClientConfig))
     curator <- CuratorFromConfig(config.curator)
     discovery <- DiscoveryFromConfig(classOf[AuxiliaryData], curator, config.discovery)
