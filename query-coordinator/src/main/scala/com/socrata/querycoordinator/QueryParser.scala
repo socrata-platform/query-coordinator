@@ -13,7 +13,7 @@ import com.socrata.soql.parsing.{AbstractParser, Parser}
 import com.socrata.soql.typed._
 import com.socrata.soql.types.SoQLType
 import com.socrata.soql.{SoQLAnalysis, SoQLAnalyzer}
-import com.typesafe.scalalogging.slf4j.Logging
+import com.typesafe.scalalogging.Logger
 import com.socrata.soql.ast
 
 class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher, maxRows: Option[Int], defaultRowsLimit: Int) {
@@ -206,7 +206,8 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
   }
 }
 
-object QueryParser extends Logging {
+object QueryParser {
+  private val logger = Logger[QueryParser]
 
   sealed abstract class Result
 
@@ -229,17 +230,16 @@ object QueryParser extends Logging {
    * @return column name to datatype map like ( field_name -> text, ... )
    */
   def dsContext(columnIdMapping: Map[ColumnName, String],
-                rawSchema: Map[String, SoQLType]): DatasetContext[SoQLType] =
-    try {
-      val knownColumnIdMapping = columnIdMapping.filter { case (k, v) => rawSchema.contains(v) }
-      if (columnIdMapping.size != knownColumnIdMapping.size) {
-        logger.warn(s"truth has columns unknown to secondary ${columnIdMapping.size} ${knownColumnIdMapping.size}")
-      }
-      new DatasetContext[SoQLType] {
-        val schema: OrderedMap[ColumnName, SoQLType] =
-          OrderedMap(knownColumnIdMapping.mapValues(rawSchema).toSeq.sortBy(_._1): _*)
-      }
+                rawSchema: Map[String, SoQLType]): DatasetContext[SoQLType] = {
+    val knownColumnIdMapping = columnIdMapping.filter { case (k, v) => rawSchema.contains(v) }
+    if (columnIdMapping.size != knownColumnIdMapping.size) {
+      logger.warn(s"truth has columns unknown to secondary ${columnIdMapping.size} ${knownColumnIdMapping.size}")
     }
+    new DatasetContext[SoQLType] {
+      val schema: OrderedMap[ColumnName, SoQLType] =
+        OrderedMap(knownColumnIdMapping.mapValues(rawSchema).toSeq.sortBy(_._1): _*)
+    }
+  }
 
   // And function is used for chain SoQL merge.
   private val andFn = SoQLFunctions.And.monomorphic.get

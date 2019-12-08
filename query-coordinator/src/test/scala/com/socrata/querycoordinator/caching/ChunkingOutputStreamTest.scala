@@ -1,11 +1,11 @@
 package com.socrata.querycoordinator.caching
 
-import org.scalatest.prop.PropertyChecks
+import org.scalatestplus.scalacheck.ScalaCheckPropertyChecks
 import org.scalatest.{FunSuite, MustMatchers}
 
 import scala.collection.mutable.ArrayBuffer
 
-class ChunkingOutputStreamTest extends FunSuite with MustMatchers with PropertyChecks {
+class ChunkingOutputStreamTest extends FunSuite with MustMatchers with ScalaCheckPropertyChecks {
   test("ChunkingOutputStream chunkifies") {
     forAll { (chunkSize0: Int, bss: List[List[Byte]]) =>
       val chunkSize = (chunkSize0 & 0xff) + 1

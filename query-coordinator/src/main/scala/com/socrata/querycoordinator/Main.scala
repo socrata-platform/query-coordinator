@@ -5,7 +5,7 @@ import java.util.concurrent.Executors
 
 import com.socrata.querycoordinator.caching.cache.CacheCleanerThread
 import com.socrata.querycoordinator.caching.cache.config.CacheSessionProviderFromConfig
-import com.rojoma.json.ast.JString
+import com.rojoma.json.v3.ast.JString
 import com.rojoma.simplearm.v2._
 import com.socrata.http.client.HttpClientHttpClient
 import com.socrata.http.common.AuxiliaryData
