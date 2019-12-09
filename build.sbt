@@ -12,3 +12,5 @@ val queryCoordinator = (project in file("query-coordinator")).
   dependsOn(secondarySelector)
 
 disablePlugins(AssemblyPlugin)
+
+releaseProcess -= ReleaseTransformations.publishArtifacts
