@@ -9,7 +9,7 @@ import com.socrata.soql.environment.{ColumnName, UntypedDatasetContext}
 import com.socrata.soql.functions.SoQLFunctions
 import com.socrata.soql.parsing.standalone_exceptions.BadParse
 import com.socrata.soql.types.SoQLType
-import com.typesafe.scalalogging.slf4j.Logging
+import com.typesafe.scalalogging.Logger
 
 import scala.util.parsing.input.NoPosition
 
@@ -31,6 +31,8 @@ trait SoQLRewrite {
 }
 
 object CompoundTypeFuser {
+  private val logger = Logger[CompoundTypeFuser]
+
   def apply(fuseBase: Map[String, String]): SoQLRewrite = {
     if (fuseBase.nonEmpty) new CompoundTypeFuser(fuseBase)
     else NoopFuser
@@ -52,7 +54,8 @@ object CompoundTypeFuser {
  *
  * @param fuseBase contains the base name of expanded columns which need to be fused.
  */
-class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite with Logging {
+class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite {
+  import CompoundTypeFuser.logger
 
   import com.socrata.querycoordinator.util.Join._
 

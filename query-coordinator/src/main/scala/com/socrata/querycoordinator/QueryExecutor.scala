@@ -175,7 +175,7 @@ class QueryExecutor(httpClient: HttpClient,
         }
 
         @tailrec
-        def lookupWindows(acc: List[ValueRef], i: BigInt): Option[Seq[ValueRef]] = {
+        def lookupWindows(acc: List[ValueRef], i: BigInt): Option[List[ValueRef]] = {
           if(i <= endWindow.window) {
             cacheSession.find(cacheKey(readCacheKeyBase, i.toString), rs) match {
               case CacheSession.Success(Some(vr)) =>

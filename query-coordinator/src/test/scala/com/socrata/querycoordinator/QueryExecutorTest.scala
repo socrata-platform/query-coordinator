@@ -4,7 +4,7 @@ import com.rojoma.json.v3.ast.{JObject, JString}
 import com.socrata.soql.types.{SoQLNumber, SoQLText}
 import org.scalatest._
 
-class QueryExecutorTest extends FunSuite with ShouldMatchers {
+class QueryExecutorTest extends FunSuite with Matchers {
   // TODO: test apply(...)
 
   val deadBeef = "dead-beef"

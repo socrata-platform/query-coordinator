@@ -3,10 +3,10 @@ package com.socrata.querycoordinator.util
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, InputStream}
 
 import com.rojoma.simplearm.util._
-import org.scalatest.prop.PropertyChecks
+import org.scalatestplus.scalacheck.ScalaCheckPropertyChecks
 import org.scalatest.{FunSuite, MustMatchers}
 
-class TeeToTempInputStreamTest extends FunSuite with MustMatchers with PropertyChecks {
+class TeeToTempInputStreamTest extends FunSuite with MustMatchers with ScalaCheckPropertyChecks {
   private def readAll(in: InputStream): Array[Byte] = {
     val baos = new ByteArrayOutputStream
     val buf = new Array[Byte](1024)

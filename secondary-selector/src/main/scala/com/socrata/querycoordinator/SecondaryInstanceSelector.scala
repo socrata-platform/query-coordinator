@@ -3,7 +3,7 @@ package com.socrata.querycoordinator
 import java.util.concurrent.atomic.AtomicInteger
 
 import com.socrata.thirdparty.metrics.Metrics
-import com.typesafe.scalalogging.slf4j.Logging
+import com.typesafe.scalalogging.Logger
 
 import scala.annotation.tailrec
 import scala.collection.immutable.Queue
@@ -36,7 +36,9 @@ import spray.caching.LruCache
  * reason, we only do this if we have hit this case less than x times for this dataset.
  *
  */
-class SecondaryInstanceSelector(config: SecondarySelectorConfig) extends Logging with Metrics {
+class SecondaryInstanceSelector(config: SecondarySelectorConfig) extends Metrics {
+  import SecondaryInstanceSelector.logger
+
   /** dataset id to servers */
   // TODO: Do we want to keep cache hit ratio?
   private val datasetMap = LruCache[DatasetServers](config.maxCacheEntries)
@@ -208,4 +210,8 @@ class SecondaryInstanceSelector(config: SecondarySelectorConfig) extends Logging
       }
     }
   }
+}
+
+object SecondaryInstanceSelector {
+  private val logger = Logger[SecondaryInstanceSelector]
 }

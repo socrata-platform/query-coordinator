@@ -1,7 +1,7 @@
 package com.socrata.querycoordinator
 
 import com.socrata.soql.functions.SoQLFunctions
-import com.typesafe.scalalogging.slf4j.Logging
+import com.typesafe.scalalogging.Logger
 
 /**
  * A very trivial rule based optimizer that assigns scores to rollups to try to determine which is the best one to
@@ -27,7 +27,11 @@ import com.typesafe.scalalogging.slf4j.Logging
  */
 import QueryRewriter._
 
-private object RollupScorer extends Logging {
+private final abstract class RollupScorer
+
+private object RollupScorer {
+  private val logger = Logger[RollupScorer]
+
   private val SELECTION_SCORE_PENALTY = -10L
 
   def scoreRollup(r: Anal): Long = {
