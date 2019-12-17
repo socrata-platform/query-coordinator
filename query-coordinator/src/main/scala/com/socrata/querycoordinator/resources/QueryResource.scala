@@ -410,7 +410,10 @@ class QueryResource(secondary: Secondary,
   private def parseFuseColumnMap(s: String): Map[String, String] = {
     s.split(';')
      .map { item => item.split(',') }
-     .map { case Array(a, b) => (a, b) }
+     .map { case Array(a, b) => (a, b)
+            case _ =>
+               throw new Exception(s"X-Socrata-Fuse-Columns parse error $s.")
+     }
      .toMap
   }
 }
