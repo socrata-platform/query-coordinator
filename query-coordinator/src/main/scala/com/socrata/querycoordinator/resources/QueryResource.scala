@@ -74,7 +74,7 @@ class QueryResource(secondary: Secondary,
 
       forcedSecondaryName.foreach(ds => log.info("Forcing use of the secondary store instance: " + ds))
 
-      val fuseMap: Map[String, String] = req.header("X-Socrata-Fuse-Columns")
+      val fuseMap: Map[String, String] = req.header("X-Socrata-Fuse-Columns").filter(_ != "")
                                             .map(parseFuseColumnMap(_))
                                             .getOrElse(Map.empty)
 
