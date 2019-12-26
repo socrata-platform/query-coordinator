@@ -29,20 +29,25 @@ class PostgresqlCacheSession(ds: DataSource, dataset: String, updateATimeInterva
   private def initRead(): Boolean = {
     if(closed) throw new IllegalStateException("Accessing a closed session")
     if(readConnection eq null) {
-      readConnection =
-        try {
-          scope.open(ds.getConnection)
+      try {
+        readConnection = scope.open(ds.getConnection)
+        readConnection.setReadOnly(true)
+        readConnection.setAutoCommit(true)
+        using(readConnection.createStatement()) { stmt =>
+          stmt.execute("SET statement_timeout TO 20000") // 20 seconds
         }
-        catch {
-          case e: SQLException if e.getCause.isInstanceOf[TimeoutException] => return false
-        }
-      readConnection.setReadOnly(true)
-      readConnection.setAutoCommit(true)
-      using(readConnection.createStatement()) { stmt =>
-        stmt.execute("SET statement_timeout TO 20000") // 20 seconds
+      } catch {
+        case e: SQLException if isServerConnectionError(e) =>
+          return false
       }
     }
     true
+  }
+
+  private def isServerConnectionError(e: SQLException): Boolean = {
+    e.getCause.isInstanceOf[TimeoutException] ||
+      e.getSQLState.startsWith("08") /* Class 08 — Connection Exception */ ||
+      e.getSQLState.startsWith("57") /* Class 57 — Operator Intervention */
   }
 
   private def initWrite(): Boolean = {
