@@ -15,7 +15,7 @@ import com.socrata.querycoordinator.caching.SharedHandle
 import com.socrata.soql.environment.ColumnName
 import com.socrata.soql.exceptions.{DuplicateAlias, NoSuchColumn, TypecheckException}
 import com.socrata.soql.SoQLAnalysis
-import com.socrata.soql.types.SoQLType
+import com.socrata.soql.types.{SoQLID, SoQLNumber, SoQLType}
 import org.apache.http.HttpStatus
 import org.joda.time.format.ISODateTimeFormat
 import org.joda.time.{DateTime, Interval}
@@ -127,7 +127,14 @@ class QueryResource(secondary: Secondary,
 
         def analyzeRequest(schemaWithFieldNames: Versioned[SchemaWithFieldName], isFresh: Boolean): Either[QueryRetryState, Versioned[(Schema, NonEmptySeq[SoQLAnalysis[String, SoQLType]])]] = {
 
-          val schema = stripFieldNamesFromSchema(schemaWithFieldNames.payload)
+          val schema0 = stripFieldNamesFromSchema(schemaWithFieldNames.payload)
+          val schema =
+            if (obfuscateId) schema0
+            else schema0.copy(schema = schema0.schema.mapValues {
+              case t: SoQLID.type => SoQLNumber
+              case t => t
+            })
+
           val columnIdMap = extractColumnIdMap(schemaWithFieldNames.payload)
           val parsedQuery = queryParser(query, columnIdMap, schema.schema, base, fuseMap)
 
