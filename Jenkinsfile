@@ -2,6 +2,7 @@
 
 def deploy_environment = "staging"
 def service_sha = env.GIT_COMMIT
+def default_branch_specifier = "origin/master"
 
 def service = "query-coordinator"
 def project_wd = "query-coordinator"
@@ -26,6 +27,8 @@ pipeline {
     booleanParam(name: 'RELEASE_CUT', defaultValue: false, description: 'Are we cutting a new release candidate?')
     booleanParam(name: 'FORCE_BUILD', defaultValue: false, description: 'Force build from latest tag if sbt release needed to be run between cuts')
     string(name: 'AGENT', defaultValue: 'build-worker', description: 'Which build agent to use?')
+    string(name: 'BRANCH_SPECIFIER', defaultValue: default_branch_specifier, description: 'Use this branch for building the artifact.')
+
   }
   agent {
     label params.AGENT
@@ -38,8 +41,17 @@ pipeline {
     stage('Setup') {
       steps {
         script {
-          // checkout the repo
-          checkout scm
+          // check to see if we want to use a non-standard branch and check out the repo
+          if (params.BRANCH_SPECIFIER == default_branch_specifier) {
+            checkout scm
+          } else {
+            def scmRepoUrl = scm.getUserRemoteConfigs()[0].getUrl()
+            checkout ([
+              $class: 'GitSCM',
+              branches: [[name: params.BRANCH_SPECIFIER ]],
+              userRemoteConfigs: [[ url: scmRepoUrl ]]
+            ])
+          }
 
           // set the service sha to what was checked out (GIT_COMMIT isn't always set)
           service_sha = sh(returnStdout: true, script: "git rev-parse HEAD").trim()
@@ -113,7 +125,7 @@ pipeline {
             // set stages to run since we're cutting
             stage_build = true
             stage_dockerize = true
-            stage_deploy = true            
+            stage_deploy = true
           }
         }
       }
