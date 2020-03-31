@@ -26,7 +26,7 @@ class QueryParserTest extends TestBase {
       ColumnName("b") -> ColumnRef(NoQualifier, "bi", SoQLText)(new SoQLPosition(1, starPos, query, 0))
     )
     val actual = qp.apply(query, truthColumns, upToDateSchema, fakeRequestBuilder) match {
-      case SuccessfulParse(analyses) => analyses.head.selection
+      case SuccessfulParse(analyses, _) => analyses.head.selection
       case x: QueryParser.Result => x
     }
     actual should be(expected)
@@ -39,7 +39,7 @@ class QueryParserTest extends TestBase {
       ColumnName("a") -> ColumnRef(NoQualifier, "ai", SoQLText)(new SoQLPosition(1, starPos, query, 0))
     )
     val actual = qp.apply(query, truthColumns, outdatedSchema, fakeRequestBuilder) match {
-      case SuccessfulParse(analyses) => analyses.head.selection
+      case SuccessfulParse(analyses, _) => analyses.head.selection
       case x: QueryParser.Result => x
     }
     actual should be(expected)
@@ -56,7 +56,7 @@ class QueryParserTest extends TestBase {
     val actual = qp.apply(query, truthColumns, outdatedSchema, fakeRequestBuilder, merged = false)
     actual shouldBe a[SuccessfulParse]
 
-    val SuccessfulParse(analyses) = actual
+    val SuccessfulParse(analyses, _) = actual
     val depositionedAnalyses = analyses.map { a => SoQLAnalysisDepositioner(a)}
 
     val concatBindings = SoQLFunctions.Concat.parameters.map {
