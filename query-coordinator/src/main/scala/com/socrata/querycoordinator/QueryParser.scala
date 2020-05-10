@@ -134,7 +134,8 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
       new AbstractParser.Parameters(
         allowJoins = true,
         systemColumnAliasesAllowed = systemColumns ++ columnIdMap.keySet.filter(_.caseFolded.startsWith(":@")))
-    val parsed = new Parser(parserParams).selectStatement(query)
+    val parsed0 = new Parser(parserParams).selectStatement(query)
+    val parsed = UniqueTableAliases(parsed0)
 
     val joins = ast.Join.expandJoins(parsed.seq)
 
