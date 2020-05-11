@@ -5,6 +5,9 @@ import com.socrata.soql.parsing.Parser
 
 class UniqueTableAliasesTest extends TestBase {
 
+  /***
+    * The 2nd @b is renamed to @b__2 to avoid collision with the first @b
+    */
   test("table aliases renamed so that analyze do not collide") {
     val q = """
             SELECT aa |>
