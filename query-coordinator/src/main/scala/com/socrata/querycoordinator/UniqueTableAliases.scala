@@ -27,28 +27,33 @@ object UniqueTableAliases {
   }
 
   private def replaceAlias(select: Select, index: Int, tableAliasMap: Map[String, String]): (Select, Map[String, String]) = {
-    val (newJoins, aliasMap) = select.joins.foldLeft((Seq.empty[Join], tableAliasMap)) { (acc, join) =>
-      val (joins, map) = acc
+    val (newJoins, aliasMap, dirty) = select.joins.foldLeft((Seq.empty[Join], tableAliasMap, false)) { (acc, join) =>
+      val (joins, map, dirty) = acc
       join.from.alias.map { fromAlias =>
-        val toAlias = if (map.contains(fromAlias)) fromAlias + "__" + index else fromAlias
+        val collide = map.contains(fromAlias)
+        val toAlias = if (collide) fromAlias + "__" + index else fromAlias
         val newMap = map + (fromAlias -> toAlias)
-        (joins :+ replaceAlias(join, newMap), newMap)
-      }.getOrElse((joins :+ join, map))
+        (joins :+ replaceAlias(join, newMap), newMap, collide || dirty)
+      }.getOrElse((joins :+ join, map, false))
     }
 
-    val reAliasedSelection = select.selection.copy(expressions =
-      select.selection.expressions.map(se => se.copy(expression = replaceAlias(se.expression, aliasMap))))
+    if (dirty) {
+      val reAliasedSelection = select.selection.copy(expressions =
+        select.selection.expressions.map(se => se.copy(expression = replaceAlias(se.expression, aliasMap))))
 
-    val newSelect = select.copy(
-      selection = reAliasedSelection,
-      joins = newJoins,
-      where = select.where.map(w => replaceAlias(w, aliasMap)),
-      groupBys = select.groupBys.map(e => replaceAlias(e, aliasMap)),
-      having = select.having.map(h => replaceAlias(h, aliasMap)),
-      orderBys = select.orderBys.map(o => o.copy(expression =  replaceAlias(o.expression, aliasMap)))
-    )
+      val newSelect = select.copy(
+        selection = reAliasedSelection,
+        joins = newJoins,
+        where = select.where.map(w => replaceAlias(w, aliasMap)),
+        groupBys = select.groupBys.map(e => replaceAlias(e, aliasMap)),
+        having = select.having.map(h => replaceAlias(h, aliasMap)),
+        orderBys = select.orderBys.map(o => o.copy(expression = replaceAlias(o.expression, aliasMap)))
+      )
 
-    (newSelect, aliasMap)
+      (newSelect, aliasMap)
+    } else {
+      (select, aliasMap)
+    }
   }
 
   private def replaceAlias(join: Join, map: Map[String, String]): Join = {
