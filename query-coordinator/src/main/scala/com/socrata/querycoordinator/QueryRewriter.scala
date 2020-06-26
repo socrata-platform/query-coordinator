@@ -274,6 +274,12 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
       case literal: typed.TypedLiteral[_] => Some(literal) // This is literally a literal, so so literal.
       // for a column reference we just need to map the column id
       case cr: ColumnRef => for {idx <- rollupColIdx.get(cr)} yield cr.copy(column = rollupColumnId(idx))
+      // window functions run after where / group by / having so can't be rewritten in isolation.  We could
+      // still rewrite a query with a window function in if the other clauses all match, however that requires
+      // coordination between expression mapping and mapping other clauses at a higher level that isn't implemented,
+      // so for now we just forbid it entirely to avoid incorrect rewrites.
+      case fc: FunctionCall if fc.function.function == WindowFunctionOver =>
+        None
       // A count(*) or count(non-null-literal) on q gets mapped to a sum on any such column in rollup
       case fc: FunctionCall if isCountStarOrLiteral(fc) =>
         for {
