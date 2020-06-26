@@ -9,7 +9,7 @@ import org.apache.log4j.PropertyConfigurator
 import org.scalatest.{BeforeAndAfterAll, FunSuite, Matchers}
 import org.scalatestplus.scalacheck.ScalaCheckPropertyChecks
 
-abstract class TestBase extends FunSuite  with Matchers with ScalaCheckPropertyChecks {
+abstract class TestBase extends FunSuite  with Matchers with ScalaCheckPropertyChecks with BeforeAndAfterAll {
   val config: Config = ConfigFactory.load().getConfig("com.socrata.query-coordinator")
 
   PropertyConfigurator.configure(Propertizer("log4j", config.getConfig("log4j")))
