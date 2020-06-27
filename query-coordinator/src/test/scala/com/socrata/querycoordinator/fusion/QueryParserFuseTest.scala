@@ -18,7 +18,7 @@ class QueryParserFuseTest extends TestBase {
     val query = "SELECT * WHERE location.latitude = 1.1"
 
     val expectedWhere: CoreExpr[String, SoQLType] =
-      FunctionCall(eqFn, Seq(ptlFc, NumberLiteral(1.1, SoQLNumber.t)(NoPosition)))(NoPosition, NoPosition)
+      FunctionCall(eqFn, Seq(ptlFc, NumberLiteral(1.1, SoQLNumber.t)(NoPosition)), None)(NoPosition, NoPosition)
 
     val expectedSelection = com.socrata.soql.collection.OrderedMap(
       ColumnName("a") -> ColumnRef(NoQualifier, "ai", SoQLText)(NoPosition),
@@ -150,12 +150,12 @@ object QueryParserFuseTest {
     ColumnRef(NoQualifier, "location_city", SoQLText.t)(NoPosition),
     ColumnRef(NoQualifier, "location_state", SoQLText.t)(NoPosition),
     ColumnRef(NoQualifier, "location_zip", SoQLText.t)(NoPosition)
-  ))(NoPosition, NoPosition)
+  ), None)(NoPosition, NoPosition)
 
   val phoneFc = FunctionCall(SoQLFunctions.Phone.monomorphic.get, Seq(
     ColumnRef(NoQualifier, "phone", SoQLText.t)(NoPosition),
     ColumnRef(NoQualifier, "phone_type", SoQLText.t)(NoPosition)
-  ))(NoPosition, NoPosition)
+  ), None)(NoPosition, NoPosition)
 
   val eqBindings = SoQLFunctions.Eq.parameters.map {
     case VariableType(name) => name -> SoQLNumber
@@ -165,7 +165,7 @@ object QueryParserFuseTest {
   val eqFn = MonomorphicFunction(SoQLFunctions.Eq, eqBindings)
 
   val ptlFc = FunctionCall(SoQLFunctions.PointToLatitude.monomorphic.get,
-    Seq(ColumnRef(NoQualifier, "location", SoQLPoint.t)(NoPosition)))(NoPosition, NoPosition)
+    Seq(ColumnRef(NoQualifier, "location", SoQLPoint.t)(NoPosition)), None)(NoPosition, NoPosition)
 
   val fuse = Map("location" -> "location", "phone" -> "phone")
 }
