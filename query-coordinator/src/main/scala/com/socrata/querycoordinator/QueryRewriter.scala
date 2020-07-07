@@ -57,7 +57,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
         fc.parameters.head
       case fc: FunctionCall =>
         // recurse in case we have a function on top of an aggregation
-        fc.copy(parameters = fc.parameters.map(p => removeAggregates(p)), window = fc.window)
+        fc.copy(parameters = fc.parameters.map(p => removeAggregates(p)))
       case _ => e
     }
   }
@@ -185,7 +185,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
             typed.ColumnRef(NoQualifier, rollupColumnId(idx), SoQLFloatingTimestamp.t)(fc.position),
             lowerRewrite,
             upperRewrite))
-        } yield fc.copy(parameters = newParams, window = fc.window)
+        } yield fc.copy(parameters = newParams)
       case _ => None
     }
   }
@@ -255,7 +255,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
                 NoQualifier,
                 rollupColumnId(rollupColIdx),
                 SoQLFloatingTimestamp.t)(fc.position), right))
-            } yield fc.copy(parameters = newParams, window = fc.window)
+            } yield fc.copy(parameters = newParams)
           case _ => None
         }
       case _ => None
@@ -332,8 +332,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
       // If we have a matching column, we just need to update its argument to reference the rollup column.
       case fc: FunctionCall if isSelfAggregatableAggregate(fc.function.function) =>
         for {idx <- rollupColIdx.get(fc)} yield fc.copy(
-          parameters = Seq(typed.ColumnRef(NoQualifier, rollupColumnId(idx), fc.typ)(fc.position)),
-          window = fc.window)
+          parameters = Seq(typed.ColumnRef(NoQualifier, rollupColumnId(idx), fc.typ)(fc.position)))
       case _ => None
     }
   }
@@ -351,7 +350,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
       log.trace("mapped expr params {} {} -> {}", "", fc.parameters, mapped)
       if (mapped.forall(fe => fe.isDefined)) {
         log.trace("expr params all defined")
-        Some(fc.copy(parameters = mapped.flatten, window = fc.window))
+        Some(fc.copy(parameters = mapped.flatten))
       } else {
         None
       }

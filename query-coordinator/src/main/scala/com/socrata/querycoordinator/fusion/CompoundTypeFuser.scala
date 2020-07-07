@@ -238,7 +238,7 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite {
         }
       case fc@FunctionCall(fnName, params, window) =>
          val rwParams: Seq[Expression] = params.map(e => rewriteExpr(e).getOrElse(e))
-         Some(fc.copy(parameters = rwParams, window = window)(fc.functionNamePosition, fc.position))
+         Some(fc.copy(parameters = rwParams)(fc.functionNamePosition, fc.position))
       case _ =>
         Some(expr)
     }
