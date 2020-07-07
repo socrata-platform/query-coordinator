@@ -74,12 +74,12 @@ class QueryParserTest extends TestBase {
     val select0 = OrderedMap(ColumnName("x") -> FunctionCall(concat, Seq(
       ColumnRef(NoQualifier, "ai", SoQLText.t)(NoPosition),
       StringLiteral("one", SoQLText.t)(NoPosition)
-    ))(NoPosition, NoPosition))
+    ), None)(NoPosition, NoPosition))
 
     val where0 = FunctionCall(neq, Seq(
       ColumnRef(NoQualifier, "ai", SoQLText.t)(NoPosition),
       StringLiteral("x", SoQLText.t)(NoPosition)
-    ))(NoPosition, NoPosition)
+    ), None)(NoPosition, NoPosition)
 
     depositionedAnalyses(0).selection should be(select0)
     depositionedAnalyses(0).where should be(Some(where0))
@@ -87,12 +87,12 @@ class QueryParserTest extends TestBase {
     val select1 = OrderedMap(ColumnName("y") -> FunctionCall(concat, Seq(
       ColumnRef(NoQualifier, "x", SoQLText.t)(NoPosition),
       StringLiteral("y", SoQLText.t)(NoPosition)
-    ))(NoPosition, NoPosition))
+    ), None)(NoPosition, NoPosition))
 
     val where1 = FunctionCall(neq, Seq(
       ColumnRef(NoQualifier, "x", SoQLText.t)(NoPosition),
       StringLiteral("y", SoQLText.t)(NoPosition)
-    ))(NoPosition, NoPosition)
+    ), None)(NoPosition, NoPosition)
 
     depositionedAnalyses(1).selection should be(select1)
     depositionedAnalyses(1).where should be(Some(where1))
@@ -100,12 +100,12 @@ class QueryParserTest extends TestBase {
     val select2 = OrderedMap(ColumnName("z") -> FunctionCall(concat, Seq(
       ColumnRef(NoQualifier, "y", SoQLText.t)(NoPosition),
       StringLiteral("z", SoQLText.t)(NoPosition)
-    ))(NoPosition, NoPosition))
+    ), None)(NoPosition, NoPosition))
 
     val where2 = FunctionCall(neq, Seq(
       ColumnRef(NoQualifier, "y", SoQLText.t)(NoPosition),
       StringLiteral("z", SoQLText.t)(NoPosition)
-    ))(NoPosition, NoPosition)
+    ), None)(NoPosition, NoPosition)
 
     depositionedAnalyses(2).selection should be(select2)
     depositionedAnalyses(2).where should be(Some(where2))
