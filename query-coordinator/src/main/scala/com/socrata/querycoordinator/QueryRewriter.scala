@@ -244,7 +244,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
           // to a floating timestamp.  eg. my_floating_timestamp < '2010-01-01'::floating_timestamp
           // While it is eminently reasonable to also accept them in flipped order, that is being left for later.
           case (colRef@typed.ColumnRef(_, _, SoQLFloatingTimestamp),
-          cast@typed.FunctionCall(MonomorphicFunction(TextToFloatingTimestamp, _), Seq(typed.StringLiteral(ts, _)), fc.window)) =>
+          cast@typed.FunctionCall(MonomorphicFunction(TextToFloatingTimestamp, _), Seq(typed.StringLiteral(ts, _)), None)) =>
             for {
               parsedTs <- SoQLFloatingTimestamp.StringRep.unapply(ts)
               truncatedTo <- truncatedTo(SoQLFloatingTimestamp(parsedTs))
