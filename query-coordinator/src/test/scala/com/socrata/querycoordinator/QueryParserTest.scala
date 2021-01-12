@@ -8,7 +8,7 @@ import com.socrata.soql.collection.OrderedMap
 import com.socrata.soql.environment.ColumnName
 import com.socrata.soql.functions._
 import com.socrata.soql.parsing.SoQLPosition
-import com.socrata.soql.SoQLAnalyzer
+import com.socrata.soql.{Leaf, SoQLAnalyzer}
 import com.socrata.soql.typed.{ColumnRef, FunctionCall, StringLiteral}
 import com.socrata.soql.types.{SoQLText, SoQLType}
 
@@ -26,7 +26,7 @@ class QueryParserTest extends TestBase {
       ColumnName("b") -> ColumnRef(NoQualifier, "bi", SoQLText)(new SoQLPosition(1, starPos, query, 0))
     )
     val actual = qp.apply(query, truthColumns, upToDateSchema, fakeRequestBuilder) match {
-      case SuccessfulParse(analyses, _) => analyses.head.selection
+      case SuccessfulParse(analyses, _) => analyses.asLeaf.get.selection
       case x: QueryParser.Result => x
     }
     actual should be(expected)
@@ -39,7 +39,7 @@ class QueryParserTest extends TestBase {
       ColumnName("a") -> ColumnRef(NoQualifier, "ai", SoQLText)(new SoQLPosition(1, starPos, query, 0))
     )
     val actual = qp.apply(query, truthColumns, outdatedSchema, fakeRequestBuilder) match {
-      case SuccessfulParse(analyses, _) => analyses.head.selection
+      case SuccessfulParse(analyses, _) => analyses.asLeaf.get.selection
       case x: QueryParser.Result => x
     }
     actual should be(expected)
@@ -57,7 +57,7 @@ class QueryParserTest extends TestBase {
     actual shouldBe a[SuccessfulParse]
 
     val SuccessfulParse(analyses, _) = actual
-    val depositionedAnalyses = analyses.map { a => SoQLAnalysisDepositioner(a)}
+    val depositionedAnalyses = analyses.flatMap { a => Leaf(SoQLAnalysisDepositioner(a))}.seq
 
     val concatBindings = SoQLFunctions.Concat.parameters.map {
       case VariableType(name) => name -> SoQLText

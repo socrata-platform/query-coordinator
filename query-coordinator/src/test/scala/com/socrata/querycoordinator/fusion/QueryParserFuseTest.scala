@@ -29,7 +29,7 @@ class QueryParserFuseTest extends TestBase {
 
     val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, fuse) match {
       case SuccessfulParse(analyses, _) =>
-        val actual = SoQLAnalysisDepositioner(analyses.head)
+        val actual = SoQLAnalysisDepositioner(analyses.asLeaf.get)
         actual.selection should be(expectedSelection)
         actual.where should be(Some(expectedWhere))
       case x: QueryParser.Result =>
@@ -46,7 +46,7 @@ class QueryParserFuseTest extends TestBase {
 
     val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, fuse) match {
       case SuccessfulParse(analyses, _) =>
-        val actual = SoQLAnalysisDepositioner(analyses.head)
+        val actual = SoQLAnalysisDepositioner(analyses.seq.head)
         actual.selection should be(expectedSelection)
         actual.where should be(None)
       case x: QueryParser.Result =>
@@ -64,7 +64,7 @@ class QueryParserFuseTest extends TestBase {
 
     val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, fuse) match {
       case SuccessfulParse(analyses, _) =>
-        val actual = SoQLAnalysisDepositioner(analyses.head)
+        val actual = SoQLAnalysisDepositioner(analyses.seq.head)
         actual.selection should be(expectedSelection)
         actual.where should be(None)
         actual.limit should be(Some(BigInt(100000000)))
@@ -84,7 +84,7 @@ class QueryParserFuseTest extends TestBase {
 
     val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, Map.empty) match {
       case SuccessfulParse(analyses, _) =>
-        val actual = SoQLAnalysisDepositioner(analyses.head)
+        val actual = SoQLAnalysisDepositioner(analyses.seq.head)
         actual.selection should be(expectedSelection)
         actual.where should be(None)
       case x: QueryParser.Result =>
@@ -101,7 +101,7 @@ class QueryParserFuseTest extends TestBase {
 
     val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, Map.empty) match {
       case SuccessfulParse(analyses, _) =>
-        val actual = SoQLAnalysisDepositioner(analyses.head)
+        val actual = SoQLAnalysisDepositioner(analyses.seq.head)
       case x: QueryParser.Result =>
         fail("fail to parse soql: " + x)
     }

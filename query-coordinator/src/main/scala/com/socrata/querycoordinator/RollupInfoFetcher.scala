@@ -16,7 +16,7 @@ import com.socrata.querycoordinator.RollupInfoFetcher._
 class RollupInfoFetcher(httpClient: HttpClient) {
   val log = org.slf4j.LoggerFactory.getLogger(classOf[RollupInfoFetcher])
 
-  def apply(base: RequestBuilder, dataset: String, copy: Option[String]): Result = {
+  def apply(base: RequestBuilder, dataset: Either[String, String], copy: Option[String]): Result = {
     def processResponse(response: Response): Result = response.resultCode match {
       case HttpServletResponse.SC_OK =>
         try {
@@ -33,7 +33,13 @@ class RollupInfoFetcher(httpClient: HttpClient) {
         BadResponseFromSecondary
     }
 
-    val params = Seq("ds" -> dataset) ++ copy.map(c => Seq("copy" -> c)).getOrElse(Nil)
+    val params = dataset match {
+      case Left(dsInternalName) =>
+        Seq("ds" -> dsInternalName) ++ copy.map(c => Seq("copy" -> c)).getOrElse(Nil)
+      case Right(resourceName) =>
+        Seq("rn" -> resourceName) ++ copy.map(c => Seq("copy" -> c)).getOrElse(Nil)
+    }
+
     val request = base.p("rollups").q(params: _*).get
 
     try {

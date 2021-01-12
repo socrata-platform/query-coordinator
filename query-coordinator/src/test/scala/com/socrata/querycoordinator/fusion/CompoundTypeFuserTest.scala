@@ -1,12 +1,11 @@
 package com.socrata.querycoordinator.fusion
 
-import com.socrata.NonEmptySeq
 import com.socrata.querycoordinator.QueryRewriter._
 import com.socrata.querycoordinator.caching.SoQLAnalysisDepositioner
 import com.socrata.querycoordinator.{QueryParser, QueryRewriter, Schema, TestBase}
 import com.socrata.querycoordinator.util.Join
 import com.socrata.soql.ast.Select
-import com.socrata.soql.SoQLAnalyzer
+import com.socrata.soql.{BinaryTree, SoQLAnalyzer}
 import com.socrata.soql.environment.{ColumnName, TypeName}
 import com.socrata.soql.functions._
 import com.socrata.soql.parsing.Parser
@@ -56,11 +55,11 @@ class CompoundTypeFuserTest extends TestBase {
   test("expanded location columns are fused into location type") {
     val fuser = CompoundTypeFuser(Map("location" -> "location"))
     val q = "SELECT location WHERE location.latitude = 1.1"
-    val parsed = new Parser().selectStatement(q)
-    val rewritten: NonEmptySeq[Select] = fuser.rewrite(parsed, columnIdMapping, rawSchema)
-    val analysis = analyzer.analyze(rewritten)(toAnalysisContext(dsContext))
+    val parsed = new Parser().binaryTreeSelect(q)
+    val rewritten: BinaryTree[Select] = fuser.rewrite(parsed, columnIdMapping, rawSchema)
+    val analysis = analyzer.analyzeBinary(rewritten)(toAnalysisContext(dsContext))
     val rewrittenAnalysis = fuser.postAnalyze(analysis)
-    rewrittenAnalysis.size should be (1)
+    rewrittenAnalysis.seq.size should be (1)
     rewrittenAnalysis.seq.foreach { analysis =>
       val da = SoQLAnalysisDepositioner(analysis)
       val args = Seq(ColumnRef(None, ColumnName("location"), SoQLPoint.t)(NoPosition),

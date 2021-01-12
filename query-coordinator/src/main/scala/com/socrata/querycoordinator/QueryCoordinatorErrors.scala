@@ -27,6 +27,7 @@ object QueryCoordinatorErrors {
     val nonBooleanWhere = "query.soql.non-boolean-where"
     val nonGroupableGroup = "query.soql.non-groupable-group"
     val unOrderableOrder = "query.soql.un-orderable-order"
+    val rightSideOfChainQueryMustBeLeaf = "query.soql.right-side-of-chain-query-must-be-leaf"
   }
 
   object QueryErrors extends QCErrors {
