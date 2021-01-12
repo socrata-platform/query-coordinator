@@ -1,18 +1,19 @@
 package com.socrata.querycoordinator.caching
 
-import com.socrata.soql.SoQLAnalysis
+import com.socrata.soql.{Leaf, SoQLAnalysis}
 import com.socrata.soql.typed._
 import com.socrata.soql.collection.OrderedMap
-import com.socrata.soql.environment.{ColumnName, TableName}
+import com.socrata.soql.environment.ColumnName
 
 import scala.util.parsing.input.NoPosition
 
 object SoQLAnalysisDepositioner {
   def apply[ColumnId,Type](sa: SoQLAnalysis[ColumnId,Type]): SoQLAnalysis[ColumnId,Type] = {
-    val SoQLAnalysis(isGrouped, distinct, selection, joins, where, groupBys, having, orderBys, limit, offset, search) = sa
+    val SoQLAnalysis(isGrouped, distinct, selection, from, joins, where, groupBys, having, orderBys, limit, offset, search) = sa
     SoQLAnalysis(isGrouped = isGrouped,
                  distinct = distinct,
                  selection = depositionSelection(selection),
+                 from = from,
                  joins = depsoitionOptJoins(joins),
                  where = depositionOptExpr(where),
                  groupBys = depositionGroupBys(groupBys),
@@ -48,7 +49,10 @@ object SoQLAnalysisDepositioner {
 
   private def depsoitionOptJoins[ColumnId, Type](joins: Seq[Join[ColumnId, Type]]) = {
     joins.map { join =>
-      val mappedSubAna = join.from.subAnalysis.map(sa => sa.copy(analyses = sa.analyses.map(SoQLAnalysisDepositioner.apply)))
+      val mappedSubAna = join.from.subAnalysis.map { sa =>
+        val depositioned = sa.analyses.flatMap(analysis => Leaf(SoQLAnalysisDepositioner(analysis)))
+        sa.copy(analyses = depositioned)
+      }
       Join(join.typ, join.from.copy(subAnalysis = mappedSubAna), depositionExpr(join.on))
     }
   }
