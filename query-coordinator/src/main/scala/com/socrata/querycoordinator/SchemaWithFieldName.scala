@@ -6,7 +6,15 @@ import com.rojoma.json.v3.matcher.{PObject, Variable}
 import com.socrata.querycoordinator.util.SoQLTypeCodec
 import com.socrata.soql.types.SoQLType
 
-case class SchemaWithFieldName(hash: String, schema: Map[String, (SoQLType, String)], pk: String)
+case class SchemaWithFieldName(hash: String, schema: Map[String, (SoQLType, String)], pk: String) {
+
+  def toSchema(): Schema = {
+    val schemaLessFieldName = schema.map {
+      case ( columnId, (typ, _)) => (columnId -> typ)
+    }
+    Schema(hash, schemaLessFieldName, pk)
+  }
+}
 
 
 object SchemaWithFieldName {

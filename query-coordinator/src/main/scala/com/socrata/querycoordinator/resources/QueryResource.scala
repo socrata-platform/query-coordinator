@@ -5,17 +5,18 @@ import java.io.{InputStream, OutputStream}
 import javax.servlet.http.HttpServletResponse
 import com.rojoma.simplearm.v2.ResourceScope
 import com.rojoma.json.v3.util.JsonUtil
-import com.socrata.NonEmptySeq
 import com.socrata.http.common.util.HttpUtils
 import com.socrata.http.server._
 import com.socrata.http.server.implicits._
 import com.socrata.http.server.responses._
 import com.socrata.http.server.util.RequestId
+import com.socrata.querycoordinator.SchemaFetcher.{BadResponseFromSecondary, NoSuchDatasetInSecondary, NonSchemaResponse, Result, SecondaryConnectFailed, Successful, TimeoutFromSecondary}
 import com.socrata.querycoordinator._
 import com.socrata.querycoordinator.caching.SharedHandle
-import com.socrata.soql.environment.ColumnName
+import com.socrata.querycoordinator.exceptions.JoinedDatasetNotColocatedException
+import com.socrata.soql.environment.{ColumnName, TableName}
 import com.socrata.soql.exceptions.{DuplicateAlias, NoSuchColumn, TypecheckException}
-import com.socrata.soql.SoQLAnalysis
+import com.socrata.soql.{BinaryTree, Compound, Leaf, SoQLAnalysis}
 import com.socrata.soql.types.{SoQLID, SoQLNumber, SoQLType}
 import org.apache.http.HttpStatus
 import org.joda.time.format.ISODateTimeFormat
@@ -129,7 +130,7 @@ class QueryResource(secondary: Secondary,
           retriesSoFar >= 3
         }
 
-        def analyzeRequest(schemaWithFieldNames: Versioned[SchemaWithFieldName], isFresh: Boolean): Either[QueryRetryState, Versioned[(Schema, NonEmptySeq[SoQLAnalysis[String, SoQLType]])]] = {
+        def analyzeRequest(schemaWithFieldNames: Versioned[SchemaWithFieldName], isFresh: Boolean): Either[QueryRetryState, Versioned[(Schema, BinaryTree[SoQLAnalysis[String, SoQLType]])]] = {
 
           val schema0 = stripFieldNamesFromSchema(schemaWithFieldNames.payload)
           val schema =
@@ -183,8 +184,8 @@ class QueryResource(secondary: Secondary,
          * @param analyzedQueryNoRollup original analysis without rollup
          */
         def executeQuery(schema: Versioned[Schema],
-                         analyzedQuery: NonEmptySeq[SoQLAnalysis[String, SoQLType]],
-                         analyzedQueryNoRollup: NonEmptySeq[SoQLAnalysis[String, SoQLType]],
+                         analyzedQuery: BinaryTree[SoQLAnalysis[String, SoQLType]],
+                         analyzedQueryNoRollup: BinaryTree[SoQLAnalysis[String, SoQLType]],
                          context: Map[String, String],
                          rollupName: Option[String],
                          requestId: String,
@@ -232,7 +233,7 @@ class QueryResource(secondary: Secondary,
                   val (finalSchema, analyses) = versionedInfo.payload
                   val (rewrittenAnalyses, rollupName) = possiblyRewriteOneAnalysisInQuery(finalSchema, analyses)
                   executeQuery(versionedInfo.copy(payload = finalSchema),
-                    rewrittenAnalyses, analyses, context, rollupName, requestId, resourceName, resourceScope, explain, analyze)
+                    rewrittenAnalyses, analyses, context, rollupName.headOption, requestId, resourceName, resourceScope, explain, analyze)
                 }
               }
             case QueryExecutor.ToForward(responseCode, headers, body) =>
@@ -271,40 +272,86 @@ class QueryResource(secondary: Secondary,
           }
         }
 
+        def getSchemaByTableName(tableName: TableName): SchemaWithFieldName = {
+          val TableName(name, _) = tableName
+          val schemaResult = schemaFetcher(base, name, None, useResourceName = true)
+          schemaResult match {
+            case Successful(schema, _, _, _) =>
+              schema
+            case NoSuchDatasetInSecondary =>
+              throw new JoinedDatasetNotColocatedException(name, base.host)
+            case TimeoutFromSecondary =>
+              finishRequest(upstreamTimeoutResponse)
+            case other: SchemaFetcher.Result =>
+              log.error(unexpectedError, s"${other} $name ${base.host}")
+              chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
+              finishRequest(internalServerError)
+          }
+        }
+
         /**
          * Scan from left to right (inner to outer), rewrite the first possible one.
          * TODO: Find a better way to apply rollup?
          */
-        def possiblyRewriteOneAnalysisInQuery(schema: Schema, analyzedQuery: NonEmptySeq[SoQLAnalysis[String, SoQLType]])
-          : (NonEmptySeq[SoQLAnalysis[String, SoQLType]], Option[String]) = {
-          if (noRollup || analyzedQuery.seq.exists(_.joins.nonEmpty)) {
-            (analyzedQuery, None)
+        def possiblyRewriteOneAnalysisInQuery(schema: Schema, analyzedQuery: BinaryTree[SoQLAnalysis[String, SoQLType]]):
+            (BinaryTree[SoQLAnalysis[String, SoQLType]], Seq[String]) = {
+
+          if (noRollup) {
+            (analyzedQuery, Seq.empty)
           } else {
-            rollupInfoFetcher(base.receiveTimeoutMS(schemaTimeout.toMillis.toInt), dataset, copy) match {
-              case RollupInfoFetcher.Successful(rollups) =>
-                // Only the leftmost soql in a chain can use rollups.
-                possiblyRewriteQuery(schema, analyzedQuery.head, rollups, Map.empty[String, String]) match {
-                  case (rewrittenAnal, ru@Some(_)) =>
-                    (analyzedQuery.updated(0, rewrittenAnal), ru)
-                  case (_, None) =>
-                    (analyzedQuery, None)
+            analyzedQuery match {
+              case Compound(op, l, r) =>
+                val (nl, rollupLeft) = possiblyRewriteOneAnalysisInQuery(schema, l)
+                val (nr, rollupRight) = possiblyRewriteOneAnalysisInQuery(schema, r)
+                (Compound(op, nl, nr), rollupLeft ++ rollupRight)
+              case Leaf(analysis) if analysis.joins.nonEmpty =>
+                (analyzedQuery, Seq.empty)
+              case Leaf(analysis) =>
+                val (schemaFrom, datasetOrResourceName) = analysis.from match {
+                  case Some(tableName) =>
+                    val schemaWithFieldName = getSchemaByTableName(tableName)
+                    (schemaWithFieldName.toSchema(), Right(tableName.name))
+                  case None =>
+                    (schema, Left(dataset))
                 }
-              case RollupInfoFetcher.NoSuchDatasetInSecondary =>
-                chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
-                finishRequest(notFoundResponse(dataset))
-              case RollupInfoFetcher.TimeoutFromSecondary =>
-                chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
-                finishRequest(upstreamTimeoutResponse)
-              case other: RollupInfoFetcher.Result =>
-                log.error(unexpectedError, other)
-                chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
-                finishRequest(internalServerError)
+
+                datasetOrResourceName match {
+                  case Left(dataset) =>
+                    rollupInfoFetcher(base.receiveTimeoutMS(schemaTimeout.toMillis.toInt), datasetOrResourceName, copy) match {
+                      case RollupInfoFetcher.Successful(rollups) =>
+                        // Only the leftmost soql in a chain can use rollups.
+                        possiblyRewriteQuery(schemaFrom, analysis, rollups, Map.empty[String, String]) match {
+                          case (rewrittenAnal, ru@Some(_)) =>
+                            (Leaf(rewrittenAnal), ru.toSeq)
+                          case (_, None) =>
+                            (Leaf(analysis), Seq.empty)
+                        }
+                      case RollupInfoFetcher.NoSuchDatasetInSecondary =>
+                        chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
+                        finishRequest(notFoundResponse(dataset))
+                      case RollupInfoFetcher.TimeoutFromSecondary =>
+                        chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
+                        finishRequest(upstreamTimeoutResponse)
+                      case other: RollupInfoFetcher.Result =>
+                        log.error(unexpectedError, other)
+                        chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
+                        finishRequest(internalServerError)
+                    }
+                  case Right(resourceName) =>
+                    // TODO: union cannot use RollUp yet.
+                    // Further work needs to decorate the analysis with more than one rollup info so that
+                    // soql-postgres-adapter can get to the rollup table name.
+                    // Options to put the additional rollups info -
+                    // 1. Request Header
+                    // 2. in Analysis.from
+                    (Leaf(analysis), Seq.empty)
+                }
             }
           }
         }
 
-        def possiblyRewriteQuery(schema: Schema, analyzedQuery: SoQLAnalysis[String, SoQLType], rollups: Seq[RollupInfo], project: Map[String, String])
-          : (SoQLAnalysis[String, SoQLType], Option[String]) = {
+        def possiblyRewriteQuery(schema: Schema, analyzedQuery: SoQLAnalysis[String, SoQLType], rollups: Seq[RollupInfo], project: Map[String, String]):
+            (SoQLAnalysis[String, SoQLType], Option[String]) = {
           val rewritten = RollupScorer.bestRollup(
             queryRewriter.possibleRewrites(schema, analyzedQuery, rollups, project).toSeq)
           val (rollupName, analysis) = rewritten map { x => (Option(x._1), x._2) } getOrElse ((None, analyzedQuery))
@@ -347,7 +394,7 @@ class QueryResource(secondary: Secondary,
             val (finalSchema, analyses) = versionInfo.payload
             val (rewrittenAnalyses, rollupName) = possiblyRewriteOneAnalysisInQuery(finalSchema, analyses)
             executeQuery(versionInfo.copy(payload = finalSchema),
-              rewrittenAnalyses, analyses, context, rollupName,
+              rewrittenAnalyses, analyses, context, rollupName.headOption,
               requestId, req.header(headerSocrataResource), req.resourceScope, explain, analyze)
           }
         }
