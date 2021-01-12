@@ -2,7 +2,7 @@ package com.socrata.querycoordinator.caching.cache
 
 import com.rojoma.simplearm.v2.ResourceScope
 import com.socrata.NonEmptySeq
-import com.socrata.soql.SoQLAnalysis
+import com.socrata.soql.{BinaryTree, SoQLAnalysis}
 import com.socrata.soql.types.SoQLType
 import org.joda.time.DateTime
 import org.slf4j.Logger
@@ -25,17 +25,18 @@ trait CacheSessionProvider {
     disableTil.isAfterNow
   }
 
-  def shouldSkip(analyses: NonEmptySeq[SoQLAnalysis[String, SoQLType]], rollupName: Option[String]): Boolean = {
-    analyses.last.limit.isEmpty ||
-    rollupName.isDefined ||
-      !analyses.seq.exists { a =>
-        a.where.isDefined ||
-        a.groupBys.nonEmpty ||
-        a.having.isDefined ||
-        (a.orderBys.size > 1) ||
-        a.search.isDefined ||
-        a.distinct
-      }
+  def shouldSkip(analyses: BinaryTree[SoQLAnalysis[String, SoQLType]], rollupName: Option[String]): Boolean = {
+    true
+//    analyses.last.limit.isEmpty ||
+//    rollupName.isDefined ||
+//      !analyses.seq.exists { a =>
+//        a.where.isDefined ||
+//        a.groupBys.nonEmpty ||
+//        a.having.isDefined ||
+//        (a.orderBys.size > 1) ||
+//        a.search.isDefined ||
+//        a.distinct
+//      }
   }
 
   def shouldSkip(queryTimeMs: Long): Boolean = {

@@ -5,6 +5,7 @@ import com.socrata.http.client.RequestBuilder
 import com.socrata.querycoordinator.SchemaFetcher.{NoSuchDatasetInSecondary, Successful}
 import com.socrata.querycoordinator.exceptions.JoinedDatasetNotColocatedException
 import com.socrata.querycoordinator.fusion.{CompoundTypeFuser, SoQLRewrite}
+import com.socrata.soql.ast.Select
 import com.socrata.soql.collection.OrderedMap
 import com.socrata.soql.environment._
 import com.socrata.soql.exceptions.SoQLException
@@ -12,9 +13,8 @@ import com.socrata.soql.functions.SoQLFunctions
 import com.socrata.soql.parsing.{AbstractParser, Parser}
 import com.socrata.soql.typed._
 import com.socrata.soql.types.SoQLType
-import com.socrata.soql.{SoQLAnalysis, SoQLAnalyzer}
+import com.socrata.soql.{BinaryTree, Compound, SoQLAnalysis, SoQLAnalyzer, ast}
 import com.typesafe.scalalogging.Logger
-import com.socrata.soql.ast
 import org.joda.time.DateTime
 
 
@@ -25,7 +25,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
   type AnalysisContext = Map[String, DatasetContext[SoQLType]]
 
   private def go(columnIdMapping: Map[ColumnName, String], schema: Map[String, SoQLType])
-                (f: AnalysisContext => (NonEmptySeq[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String], DateTime)): Result = {
+                (f: AnalysisContext => (BinaryTree[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String], DateTime)): Result = {
 
     val ds = toAnalysisContext(dsContext(columnIdMapping, schema))
     try {
@@ -49,8 +49,9 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
    * Add new columns and remap "column ids" as it walks the soql chain.
    */
   private def remapAnalyses(columnIdMapping: Map[QualifiedColumnName, String], //schema: Map[String, SoQLType],
-                            analyses: NonEmptySeq[SoQLAnalysis[ColumnName, SoQLType]]): NonEmptySeq[SoQLAnalysis[String, SoQLType]] = {
+                            analyses: BinaryTree[SoQLAnalysis[ColumnName, SoQLType]]): BinaryTree[SoQLAnalysis[String, SoQLType]] = {
 
+    // TODO: WIP
     val initialAcc = (columnIdMapping, Option.empty[SoQLAnalysis[String, SoQLType]])
 
     def mapWithNewColumns(analysis: SoQLAnalysis[ColumnName, SoQLType],
@@ -75,6 +76,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
       analysis.mapColumnIds(newMappingTupled, toColumnNameJoinAlias, _.name, _.name)
     }
 
+
     def mapAnalyses(mapping: Map[QualifiedColumnName, String], prevAna: Option[SoQLAnalysis[String, SoQLType]],
                     analysis: SoQLAnalysis[ColumnName, SoQLType]): (Map[QualifiedColumnName, String], SoQLAnalysis[String, SoQLType]) = {
       val mappingWithNewColumns = mapWithNewColumns(analysis, mapping)
@@ -88,9 +90,26 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
       (mappingWithNewColumns, mappedAnalysis)
     }
 
-    analyses.scanLeft1(mapAnalyses(columnIdMapping, None, _)) {
-      case ((map, prevAna), ana) => mapAnalyses(map, Some(prevAna), ana)
-    }.map(_._2)
+    analyses match {
+      case x@Compound(op, l, r) if op == "QUERYPIPE" =>
+        val la = remapAnalyses(columnIdMapping, l)
+        val ra = r.asT
+        val (_, nra) = mapAnalyses(columnIdMapping, Some(la.previous), ra)
+        x.copy(left = la, right = nra)
+      case x@Compound(op, l, r) => // if op == "QUERYUNION" =>
+        val la = remapAnalyses(columnIdMapping, l)
+        val ra = remapAnalyses(columnIdMapping, r)
+        x.copy(left = la, right = ra)
+      case analysis: SoQLAnalysis[ColumnName, SoQLType] =>
+        val (_, a) = mapAnalyses(columnIdMapping, None, analysis)
+        a
+    }
+//
+//    analyses.scanLeft1(mapAnalyses(columnIdMapping, None, _)) {
+//      case ((map, prevAna), ana) => mapAnalyses(map, Some(prevAna), ana)
+//    }.map(_._2)
+
+   // null
   }
 
   private def qualifiedColumnNameToColumnId(qualifiedColumnNameMap: Map[QualifiedColumnName, String])
@@ -99,17 +118,19 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
     columnId
   }
 
-  private def limitRows(analyses: NonEmptySeq[SoQLAnalysis[ColumnName, SoQLType]])
-    : Either[Result, NonEmptySeq[SoQLAnalysis[ColumnName, SoQLType]]] = {
-    val lastAnalysis = analyses.last
-    lastAnalysis.limit match {
-      case Some(lim) =>
-        val actualMax = BigInt(maxRows.map(_.toLong).getOrElse(Long.MaxValue))
-        if (lim <= actualMax) { Right(analyses) }
-        else { Left(RowLimitExceeded(actualMax)) }
-      case None =>
-        Right(analyses.replaceLast(lastAnalysis.copy(limit = Some(defaultRowsLimit))))
-    }
+  private def limitRows(analyses: BinaryTree[SoQLAnalysis[ColumnName, SoQLType]])
+    : Either[Result, BinaryTree[SoQLAnalysis[ColumnName, SoQLType]]] = {
+    //TODO: WIP
+    Right(analyses)
+//    val lastAnalysis = analyses.last
+//    lastAnalysis.limit match {
+//      case Some(lim) =>
+//        val actualMax = BigInt(maxRows.map(_.toLong).getOrElse(Long.MaxValue))
+//        if (lim <= actualMax) { Right(analyses) }
+//        else { Left(RowLimitExceeded(actualMax)) }
+//      case None =>
+//        Right(analyses.replaceLast(lastAnalysis.copy(limit = Some(defaultRowsLimit))))
+//    }
   }
 
   private def analyzeQuery(query: String, columnIdMap: Map[ColumnName, String],
@@ -117,7 +138,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
                            fuser: SoQLRewrite,
                            schema: Map[String, SoQLType]):
 
-    AnalysisContext => (NonEmptySeq[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String], DateTime) = {
+    AnalysisContext => (BinaryTree[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String], DateTime) = {
     analyzeFullQuery(query, columnIdMap, selectedSecondaryInstanceBase, fuser, schema)
   }
 
@@ -127,22 +148,25 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
                                fuser: SoQLRewrite,
                                schema: Map[String, SoQLType])(ctx: AnalysisContext):
 
-    (NonEmptySeq[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String], DateTime) = {
+    (BinaryTree[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String], DateTime) = {
 
 
     val parserParams =
       new AbstractParser.Parameters(
         allowJoins = true,
         systemColumnAliasesAllowed = systemColumns ++ columnIdMap.keySet.filter(_.caseFolded.startsWith(":@")))
-    val parsed0 = new Parser(parserParams).selectStatement(query)
+    val parsed0 = new Parser(parserParams).test(query)
     val parsed = UniqueTableAliases(parsed0)
+
+    // TODO: Merge union & join
+    val primaryColumnIdMap = columnIdMap.map { case (k, v) => QualifiedColumnName(None, k) -> v }
 
     val joins = ast.Join.expandJoins(parsed.seq)
 
-    val primaryColumnIdMap = columnIdMap.map { case (k, v) => QualifiedColumnName(None, k) -> v }
+    val (unionColumnIdMap, unionCtx, largestLastModifiedOfUnions) = collectRelatedTable(parsed.seq, selectedSecondaryInstanceBase, primaryColumnIdMap, ctx)
 
     val (joinColumnIdMap, joinCtx, largestLastModifiedOfJoins) =
-      joins.foldLeft((primaryColumnIdMap, ctx, new DateTime(0))) { (acc, join) =>
+      joins.foldLeft((unionColumnIdMap, unionCtx, new DateTime(0))) { (acc, join) =>
         val joinTableName = join.from.fromTable
         val schemaResult = schemaFetcher(selectedSecondaryInstanceBase, joinTableName.name, None, useResourceName = true)
         schemaResult match {
@@ -168,19 +192,58 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
       }
 
     //TODO: Write unapply for NonEmptySeq
+
     parsed match {
-      case justOne if parsed.length == 1 =>
-        val rewrittenOne = fuser.rewrite(justOne, columnIdMap, schema).head
-        val result = analyzer.analyzeWithSelection(rewrittenOne)(joinCtx)
-        val fusedResult = fuser.postAnalyze(NonEmptySeq(result))
-        (fusedResult, joinColumnIdMap, largestLastModifiedOfJoins)
+//      case justOne if parsed.length == 1 =>
+//        val rewrittenOne = fuser.rewrite(justOne, columnIdMap, schema).head
+//        val result = analyzer.analyzeWithSelection(rewrittenOne)(joinCtx)
+//        val fusedResult = fuser.postAnalyze(NonEmptySeq(result))
+//        (fusedResult, joinColumnIdMap, largestLastModifiedOfJoins)
       case moreThanOne =>
         val moreThanOneRewritten = fuser.rewrite(moreThanOne, columnIdMap, schema)
-        val result = analyzer.analyze(moreThanOneRewritten)(joinCtx)
+        val result = analyzer.analyzeBinary(moreThanOneRewritten)(joinCtx)
         val fusedResult = fuser.postAnalyze(result)
         (fusedResult, joinColumnIdMap, largestLastModifiedOfJoins)
     }
   }
+
+  private def collectRelatedTable(selects: Seq[Select],
+                                  selectedSecondaryInstanceBase: RequestBuilder,
+    primaryColumnIdMap: Map[QualifiedColumnName, String],
+                                  ctx: AnalysisContext,
+                                  ): (Map[QualifiedColumnName, String], AnalysisContext, DateTime) = {
+    selects.foldLeft((primaryColumnIdMap, ctx, new DateTime(0))) { (acc, join) =>
+      join.from match {
+        case None =>
+          acc
+        case Some(joinTableName) =>
+          val schemaResult = schemaFetcher(selectedSecondaryInstanceBase, joinTableName.name, None, useResourceName = true)
+          schemaResult match {
+            case Successful(schema, copyNumber, dataVersion, lastModified) =>
+              val joinTableRef = joinTableName.qualifier
+
+              val joinAlias = joinTableName.alias.getOrElse(joinTableName.qualifier)
+              val combinedCtx = acc._2 + (joinTableRef -> schemaToDatasetContext(schema)) +
+                (joinAlias -> schemaToDatasetContext(schema))
+              val combinedIdMap = acc._1 ++ schema.schema.map {
+                case (columnId, (_, fieldName)) =>
+                  QualifiedColumnName(Some(joinTableRef), new ColumnName(fieldName)) -> columnId
+              } ++ schema.schema.map {
+                case (columnId, (_, fieldName)) =>
+                  QualifiedColumnName(Some(joinAlias), new ColumnName(fieldName)) -> columnId
+              }
+              val largestLastModified = if (lastModified.isAfter(acc._3)) lastModified else acc._3
+              (combinedIdMap, combinedCtx, largestLastModified)
+            case NoSuchDatasetInSecondary =>
+              throw new JoinedDatasetNotColocatedException(joinTableName.name, selectedSecondaryInstanceBase.host)
+            case _ =>
+              acc
+          }
+      }
+    }
+  }
+
+
 
   private def schemaToDatasetContext(schema: SchemaWithFieldName): DatasetContext[SoQLType] = {
     val columnNameTypes = schema.schema.values.foldLeft(Map.empty[ColumnName, SoQLType]) { (acc, v) =>
@@ -204,12 +267,12 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
             merged: Boolean = true): Result = {
     val compoundTypeFuser = CompoundTypeFuser(fuseMap)
     val postAnalyze = analyzeQuery(query, columnIdMapping, selectedSecondaryInstanceBase, compoundTypeFuser, schema)
-    val analyzeMaybeMerge = if (merged) { postAnalyze andThen soqlMerge } else { postAnalyze }
+    val analyzeMaybeMerge = if (false && merged) { postAnalyze andThen soqlMerge } else { postAnalyze }
     go(columnIdMapping, schema)(analyzeMaybeMerge)
   }
 
-  private def soqlMerge(analysesAndColumnIdMap: (NonEmptySeq[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String], DateTime))
-    : (NonEmptySeq[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String], DateTime) = {
+  private def soqlMerge(analysesAndColumnIdMap: (BinaryTree[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String], DateTime))
+    : (BinaryTree[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String], DateTime) = {
     val (analyses, qualColumnIdMap, dateTime) = analysesAndColumnIdMap
     (SoQLAnalysis.merge(andFn, analyses), qualColumnIdMap, dateTime)
   }
@@ -220,7 +283,7 @@ object QueryParser {
 
   sealed abstract class Result
 
-  case class SuccessfulParse(analyses: NonEmptySeq[SoQLAnalysis[String, SoQLType]], largestLastModifiedOfJoins: DateTime) extends Result
+  case class SuccessfulParse(analyses: BinaryTree[SoQLAnalysis[String, SoQLType]], largestLastModifiedOfJoins: DateTime) extends Result
 
   case class AnalysisError(problem: SoQLException) extends Result
 

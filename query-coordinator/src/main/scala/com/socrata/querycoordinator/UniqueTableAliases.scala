@@ -1,6 +1,7 @@
 package com.socrata.querycoordinator
 
 import com.socrata.NonEmptySeq
+import com.socrata.soql.BinaryTree
 import com.socrata.soql.ast._
 import com.socrata.soql.environment.TableName
 
@@ -11,19 +12,20 @@ object UniqueTableAliases {
     * If query processing is improved to isolate table alias namespace between two selects in a chained SoQL,
     * renaming table aliases is not necessary.
     */
-  def apply(selects: NonEmptySeq[Select]): NonEmptySeq[Select] = {
-
-    if (selects.seq.exists(_.joins.nonEmpty)) {
-      val (_, newSelects, _) = selects.seq.foldLeft((0, Seq.empty[Select], Map.empty[String, String])) { (acc, select) =>
-        val (index, sels, map) = acc
-        val (newSelect, newMap) = if (select.joins.nonEmpty) replaceAlias(select, index, map) else (select, map)
-        (index + 1, sels :+ newSelect, newMap)
-      }
-
-      NonEmptySeq(newSelects.head, newSelects.tail)
-    } else {
+  def apply(selects: BinaryTree[Select]): BinaryTree[Select] = {
+      // TODO: WIP
       selects
-    }
+//    if (selects.seq.exists(_.joins.nonEmpty)) {
+//      val (_, newSelects, _) = selects.seq.foldLeft((0, Seq.empty[Select], Map.empty[String, String])) { (acc, select) =>
+//        val (index, sels, map) = acc
+//        val (newSelect, newMap) = if (select.joins.nonEmpty) replaceAlias(select, index, map) else (select, map)
+//        (index + 1, sels :+ newSelect, newMap)
+//      }
+//
+//      NonEmptySeq(newSelects.head, newSelects.tail)
+//    } else {
+//      selects
+//    }
   }
 
   private def replaceAlias(select: Select, index: Int, tableAliasMap: Map[String, String]): (Select, Map[String, String]) = {

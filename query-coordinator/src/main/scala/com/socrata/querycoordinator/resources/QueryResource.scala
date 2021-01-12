@@ -14,7 +14,7 @@ import com.socrata.querycoordinator._
 import com.socrata.querycoordinator.caching.SharedHandle
 import com.socrata.soql.environment.ColumnName
 import com.socrata.soql.exceptions.{DuplicateAlias, NoSuchColumn, TypecheckException}
-import com.socrata.soql.SoQLAnalysis
+import com.socrata.soql.{BinaryTree, SoQLAnalysis}
 import com.socrata.soql.types.{SoQLID, SoQLNumber, SoQLType}
 import org.apache.http.HttpStatus
 import org.joda.time.format.ISODateTimeFormat
@@ -125,7 +125,7 @@ class QueryResource(secondary: Secondary,
           retriesSoFar >= 3
         }
 
-        def analyzeRequest(schemaWithFieldNames: Versioned[SchemaWithFieldName], isFresh: Boolean): Either[QueryRetryState, Versioned[(Schema, NonEmptySeq[SoQLAnalysis[String, SoQLType]])]] = {
+        def analyzeRequest(schemaWithFieldNames: Versioned[SchemaWithFieldName], isFresh: Boolean): Either[QueryRetryState, Versioned[(Schema, BinaryTree[SoQLAnalysis[String, SoQLType]])]] = {
 
           val schema0 = stripFieldNamesFromSchema(schemaWithFieldNames.payload)
           val schema =
@@ -179,8 +179,8 @@ class QueryResource(secondary: Secondary,
          * @param analyzedQueryNoRollup original analysis without rollup
          */
         def executeQuery(schema: Versioned[Schema],
-                         analyzedQuery: NonEmptySeq[SoQLAnalysis[String, SoQLType]],
-                         analyzedQueryNoRollup: NonEmptySeq[SoQLAnalysis[String, SoQLType]],
+                         analyzedQuery: BinaryTree[SoQLAnalysis[String, SoQLType]],
+                         analyzedQueryNoRollup: BinaryTree[SoQLAnalysis[String, SoQLType]],
                          rollupName: Option[String],
                          requestId: String,
                          resourceName: Option[String],
@@ -269,32 +269,34 @@ class QueryResource(secondary: Secondary,
          * Scan from left to right (inner to outer), rewrite the first possible one.
          * TODO: Find a better way to apply rollup?
          */
-        def possiblyRewriteOneAnalysisInQuery(schema: Schema, analyzedQuery: NonEmptySeq[SoQLAnalysis[String, SoQLType]])
-          : (NonEmptySeq[SoQLAnalysis[String, SoQLType]], Option[String]) = {
-          if (noRollup || analyzedQuery.seq.exists(_.joins.nonEmpty)) {
-            (analyzedQuery, None)
-          } else {
-            rollupInfoFetcher(base.receiveTimeoutMS(schemaTimeout.toMillis.toInt), dataset, copy) match {
-              case RollupInfoFetcher.Successful(rollups) =>
-                // Only the leftmost soql in a chain can use rollups.
-                possiblyRewriteQuery(schema, analyzedQuery.head, rollups, Map.empty[String, String]) match {
-                  case (rewrittenAnal, ru@Some(_)) =>
-                    (analyzedQuery.updated(0, rewrittenAnal), ru)
-                  case (_, None) =>
-                    (analyzedQuery, None)
-                }
-              case RollupInfoFetcher.NoSuchDatasetInSecondary =>
-                chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
-                finishRequest(notFoundResponse(dataset))
-              case RollupInfoFetcher.TimeoutFromSecondary =>
-                chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
-                finishRequest(upstreamTimeoutResponse)
-              case other: RollupInfoFetcher.Result =>
-                log.error(unexpectedError, other)
-                chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
-                finishRequest(internalServerError)
-            }
-          }
+        def possiblyRewriteOneAnalysisInQuery(schema: Schema, analyzedQuery: BinaryTree[SoQLAnalysis[String, SoQLType]])
+          : (BinaryTree[SoQLAnalysis[String, SoQLType]], Option[String]) = {
+          //TODO: WIP
+          (analyzedQuery, None)
+//          if (noRollup || analyzedQuery.seq.exists(_.joins.nonEmpty)) {
+//            (analyzedQuery, None)
+//          } else {
+//            rollupInfoFetcher(base.receiveTimeoutMS(schemaTimeout.toMillis.toInt), dataset, copy) match {
+//              case RollupInfoFetcher.Successful(rollups) =>
+//                // Only the leftmost soql in a chain can use rollups.
+//                possiblyRewriteQuery(schema, analyzedQuery.head, rollups, Map.empty[String, String]) match {
+//                  case (rewrittenAnal, ru@Some(_)) =>
+//                    (analyzedQuery.updated(0, rewrittenAnal), ru)
+//                  case (_, None) =>
+//                    (analyzedQuery, None)
+//                }
+//              case RollupInfoFetcher.NoSuchDatasetInSecondary =>
+//                chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
+//                finishRequest(notFoundResponse(dataset))
+//              case RollupInfoFetcher.TimeoutFromSecondary =>
+//                chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
+//                finishRequest(upstreamTimeoutResponse)
+//              case other: RollupInfoFetcher.Result =>
+//                log.error(unexpectedError, other)
+//                chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
+//                finishRequest(internalServerError)
+//            }
+//          }
         }
 
         def possiblyRewriteQuery(schema: Schema, analyzedQuery: SoQLAnalysis[String, SoQLType], rollups: Seq[RollupInfo], project: Map[String, String])

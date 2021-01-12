@@ -1,7 +1,7 @@
 package com.socrata.querycoordinator.fusion
 
 import com.socrata.NonEmptySeq
-import com.socrata.soql.SoQLAnalysis
+import com.socrata.soql.{BinaryTree, SoQLAnalysis}
 import com.socrata.soql.aliases.AliasAnalysis
 import com.socrata.soql.ast._
 import com.socrata.soql.collection.OrderedSet
@@ -21,13 +21,13 @@ case object FTUrl extends FuseType
 case object FTRemove extends FuseType
 
 trait SoQLRewrite {
-  def rewrite(parsedStmts: NonEmptySeq[Select],
+  def rewrite(parsedStmts: BinaryTree[Select],
               columnIdMapping: Map[ColumnName, String],
-              schema: Map[String, SoQLType]): NonEmptySeq[Select]
+              schema: Map[String, SoQLType]): BinaryTree[Select]
 
   protected def rewrite(select: Select): Select
 
-  def postAnalyze(analyses: NonEmptySeq[SoQLAnalysis[ColumnName, SoQLType]]): NonEmptySeq[SoQLAnalysis[ColumnName, SoQLType]]
+  def postAnalyze(analyses: BinaryTree[SoQLAnalysis[ColumnName, SoQLType]]): BinaryTree[SoQLAnalysis[ColumnName, SoQLType]]
 }
 
 object CompoundTypeFuser {
@@ -83,41 +83,43 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite {
     }
   }
 
-  def rewrite(parsedStmts: NonEmptySeq[Select],
+  def rewrite(parsedStmts: BinaryTree[Select],
               columnIdMapping: Map[ColumnName, String],
-              schema: Map[String, SoQLType]): NonEmptySeq[Select] = {
+              schema: Map[String, SoQLType]): BinaryTree[Select] = {
+    // TODO: WIP
+    parsedStmts
 
-    val baseCtx = new UntypedDatasetContext {
-      override val columns: OrderedSet[ColumnName] = {
-        // exclude non-existing columns in the schema
-        val existedColumns = columnIdMapping.filter { case (k, v) => schema.contains(v) }
-        OrderedSet(existedColumns.keysIterator.toSeq: _*)
-      }
-    }
-
-    def expand(select: Select, ctx: Map[String, UntypedDatasetContext]) = {
-      val expandedSelection = AliasAnalysis.expandSelection(select.selection)(ctx)
-      val expandedStmt = select.copy(selection = Selection(None, Seq.empty, expandedSelection))
-      // Column names collected are for building the context for the following SoQL in chained SoQLs like
-      // "SELECT phone as x,'Work' as x_type,name |> SELECT *"
-      // It is currently done using expression.toString or explicit column aliases.
-      // TODO: A more correct way to do this maybe Expression.toSyntheticIdentifierBase or AliasAnalysis.
-      // TODO: Similar processes/issues may exist somewhere else.
-      val columnNames = expandedStmt.selection.expressions.map { se =>
-        se.name.map(_._1).getOrElse(ColumnName(se.expression.toString.replaceAllLiterally("`", "")))
-      }
-      val nextCtx = new UntypedDatasetContext {
-        override val columns: OrderedSet[ColumnName] = OrderedSet(columnNames: _*)
-      }
-      (expandedStmt, toAnalysisContext(nextCtx))
-    }
-
-    val expandedStatements = parsedStmts.scanLeft1(h => expand(h, toAnalysisContext(baseCtx))){
-      case ((_, ctx), s) => expand(s, ctx)
-    }.map(_._1)
-
-    // rewrite only the last statement.
-    expandedStatements.replaceLast(rewrite(expandedStatements.last))
+//    val baseCtx = new UntypedDatasetContext {
+//      override val columns: OrderedSet[ColumnName] = {
+//        // exclude non-existing columns in the schema
+//        val existedColumns = columnIdMapping.filter { case (k, v) => schema.contains(v) }
+//        OrderedSet(existedColumns.keysIterator.toSeq: _*)
+//      }
+//    }
+//
+//    def expand(select: Select, ctx: Map[String, UntypedDatasetContext]) = {
+//      val expandedSelection = AliasAnalysis.expandSelection(select.selection)(ctx)
+//      val expandedStmt = select.copy(selection = Selection(None, Seq.empty, expandedSelection))
+//      // Column names collected are for building the context for the following SoQL in chained SoQLs like
+//      // "SELECT phone as x,'Work' as x_type,name |> SELECT *"
+//      // It is currently done using expression.toString or explicit column aliases.
+//      // TODO: A more correct way to do this maybe Expression.toSyntheticIdentifierBase or AliasAnalysis.
+//      // TODO: Similar processes/issues may exist somewhere else.
+//      val columnNames = expandedStmt.selection.expressions.map { se =>
+//        se.name.map(_._1).getOrElse(ColumnName(se.expression.toString.replaceAllLiterally("`", "")))
+//      }
+//      val nextCtx = new UntypedDatasetContext {
+//        override val columns: OrderedSet[ColumnName] = OrderedSet(columnNames: _*)
+//      }
+//      (expandedStmt, toAnalysisContext(nextCtx))
+//    }
+//
+//    val expandedStatements = parsedStmts.scanLeft1(h => expand(h, toAnalysisContext(baseCtx))){
+//      case ((_, ctx), s) => expand(s, ctx)
+//    }.map(_._1)
+//
+//    // rewrite only the last statement.
+//    expandedStatements.replaceLast(rewrite(expandedStatements.last))
   }
 
   protected def rewrite(select: Select): Select = {
@@ -156,14 +158,16 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite {
   /**
    * Columns involved are prefixed during ast rewrite and removed after analysis to avoid column name conflicts.
    */
-  def postAnalyze(analyses: NonEmptySeq[SoQLAnalysis[ColumnName, SoQLType]]): NonEmptySeq[SoQLAnalysis[ColumnName, SoQLType]] = {
-    val last = analyses.last
-    val newSelect = last.selection map {
-      case (cn, expr) =>
-        ColumnName(cn.name.replaceFirst(ColumnPrefix, "")) -> expr
-    }
-
-    analyses.updated(analyses.size - 1, last.copy(selection = newSelect))
+  def postAnalyze(analyses: BinaryTree[SoQLAnalysis[ColumnName, SoQLType]]): BinaryTree[SoQLAnalysis[ColumnName, SoQLType]] = {
+    // TODO: WIP
+     analyses
+//    val last = analyses.last
+//    val newSelect = last.selection map {
+//      case (cn, expr) =>
+//        ColumnName(cn.name.replaceFirst(ColumnPrefix, "")) -> expr
+//    }
+//
+//    analyses.updated(analyses.size - 1, last.copy(selection = newSelect))
   }
 
   private def rewriteExpr(expr: Expression): Option[Expression] = {
