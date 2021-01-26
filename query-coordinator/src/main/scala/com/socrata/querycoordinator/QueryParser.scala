@@ -13,7 +13,7 @@ import com.socrata.soql.functions.SoQLFunctions
 import com.socrata.soql.parsing.{AbstractParser, Parser}
 import com.socrata.soql.typed._
 import com.socrata.soql.types.SoQLType
-import com.socrata.soql.{BinaryTree, Compound, SoQLAnalysis, SoQLAnalyzer, ast}
+import com.socrata.soql.{BinaryTree, Compound, PipeQuery, SoQLAnalysis, SoQLAnalyzer, ast}
 import com.typesafe.scalalogging.Logger
 import org.joda.time.DateTime
 
@@ -91,15 +91,15 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
     }
 
     analyses match {
-      case x@Compound(op, l, r) if op == "QUERYPIPE" =>
+      case x@PipeQuery(l, r) =>
         val la = remapAnalyses(columnIdMapping, l)
         val ra = r.asT
         val (_, nra) = mapAnalyses(columnIdMapping, Some(la.previous), ra)
-        x.copy(left = la, right = nra)
-      case x@Compound(op, l, r) => // if op == "QUERYUNION" =>
+        Compound(x.op, left = la, right = nra)
+      case Compound(op, l, r) => // if op == "QUERYUNION" =>
         val la = remapAnalyses(columnIdMapping, l)
         val ra = remapAnalyses(columnIdMapping, r)
-        x.copy(left = la, right = ra)
+        Compound(op, left = la, right = ra)
       case analysis: SoQLAnalysis[ColumnName, SoQLType] =>
         val (_, a) = mapAnalyses(columnIdMapping, None, analysis)
         a
@@ -167,25 +167,29 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
 
     val (joinColumnIdMap, joinCtx, largestLastModifiedOfJoins) =
       joins.foldLeft((unionColumnIdMap, unionCtx, new DateTime(0))) { (acc, join) =>
-        val joinTableName = join.from.fromTable
-        val schemaResult = schemaFetcher(selectedSecondaryInstanceBase, joinTableName.name, None, useResourceName = true)
-        schemaResult match {
-          case Successful(schema, copyNumber, dataVersion, lastModified) =>
-            val joinTableRef = joinTableName.qualifier
-            val joinAlias = join.from.alias.getOrElse(joinTableName.qualifier)
-            val combinedCtx = acc._2 + (joinTableRef -> schemaToDatasetContext(schema)) +
-              (joinAlias -> schemaToDatasetContext(schema))
-            val combinedIdMap = acc._1 ++ schema.schema.map {
-              case (columnId, (_, fieldName)) =>
-                QualifiedColumnName(Some(joinTableRef), new ColumnName(fieldName)) -> columnId
-            } ++ schema.schema.map {
-              case (columnId, (_, fieldName)) =>
-              QualifiedColumnName(Some(joinAlias), new ColumnName(fieldName)) -> columnId
+        join.from.subSelect match {
+          case Left(joinTableName) =>
+            val schemaResult = schemaFetcher(selectedSecondaryInstanceBase, joinTableName.name, None, useResourceName = true)
+            schemaResult match {
+              case Successful(schema, copyNumber, dataVersion, lastModified) =>
+                val joinTableRef = joinTableName.qualifier
+                val joinAlias = join.from.alias.getOrElse(joinTableName.qualifier)
+                val combinedCtx = acc._2 + (joinTableRef -> schemaToDatasetContext(schema)) +
+                  (joinAlias -> schemaToDatasetContext(schema))
+                val combinedIdMap = acc._1 ++ schema.schema.map {
+                  case (columnId, (_, fieldName)) =>
+                    QualifiedColumnName(Some(joinTableRef), new ColumnName(fieldName)) -> columnId
+                } ++ schema.schema.map {
+                  case (columnId, (_, fieldName)) =>
+                    QualifiedColumnName(Some(joinAlias), new ColumnName(fieldName)) -> columnId
+                }
+                val largestLastModified = if (lastModified.isAfter(acc._3)) lastModified else acc._3
+                (combinedIdMap, combinedCtx, largestLastModified)
+              case NoSuchDatasetInSecondary =>
+                throw new JoinedDatasetNotColocatedException(joinTableName.name, selectedSecondaryInstanceBase.host)
+              case _ =>
+                acc
             }
-            val largestLastModified = if (lastModified.isAfter(acc._3)) lastModified else acc._3
-            (combinedIdMap, combinedCtx, largestLastModified)
-          case NoSuchDatasetInSecondary =>
-            throw new JoinedDatasetNotColocatedException(joinTableName.name, selectedSecondaryInstanceBase.host)
           case _ =>
             acc
         }
@@ -209,7 +213,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
 
   private def collectRelatedTable(selects: Seq[Select],
                                   selectedSecondaryInstanceBase: RequestBuilder,
-    primaryColumnIdMap: Map[QualifiedColumnName, String],
+                                  primaryColumnIdMap: Map[QualifiedColumnName, String],
                                   ctx: AnalysisContext,
                                   ): (Map[QualifiedColumnName, String], AnalysisContext, DateTime) = {
     selects.foldLeft((primaryColumnIdMap, ctx, new DateTime(0))) { (acc, join) =>
@@ -242,8 +246,6 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
       }
     }
   }
-
-
 
   private def schemaToDatasetContext(schema: SchemaWithFieldName): DatasetContext[SoQLType] = {
     val columnNameTypes = schema.schema.values.foldLeft(Map.empty[ColumnName, SoQLType]) { (acc, v) =>

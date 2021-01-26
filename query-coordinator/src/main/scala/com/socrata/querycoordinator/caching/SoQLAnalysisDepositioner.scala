@@ -49,7 +49,7 @@ object SoQLAnalysisDepositioner {
 
   private def depsoitionOptJoins[ColumnId, Type](joins: Seq[Join[ColumnId, Type]]) = {
     joins.map { join =>
-      val mappedSubAna = join.from.subAnalysis.map(sa => sa.copy(analyses = sa.analyses.map(SoQLAnalysisDepositioner.apply)))
+      val mappedSubAna = join.from.subAnalysis.map(sa => sa.copy(analyses = sa.analyses.flatMap(SoQLAnalysisDepositioner.apply)))
       Join(join.typ, join.from.copy(subAnalysis = mappedSubAna), depositionExpr(join.on))
     }
   }

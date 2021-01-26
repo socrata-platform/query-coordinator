@@ -59,22 +59,22 @@ object UniqueTableAliases {
   }
 
   private def replaceAlias(join: Join, map: Map[String, String]): Join = {
-
-    val newFromAlias = join.from.alias.map(x => map.getOrElse(x, x))
-    val newSubSelect = join.from.subSelect.map(x => x.copy(alias = map.getOrElse(x.alias, x.alias)))
-    val newTableName: TableName = join.from.fromTable.copy(alias = newFromAlias)
-    val newJoinSelect = JoinSelect(newTableName, newSubSelect)
-
-    join match {
-      case j: InnerJoin =>
-        j.copy(newJoinSelect, replaceAlias(join.on, map))
-      case j: LeftOuterJoin =>
-        j.copy(newJoinSelect, replaceAlias(join.on, map))
-      case j: RightOuterJoin =>
-        j.copy(newJoinSelect, replaceAlias(join.on, map))
-      case j: FullOuterJoin =>
-        j.copy(newJoinSelect, replaceAlias(join.on, map))
-    }
+      join
+//    val newFromAlias = join.from.alias.map(x => map.getOrElse(x, x))
+//    val newSubSelect = join.from.subSelect.map(x => x.copy(alias = map.getOrElse(x.alias, x.alias)))
+//    val newTableName: TableName = join.from.fromTable.copy(alias = newFromAlias)
+//    val newJoinSelect = JoinSelect(newTableName, newSubSelect)
+//
+//    join match {
+//      case j: InnerJoin =>
+//        j.copy(newJoinSelect, replaceAlias(join.on, map))
+//      case j: LeftOuterJoin =>
+//        j.copy(newJoinSelect, replaceAlias(join.on, map))
+//      case j: RightOuterJoin =>
+//        j.copy(newJoinSelect, replaceAlias(join.on, map))
+//      case j: FullOuterJoin =>
+//        j.copy(newJoinSelect, replaceAlias(join.on, map))
+//    }
   }
 
   private def replaceAlias(expr: Expression, map: Map[String, String]): Expression = {

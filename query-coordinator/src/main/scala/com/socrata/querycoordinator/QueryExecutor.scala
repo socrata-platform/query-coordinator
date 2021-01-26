@@ -280,7 +280,7 @@ class QueryExecutor(httpClient: HttpClient,
       case x@Compound(op, l, r) => // if op == "QUERYUNION" =>
         val nl = btReplace(l, map)
         val nr = btReplace(r, map)
-        x.copy(left = nl, right = nr)
+        Compound(op, left = nl, right = nr)
       case analysis: SoQLAnalysis[_, _] =>
         map.get(analysis).getOrElse(analysis)
     }
