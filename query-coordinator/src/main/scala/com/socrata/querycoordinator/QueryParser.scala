@@ -5,7 +5,7 @@ import com.socrata.http.client.RequestBuilder
 import com.socrata.querycoordinator.SchemaFetcher.{NoSuchDatasetInSecondary, Successful}
 import com.socrata.querycoordinator.exceptions.JoinedDatasetNotColocatedException
 import com.socrata.querycoordinator.fusion.{CompoundTypeFuser, SoQLRewrite}
-import com.socrata.soql.ast.Select
+import com.socrata.soql.ast.{Select, SubSelect}
 import com.socrata.soql.collection.OrderedMap
 import com.socrata.soql.environment._
 import com.socrata.soql.exceptions.SoQLException
@@ -162,34 +162,26 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
     val primaryColumnIdMap = columnIdMap.map { case (k, v) => QualifiedColumnName(None, k) -> v }
 
     val joins = ast.Join.expandJoins(parsed.seq)
+    val tableNames = collectTableNames(parsed)
 
     val (unionColumnIdMap, unionCtx, largestLastModifiedOfUnions) = collectRelatedTable(parsed.seq, selectedSecondaryInstanceBase, primaryColumnIdMap, ctx)
 
     val (joinColumnIdMap, joinCtx, largestLastModifiedOfJoins) =
-      joins.foldLeft((unionColumnIdMap, unionCtx, new DateTime(0))) { (acc, join) =>
-        join.from.subSelect match {
-          case Left(joinTableName) =>
-            val schemaResult = schemaFetcher(selectedSecondaryInstanceBase, joinTableName.name, None, useResourceName = true)
-            schemaResult match {
-              case Successful(schema, copyNumber, dataVersion, lastModified) =>
-                val joinTableRef = joinTableName.qualifier
-                val joinAlias = join.from.alias.getOrElse(joinTableName.qualifier)
-                val combinedCtx = acc._2 + (joinTableRef -> schemaToDatasetContext(schema)) +
-                  (joinAlias -> schemaToDatasetContext(schema))
-                val combinedIdMap = acc._1 ++ schema.schema.map {
-                  case (columnId, (_, fieldName)) =>
-                    QualifiedColumnName(Some(joinTableRef), new ColumnName(fieldName)) -> columnId
-                } ++ schema.schema.map {
-                  case (columnId, (_, fieldName)) =>
-                    QualifiedColumnName(Some(joinAlias), new ColumnName(fieldName)) -> columnId
-                }
-                val largestLastModified = if (lastModified.isAfter(acc._3)) lastModified else acc._3
-                (combinedIdMap, combinedCtx, largestLastModified)
-              case NoSuchDatasetInSecondary =>
-                throw new JoinedDatasetNotColocatedException(joinTableName.name, selectedSecondaryInstanceBase.host)
-              case _ =>
-                acc
+      tableNames.foldLeft((unionColumnIdMap, unionCtx, new DateTime(0))) { (acc, tableName) =>
+        val TableName(name, alias) = tableName
+        val schemaResult = schemaFetcher(selectedSecondaryInstanceBase, name, None, useResourceName = true)
+        schemaResult match {
+          case Successful(schema, copyNumber, dataVersion, lastModified) =>
+            val joinTableRef = Some(name) // joinTableName.qualifier
+            val combinedCtx = acc._2 + (name -> schemaToDatasetContext(schema))
+            val combinedIdMap = acc._1 ++ schema.schema.map {
+              case (columnId, (_, fieldName)) =>
+                QualifiedColumnName(joinTableRef, new ColumnName(fieldName)) -> columnId
             }
+            val largestLastModified = if (lastModified.isAfter(acc._3)) lastModified else acc._3
+            (combinedIdMap, combinedCtx, largestLastModified)
+          case NoSuchDatasetInSecondary =>
+            throw new JoinedDatasetNotColocatedException(name, selectedSecondaryInstanceBase.host)
           case _ =>
             acc
         }
@@ -208,6 +200,22 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
         val result = analyzer.analyzeBinary(moreThanOneRewritten)(joinCtx)
         val fusedResult = fuser.postAnalyze(result)
         (fusedResult, joinColumnIdMap, largestLastModifiedOfJoins)
+    }
+  }
+
+  private def collectTableNames(bt: BinaryTree[Select]): Set[TableName] = {
+    bt match {
+      case Compound(op, l, r) =>
+        collectTableNames(l) ++ collectTableNames(r)
+      case s: Select =>
+        s.joins.foldLeft(s.from.toSet) { (acc, join) =>
+          join.from.subSelect match {
+            case Left(tableName) =>
+              acc + tableName
+            case Right(SubSelect(selects, alias)) =>
+              acc ++ collectTableNames(selects)
+          }
+        }
     }
   }
 
