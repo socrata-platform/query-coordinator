@@ -1,8 +1,11 @@
 package com.socrata.querycoordinator.caching
 
 import scala.language.implicitConversions
+import scala.collection.immutable.SortedMap
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
+import com.rojoma.json.v3.ast.{JObject, JString}
+import com.rojoma.json.v3.io.CompactJsonWriter
 
 object Hasher {
   trait ImplicitlyByteable {
@@ -20,6 +23,13 @@ object Hasher {
 
     implicit def implicitlyBytable(optStr: Option[String]): ImplicitlyByteable = new ImplicitlyByteable {
       override def asBytes: Array[Byte] = optStr.toString.getBytes(StandardCharsets.UTF_8)
+    }
+
+    implicit def implicitlyBytable(optStr: Map[String, String]): ImplicitlyByteable = new ImplicitlyByteable {
+      override def asBytes: Array[Byte] = {
+        val obj = JObject(SortedMap.empty[String, Nothing] ++ optStr.iterator.map { case (k, v) => (k, JString(v)) })
+        CompactJsonWriter.toString(obj).getBytes(StandardCharsets.UTF_8)
+      }
     }
 
     implicit def implicitlyBytable(n: Long): ImplicitlyByteable = new ImplicitlyByteable {
