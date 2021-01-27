@@ -4,6 +4,7 @@ import java.io.{InputStream, OutputStream}
 
 import javax.servlet.http.HttpServletResponse
 import com.rojoma.simplearm.v2.ResourceScope
+import com.rojoma.json.v3.util.JsonUtil
 import com.socrata.NonEmptySeq
 import com.socrata.http.common.util.HttpUtils
 import com.socrata.http.server._
@@ -79,6 +80,9 @@ class QueryResource(secondary: Secondary,
                                             .getOrElse(Map.empty)
 
       val query = servReq.getParameter("q")
+      val context = Option(servReq.getParameter("c")).fold(Map.empty[String,String]) { cStr =>
+        JsonUtil.parseJson[Map[String,String]](cStr).right.get
+      }
 
       val rowCount = Option(servReq.getParameter("rowCount"))
       val copy = Option(servReq.getParameter("copy"))
@@ -181,6 +185,7 @@ class QueryResource(secondary: Secondary,
         def executeQuery(schema: Versioned[Schema],
                          analyzedQuery: NonEmptySeq[SoQLAnalysis[String, SoQLType]],
                          analyzedQueryNoRollup: NonEmptySeq[SoQLAnalysis[String, SoQLType]],
+                         context: Map[String, String],
                          rollupName: Option[String],
                          requestId: String,
                          resourceName: Option[String],
@@ -201,6 +206,7 @@ class QueryResource(secondary: Secondary,
             rowCount = rowCount,
             copy = copy,
             rollupName = rollupName,
+            context = context,
             obfuscateId = obfuscateId,
             extraHeaders = extraHeaders,
             currentCopyNumber = schema.copyNumber,
@@ -226,7 +232,7 @@ class QueryResource(secondary: Secondary,
                   val (finalSchema, analyses) = versionedInfo.payload
                   val (rewrittenAnalyses, rollupName) = possiblyRewriteOneAnalysisInQuery(finalSchema, analyses)
                   executeQuery(versionedInfo.copy(payload = finalSchema),
-                    rewrittenAnalyses, analyses, rollupName, requestId, resourceName, resourceScope, explain, analyze)
+                    rewrittenAnalyses, analyses, context, rollupName, requestId, resourceName, resourceScope, explain, analyze)
                 }
               }
             case QueryExecutor.ToForward(responseCode, headers, body) =>
@@ -255,7 +261,7 @@ class QueryResource(secondary: Secondary,
                   // to support the rollup may be bad like missing rollup table.
                   // Retry w/o rollup to make queries more resilient.
                   log.warn(s"error in query with rollup ${rollupName.get}.  retry w/o rollup - $body")
-                  executeQuery(schema, analyzedQueryNoRollup, analyzedQueryNoRollup,
+                  executeQuery(schema, analyzedQueryNoRollup, analyzedQueryNoRollup, context,
                                None, requestId, resourceName, resourceScope, explain, analyze)
                 case _ =>
                   Right(transferHeaders(Status(responseCode), headers) ~> Stream(out => transferResponse(out, body)))
@@ -341,7 +347,7 @@ class QueryResource(secondary: Secondary,
             val (finalSchema, analyses) = versionInfo.payload
             val (rewrittenAnalyses, rollupName) = possiblyRewriteOneAnalysisInQuery(finalSchema, analyses)
             executeQuery(versionInfo.copy(payload = finalSchema),
-              rewrittenAnalyses, analyses, rollupName,
+              rewrittenAnalyses, analyses, context, rollupName,
               requestId, req.header(headerSocrataResource), req.resourceScope, explain, analyze)
           }
         }

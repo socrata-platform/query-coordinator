@@ -43,6 +43,7 @@ class QueryExecutor(httpClient: HttpClient,
 
   private val qpDataset = "dataset"
   private val qpQuery = "query"
+  private val qpContext = "context"
   private val qpSchemaHash = "schemaHash"
   private val qpRowCount = "rowCount"
   private val qpCopy = "copy"
@@ -55,6 +56,7 @@ class QueryExecutor(httpClient: HttpClient,
 
   private def makeCacheKeyBase(dsId: String,
                                query: NonEmptySeq[SoQLAnalysis[String, SoQLType]],
+                               context: Map[String, String],
                                schemaHash: String,
                                lastModified: DateTime,
                                copyNum: Long,
@@ -63,7 +65,7 @@ class QueryExecutor(httpClient: HttpClient,
                                obfuscateId: Boolean,
                                rowCount: Option[String]): String = {
     val depositionedQuery = query.map(SoQLAnalysisDepositioner(_))
-    hexString(Hasher.hash(dsId, serializeAnalysis(depositionedQuery),
+    hexString(Hasher.hash(dsId, serializeAnalysis(depositionedQuery), context,
       schemaHash, lastModified.getMillis, copyNum, dataVer, rollupName, if (obfuscateId) 1L else 0L, rowCount))
   }
 
@@ -85,6 +87,7 @@ class QueryExecutor(httpClient: HttpClient,
             rowCount: Option[String],
             copy: Option[String],
             rollupName: Option[String],
+            context: Map[String, String],
             obfuscateId: Boolean,
             extraHeaders: Map[String, String],
             currentCopyNumber: Long,
@@ -106,7 +109,7 @@ class QueryExecutor(httpClient: HttpClient,
     }
 
     def go(theAnalyses: NonEmptySeq[SoQLAnalysis[String, SoQLType]] = analyses): Result =
-      reallyApply(base = base, dataset = dataset, analyses = theAnalyses, schema = schema, precondition = precondition, ifModifiedSince = ifModifiedSince, rowCount = rowCount, copy = copy,
+      reallyApply(base = base, dataset = dataset, analyses = theAnalyses, context = context, schema = schema, precondition = precondition, ifModifiedSince = ifModifiedSince, rowCount = rowCount, copy = copy,
                   rollupName = rollupName, obfuscateId = obfuscateId, extraHeaders = extraHeaders, resourceScope = rs, queryTimeoutSeconds = queryTimeoutSeconds, debug = debug, explain = explain)
 
     if((cacheSessionProvider == NoopCacheSessionProvider && !forceCacheEvenWhenNoop) ||
@@ -125,7 +128,7 @@ class QueryExecutor(httpClient: HttpClient,
     if(totalWindows > maxWindowsToCache) return go()
 
     val unlimitedAnalyses = analyses.replaceLast(analyses.last.copy[String, SoQLType](limit = None, offset = None))
-    val readCacheKeyBase = makeCacheKeyBase(dataset, unlimitedAnalyses, schema.hash, currentLastModified, currentCopyNumber, currentDataVersion, rollupName, obfuscateId, rowCount)
+    val readCacheKeyBase = makeCacheKeyBase(dataset, unlimitedAnalyses, context, schema.hash, currentLastModified, currentCopyNumber, currentDataVersion, rollupName, obfuscateId, rowCount)
 
     using(new ResourceScope()) { tmpScope =>
       val cacheSession = cacheSessionProvider.open(rs, dataset)
@@ -246,7 +249,7 @@ class QueryExecutor(httpClient: HttpClient,
                 override def run(): Unit = {
                   using(resourceScopeHandle.duplicate()) { handle =>
                     ready.release()
-                    val isCached = doCache(dataset, unlimitedAnalyses, relimitedAnalyses, schema, rollupName, obfuscateId, rowCount, headers, forCache,
+                    val isCached = doCache(dataset, unlimitedAnalyses, relimitedAnalyses, context, schema, rollupName, obfuscateId, rowCount, headers, forCache,
                             handle.get, cacheSession, startWindow.window, endWindow.window, startTimeMs)
                     if (isCached) { // only do logging if it is not in cache and we do decide to cache.
                       log.info("Not in cache!")
@@ -296,6 +299,7 @@ class QueryExecutor(httpClient: HttpClient,
   private def doCache(dataset: String,
                       unlimitedAnalyses: NonEmptySeq[SoQLAnalysis[String, SoQLType]],
                       relimitedAnalyses: NonEmptySeq[SoQLAnalysis[String, SoQLType]],
+                      context: Map[String, String],
                       schema: Schema,
                       rollupName: Option[String],
                       obfuscateId: Boolean,
@@ -318,7 +322,7 @@ class QueryExecutor(httpClient: HttpClient,
     }.getOrElse(abort("No last-modified in the response"))
     val copyNumber = httpHeaders.get("x-soda2-copynumber").map(_.head.toLong).getOrElse(abort("No copy number in the response"))
     val dataVersion = httpHeaders.get("x-soda2-dataversion").map(_.head.toLong).getOrElse(abort("No data version in the response"))
-    val cacheKeyBase = makeCacheKeyBase(dataset, unlimitedAnalyses, schema.hash, lastModified, copyNumber, dataVersion, rollupName, obfuscateId, rowCount)
+    val cacheKeyBase = makeCacheKeyBase(dataset, unlimitedAnalyses, context, schema.hash, lastModified, copyNumber, dataVersion, rollupName, obfuscateId, rowCount)
 
     val firstBlock = take(jvalues, windower.windowSize)
     val isGroupBy = unlimitedAnalyses.seq.exists(_.groupBys.nonEmpty)
@@ -418,6 +422,7 @@ class QueryExecutor(httpClient: HttpClient,
   private def reallyApply(base: RequestBuilder, // scalastyle:ignore parameter.number method.length cyclomatic.complexity
                           dataset: String,
                           analyses: NonEmptySeq[SoQLAnalysis[String, SoQLType]],
+                          context: Map[String, String],
                           schema: Schema,
                           precondition: Precondition,
                           ifModifiedSince: Option[DateTime],
@@ -434,6 +439,7 @@ class QueryExecutor(httpClient: HttpClient,
     val params = List(
       qpDataset -> dataset,
       qpQuery -> serializedAnalyses,
+      qpContext -> JsonUtil.renderJson(context, pretty=false),
       qpSchemaHash -> schema.hash,
       qpQueryTimeoutSeconds -> queryTimeoutSeconds.getOrElse((60 * 60 * 12).toString)) ++
       rowCount.map(rc => List(qpRowCount -> rc)).getOrElse(Nil) ++
