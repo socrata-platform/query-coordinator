@@ -88,7 +88,7 @@ trait QueryService {
         Map.empty, position)
      case BadParse(msg, _) =>
        // TODO: this needs to be machine-readable
-       (badParse, s"Bad parse: $msg; position: $position",
+       (badParse, s"Bad parse $msg; position: $position",
         Map("message" -> JString(msg)), position)
      case NoSuchFunction(name, arity, _) =>
        (noSuchFunction, s"No such function '${name.name}'; arity=$arity; position: $position",
