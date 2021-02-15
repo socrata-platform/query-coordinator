@@ -158,67 +158,47 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
     (fusedResult, allColumnIdMap, largestLastModified)
   }
 
-  private def collectTableNames(selects: BinaryTree[Select]): Set[TableName] = {
+  private def collectTableNames(selects: BinaryTree[Select]): Set[String] = {
     selects match {
-      case Compound(op, l, r) =>
+      case Compound(_, l, r) =>
         collectTableNames(l) ++ collectTableNames(r)
       case Leaf(select) =>
-        select.joins.foldLeft(select.from.toSet) { (acc, join) =>
+        select.joins.foldLeft(select.from.map(_.name).toSet) { (acc, join) =>
           join.from.subSelect match {
-            case Left(tableName) =>
-              acc + tableName
-            case Right(SubSelect(selects, alias)) =>
+            case Left(TableName(name, _)) =>
+              acc + name
+            case Right(SubSelect(selects, _)) =>
               acc ++ collectTableNames(selects)
           }
         }
     }
   }
 
-  object DatetimeOrdering extends Ordering[DateTime] {
-    def compare(x: DateTime, y: DateTime): Int = x.compareTo(y)
-  }
-
-  private def fetchRelatedTables(tableNames: Set[TableName],
+  private def fetchRelatedTables(tableNames: Set[String],
                                  selectedSecondaryInstanceBase: RequestBuilder,
                                  primaryColumnIdMap: Map[QualifiedColumnName, String],
                                  ctx: AnalysisContext)
     : (Map[QualifiedColumnName, String], AnalysisContext, DateTime) = {
-    val seen = Map[String, SchemaWithFieldName]().empty
-    val (_, accColumnIdMap, accCtx, accLastModified) = tableNames.foldLeft((seen, primaryColumnIdMap, ctx, new DateTime(0))) { (acc, tableName) =>
-      val (accSeen, accColumnIdMap, accCtx, accLastModified) = acc
-      val (schemaOption, lastModifiedOption) = accSeen.get(tableName.name) match {
-        case schema@Some(_) =>
-          // join and union the same table multiple times should be cached
-          (schema, None)
-        case None =>
-          val schemaResult = schemaFetcher(selectedSecondaryInstanceBase, tableName.name, None, useResourceName = true)
-          schemaResult match {
-            case Successful(schema, copyNumber, dataVersion, lastModified) =>
-              (Some(schema), Some(lastModified))
-            case NoSuchDatasetInSecondary =>
-              throw new JoinedDatasetNotColocatedException(tableName.name, selectedSecondaryInstanceBase.host)
-            case other =>
-              // TODO: improve error handling
-              logger.error(s"failed to fetch schema ${other}: ${tableName.name} ${selectedSecondaryInstanceBase.host}")
-              (None, None)
-          }
-      }
-
-      schemaOption match {
-        case Some(schema) =>
-          val name = tableName.name
-          val combinedCtx = accCtx + (name -> schemaToDatasetContext(schema))
+    tableNames.foldLeft((primaryColumnIdMap, ctx, new DateTime(0))) { (acc, tableName) =>
+      val (accColumnIdMap, accCtx, accLastModified) = acc
+      val schemaResult = schemaFetcher(selectedSecondaryInstanceBase, tableName, None, useResourceName = true)
+      schemaResult match {
+        case Successful(schema, _, _, lastModified) =>
+          val combinedCtx = accCtx + (tableName -> schemaToDatasetContext(schema))
           val combinedIdMap = accColumnIdMap ++ schema.schema.map {
             case (columnId, (_, fieldName)) =>
-              QualifiedColumnName(Some(name), new ColumnName(fieldName)) -> columnId
+              QualifiedColumnName(Some(tableName), new ColumnName(fieldName)) -> columnId
           }
-          val largestLastModified = (lastModifiedOption.toSeq :+ accLastModified).max(DatetimeOrdering)
-          (accSeen + (tableName.name -> schema), combinedIdMap, combinedCtx, largestLastModified)
-        case None =>
+          val largestLastModified = if (lastModified.isAfter(accLastModified)) lastModified else accLastModified
+          (combinedIdMap, combinedCtx, largestLastModified)
+        case NoSuchDatasetInSecondary =>
+          throw new JoinedDatasetNotColocatedException(tableName, selectedSecondaryInstanceBase.host)
+        case other =>
+          // TODO: Keeping original semantic.  Improve error handling later.
+          logger.error(s"failed to fetch schema ${other}: ${tableName} ${selectedSecondaryInstanceBase.host}")
           acc
       }
     }
-    (accColumnIdMap, accCtx, accLastModified)
   }
 
   private def schemaToDatasetContext(schema: SchemaWithFieldName): DatasetContext[SoQLType] = {
