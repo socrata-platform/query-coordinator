@@ -107,6 +107,8 @@ trait QueryService {
        (nonGroupableGroup, "Non-groupable group by", Map.empty, position)
      case UnorderableOrderBy(_, _) =>
        (unOrderableOrder, "Un-orderable order by", Map.empty, position)
+     case RightSideOfChainQueryMustBeLeaf(_) =>
+       (rightSideOfChainQueryMustBeLeaf, "Right side of chain query must be a leaf", Map.empty, position)
     }
   }
 

@@ -12,26 +12,24 @@ import com.socrata.querycoordinator.caching.{Hasher, SoQLAnalysisDepositioner, W
 import scala.collection.JavaConverters._
 import com.rojoma.json.v3.ast.{JObject, JString, JValue}
 import com.rojoma.json.v3.codec.JsonDecode
-import com.rojoma.json.v3.io.{CompactJsonWriter, FusedBlockJsonEventIterator, JsonReader}
+import com.rojoma.json.v3.io.{FusedBlockJsonEventIterator, JsonReader}
 import com.rojoma.json.v3.util.{ArrayIteratorEncode, AutomaticJsonCodecBuilder, JsonArrayIterator, JsonUtil}
 import com.rojoma.simplearm.v2._
-import com.socrata.NonEmptySeq
 import com.socrata.http.client.exceptions.{ConnectFailed, ConnectTimeout, HttpClientTimeoutException, LivenessCheckFailed}
 import com.socrata.http.client.{HttpClient, RequestBuilder, Response}
 import com.socrata.http.server.implicits._
 import com.socrata.http.server.util._
 import com.socrata.querycoordinator.QueryExecutor.{SchemaHashMismatch, ToForward, _}
-import com.socrata.querycoordinator.util.TeeToTempInputStream
+import com.socrata.querycoordinator.util.{BinaryTreeHelper, TeeToTempInputStream}
 import com.socrata.querycoordinator.caching.cache.{CacheSession, CacheSessionProvider, ValueRef}
 import com.socrata.querycoordinator.caching.SharedHandle
 import com.socrata.soql.typed.FunctionCall
 import com.socrata.util.io.SplitStream
 import com.socrata.soql.types.SoQLType
-import com.socrata.soql.{AnalysisSerializer, SoQLAnalysis}
+import com.socrata.soql.{AnalysisSerializer, BinaryTree, Leaf, SoQLAnalysis}
 import org.joda.time.DateTime
 
 import scala.annotation.tailrec
-import scala.util.control.ControlThrowable
 
 class QueryExecutor(httpClient: HttpClient,
                     analysisSerializer: AnalysisSerializer[String, SoQLType],
@@ -55,7 +53,7 @@ class QueryExecutor(httpClient: HttpClient,
   private implicit val hCodec = AutomaticJsonCodecBuilder[Headers]
 
   private def makeCacheKeyBase(dsId: String,
-                               query: NonEmptySeq[SoQLAnalysis[String, SoQLType]],
+                               query: BinaryTree[SoQLAnalysis[String, SoQLType]],
                                context: Map[String, String],
                                schemaHash: String,
                                lastModified: DateTime,
@@ -64,7 +62,7 @@ class QueryExecutor(httpClient: HttpClient,
                                rollupName: Option[String],
                                obfuscateId: Boolean,
                                rowCount: Option[String]): String = {
-    val depositionedQuery = query.map(SoQLAnalysisDepositioner(_))
+    val depositionedQuery = query.flatMap(analysis => Leaf(SoQLAnalysisDepositioner(analysis)))
     hexString(Hasher.hash(dsId, serializeAnalysis(depositionedQuery), context,
       schemaHash, lastModified.getMillis, copyNum, dataVer, rollupName, if (obfuscateId) 1L else 0L, rowCount))
   }
@@ -80,7 +78,7 @@ class QueryExecutor(httpClient: HttpClient,
    */
   def apply(base: RequestBuilder, // scalastyle:ignore parameter.number method.length cyclomatic.complexity
             dataset: String,
-            analyses: NonEmptySeq[SoQLAnalysis[String, SoQLType]],
+            analyses: BinaryTree[SoQLAnalysis[String, SoQLType]],
             schema: Schema,
             precondition: Precondition,
             ifModifiedSince: Option[DateTime],
@@ -100,7 +98,7 @@ class QueryExecutor(httpClient: HttpClient,
     val rs = resourceScopeHandle.get
 
     // Validate that there aren't any insane joins
-    analyses.head.joins.foreach {
+    analyses.seq.head.joins.foreach {
       _.on match {
         case FunctionCall(_, parameters, _) if parameters.length == 2 && parameters(0) == parameters(1) =>
             return InvalidJoin
@@ -108,7 +106,7 @@ class QueryExecutor(httpClient: HttpClient,
       }
     }
 
-    def go(theAnalyses: NonEmptySeq[SoQLAnalysis[String, SoQLType]] = analyses): Result =
+    def go(theAnalyses: BinaryTree[SoQLAnalysis[String, SoQLType]] = analyses): Result =
       reallyApply(base = base, dataset = dataset, analyses = theAnalyses, context = context, schema = schema, precondition = precondition, ifModifiedSince = ifModifiedSince, rowCount = rowCount, copy = copy,
                   rollupName = rollupName, obfuscateId = obfuscateId, extraHeaders = extraHeaders, resourceScope = rs, queryTimeoutSeconds = queryTimeoutSeconds, debug = debug, explain = explain)
 
@@ -127,7 +125,12 @@ class QueryExecutor(httpClient: HttpClient,
     val totalWindows = endWindow.window - startWindow.window + 1
     if(totalWindows > maxWindowsToCache) return go()
 
-    val unlimitedAnalyses = analyses.replaceLast(analyses.last.copy[String, SoQLType](limit = None, offset = None))
+    val outermosts = BinaryTreeHelper.outerMostAnalyses(analyses)
+    val unlimitedAnalyses = outermosts.foldLeft(analyses) { (acc, outermost) =>
+      val unlimitedOutermost = outermost.copy(limit = None, offset = None)
+      BinaryTreeHelper.replace(acc, outermost, unlimitedOutermost)
+    }
+
     val readCacheKeyBase = makeCacheKeyBase(dataset, unlimitedAnalyses, context, schema.hash, currentLastModified, currentCopyNumber, currentDataVersion, rollupName, obfuscateId, rowCount)
 
     using(new ResourceScope()) { tmpScope =>
@@ -234,8 +237,9 @@ class QueryExecutor(httpClient: HttpClient,
           result
         case None =>
           val startTimeMs = System.currentTimeMillis()
-          val newLast = analyses.last.copy[String, SoQLType](limit = Some(newLimit), offset = Some(newOffset))
-          val relimitedAnalyses = analyses.replaceLast(newLast)
+          val last = analyses.outputSchemaLeaf
+          val lastNoLimitOffset = last.copy[String, SoQLType](limit = Some(newLimit), offset = Some(newOffset))
+          val relimitedAnalyses: BinaryTree[SoQLAnalysis[String, SoQLType]] =  BinaryTreeHelper.replace(analyses, last, lastNoLimitOffset)
           go(theAnalyses = relimitedAnalyses) match {
             case ToForward(200, headers0, body) =>
               val headers = headers0 - "content-length" // we'll be manipulating the values, so remove that if it's set
@@ -288,17 +292,19 @@ class QueryExecutor(httpClient: HttpClient,
     }
   }
 
-  private def offsetLimitInfo(analyses: NonEmptySeq[SoQLAnalysis[String, SoQLType]]) = {
-    analyses.map { analysis => s"offset ${analysis.offset.getOrElse("").toString} limit ${analysis.limit.getOrElse("").toString}" }
-            .seq.mkString(" |> ")
+  private def offsetLimitInfo(analyses: BinaryTree[SoQLAnalysis[String, SoQLType]]) = {
+    val limitOffsets = analyses.flatMap { analysis =>
+      Leaf(s"offset ${analysis.offset.getOrElse("").toString} limit ${analysis.limit.getOrElse("").toString}")
+    }
+    limitOffsets.toString
   }
 
   /**
     * @return whether cache happens or not
     */
   private def doCache(dataset: String,
-                      unlimitedAnalyses: NonEmptySeq[SoQLAnalysis[String, SoQLType]],
-                      relimitedAnalyses: NonEmptySeq[SoQLAnalysis[String, SoQLType]],
+                      unlimitedAnalyses: BinaryTree[SoQLAnalysis[String, SoQLType]],
+                      relimitedAnalyses: BinaryTree[SoQLAnalysis[String, SoQLType]],
                       context: Map[String, String],
                       schema: Schema,
                       rollupName: Option[String],
@@ -421,7 +427,7 @@ class QueryExecutor(httpClient: HttpClient,
 
   private def reallyApply(base: RequestBuilder, // scalastyle:ignore parameter.number method.length cyclomatic.complexity
                           dataset: String,
-                          analyses: NonEmptySeq[SoQLAnalysis[String, SoQLType]],
+                          analyses: BinaryTree[SoQLAnalysis[String, SoQLType]],
                           context: Map[String, String],
                           schema: Schema,
                           precondition: Precondition,
@@ -517,9 +523,9 @@ class QueryExecutor(httpClient: HttpClient,
     }
   }
 
-  private def serializeAnalysis(analysis: NonEmptySeq[SoQLAnalysis[String, SoQLType]]): String = {
+  private def serializeAnalysis(analysis: BinaryTree[SoQLAnalysis[String, SoQLType]]): String = {
     val baos = new java.io.ByteArrayOutputStream
-    analysisSerializer(baos, analysis)
+    analysisSerializer.applyBinaryTree(baos, analysis)
     new String(baos.toByteArray, StandardCharsets.ISO_8859_1)
   }
 
