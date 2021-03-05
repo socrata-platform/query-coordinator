@@ -16,7 +16,7 @@ import com.socrata.querycoordinator.caching.SharedHandle
 import com.socrata.querycoordinator.exceptions.JoinedDatasetNotColocatedException
 import com.socrata.soql.environment.{ColumnName, TableName}
 import com.socrata.soql.exceptions.{DuplicateAlias, NoSuchColumn, TypecheckException}
-import com.socrata.soql.{BinaryTree, Compound, Leaf, SoQLAnalysis}
+import com.socrata.soql.{BinaryTree, Compound, Leaf, PipeQuery, SoQLAnalysis}
 import com.socrata.soql.types.{SoQLID, SoQLNumber, SoQLType}
 import org.apache.http.HttpStatus
 import org.joda.time.format.ISODateTimeFormat
@@ -300,10 +300,11 @@ class QueryResource(secondary: Secondary,
             (analyzedQuery, Seq.empty)
           } else {
             analyzedQuery match {
-              case Compound(op, l, r) =>
+              case PipeQuery(l, r) =>
                 val (nl, rollupLeft) = possiblyRewriteOneAnalysisInQuery(schema, l)
-                val (nr, rollupRight) = possiblyRewriteOneAnalysisInQuery(schema, r)
-                (Compound(op, nl, nr), rollupLeft ++ rollupRight)
+                (PipeQuery(nl, r), rollupLeft)
+              case Compound(_, _, _) => // TODO: Support rollups in unions
+                (analyzedQuery, Seq.empty)
               case Leaf(analysis) if analysis.joins.nonEmpty =>
                 (analyzedQuery, Seq.empty)
               case Leaf(analysis) =>
