@@ -53,7 +53,7 @@ object SoQLAnalysisDepositioner {
         val depositioned = sa.analyses.flatMap(analysis => Leaf(SoQLAnalysisDepositioner(analysis)))
         sa.copy(analyses = depositioned)
       }
-      Join(join.typ, join.from.copy(subAnalysis = mappedSubAna), depositionExpr(join.on))
+      Join(join.typ, join.from.copy(subAnalysis = mappedSubAna), depositionExpr(join.on), join.lateral)
     }
   }
 }
