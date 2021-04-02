@@ -64,10 +64,17 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
     analyses match {
       case PipeQuery(l, r) =>
         val nl = remapAnalyses(columnIdMapping, l)
-        val prev = nl.outputSchemaLeaf
+        val prev = nl.outputSchema.leaf
+        val ra = r.asLeaf.get
+        val prevQueryAlias = ra.from match {
+          case Some(TableName(TableName.This, alias@Some(_))) =>
+            alias
+          case _ =>
+            None
+        }
         val prevQColumnIdToQColumnIdMap = prev.selection.foldLeft(newMapping) { (acc, selCol) =>
           val (colName, _expr) = selCol
-          acc + ((colName, None) -> toUserColumnId(colName))
+          acc + ((colName, prevQueryAlias) -> toUserColumnId(colName))
         }
         val nr = r.asLeaf.get.mapColumnIds(prevQColumnIdToQColumnIdMap, toColumnNameJoinAlias, toUserColumnId, toUserColumnId)
         PipeQuery(nl, Leaf(nr))
@@ -76,7 +83,22 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
         val ra = remapAnalyses(columnIdMapping, r)
         Compound(op, la, ra)
       case Leaf(analysis) =>
-        val remapped: SoQLAnalysis[String, SoQLType] = analysis.mapColumnIds(newMapping, toColumnNameJoinAlias, toUserColumnId, toUserColumnId)
+        val newMappingThisAlias = analysis.from match {
+          case Some(tn@TableName(TableName.This, Some(_))) =>
+            newMapping.foldLeft(newMapping) { (acc, mapEntry) =>
+              mapEntry match {
+                case ((columnName, None), userColumnId) =>
+                  acc ++ Map((columnName, Some(tn.qualifier)) -> userColumnId,
+                    (columnName, Some(TableName.This)) -> userColumnId)
+                case _ =>
+                  acc
+              }
+            }
+          case _ =>
+            newMapping
+        }
+
+        val remapped: SoQLAnalysis[String, SoQLType] = analysis.mapColumnIds(newMappingThisAlias, toColumnNameJoinAlias, toUserColumnId, toUserColumnId)
         Leaf(remapped)
     }
   }
@@ -122,11 +144,22 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
         systemColumnAliasesAllowed = systemColumns ++ columnIdMap.keySet.filter(_.caseFolded.startsWith(":@")))
     val parsed = new Parser(parserParams).binaryTreeSelect(query)
 
-    val primaryColumnIdMap = columnIdMap.map { case (k, v) => QualifiedColumnName(None, k) -> v }
+    val (primaryAlias, ctxWithAlias) = parsed.leftMost.leaf.from match {
+      case Some(tn@TableName(TableName.This, a@Some(alias))) =>
+        val primarySchema = ctx(TableName.PrimaryTable.name)
+        (a, (ctx + (alias -> primarySchema)) + (tn.name -> primarySchema))
+      case _ =>
+        (None, ctx)
+    }
+
+    val primaryColumnIdMap = columnIdMap.map { case (k, v) => QualifiedColumnName(primaryAlias, k) -> v } ++
+      (if (primaryAlias.isDefined) columnIdMap.map { case (k, v) => QualifiedColumnName(Some(TableName.This), k) -> v }
+      else Map.empty)
+
     val tableNames = collectTableNames(parsed)
 
     val (allColumnIdMap, allCtx, largestLastModified) =
-      fetchRelatedTables(tableNames, selectedSecondaryInstanceBase, primaryColumnIdMap, ctx)
+      fetchRelatedTables(tableNames, selectedSecondaryInstanceBase, primaryColumnIdMap, ctxWithAlias)
 
     val rewritten = fuser.rewrite(parsed, columnIdMap, schema)
     val result = analyzer.analyzeBinary(rewritten)(allCtx)
@@ -139,7 +172,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
       case Compound(_, l, r) =>
         collectTableNames(l) ++ collectTableNames(r)
       case Leaf(select) =>
-        select.joins.foldLeft(select.from.map(_.name).toSet) { (acc, join) =>
+        select.joins.foldLeft(select.from.map(_.name).filter(_ != TableName.This).toSet) { (acc, join) =>
           join.from.subSelect match {
             case Left(TableName(name, _)) =>
               acc + name
