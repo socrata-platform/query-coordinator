@@ -13,7 +13,7 @@ import com.socrata.soql.functions.SoQLFunctions
 import com.socrata.soql.parsing.{AbstractParser, Parser}
 import com.socrata.soql.typed._
 import com.socrata.soql.types.SoQLType
-import com.socrata.soql.{BinaryTree, Compound, Leaf, PipeQuery, SoQLAnalysis, SoQLAnalyzer, ast}
+import com.socrata.soql.{BinaryTree, Compound, Leaf, PipeQuery, PivotQuery, SoQLAnalysis, SoQLAnalyzer, ast}
 import com.typesafe.scalalogging.Logger
 import org.joda.time.DateTime
 
@@ -41,6 +41,11 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
         AnalysisError(e)
       case e: JoinedDatasetNotColocatedException =>
         QueryParser.JoinedTableNotFound(e.dataset, e.secondaryHost)
+      case ex: Exception =>
+        val ex1 = ex
+        println(ex1)
+        println(ex1)
+        throw ex
     }
   }
 
@@ -78,6 +83,19 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
         }
         val nr = r.asLeaf.get.mapColumnIds(prevQColumnIdToQColumnIdMap, toColumnNameJoinAlias, toUserColumnId, toUserColumnId)
         PipeQuery(nl, Leaf(nr))
+      case PivotQuery(l, r) =>
+        val la = remapAnalyses(columnIdMapping, l)
+        val columns = r.outputSchema.leaf.selection.values
+        val pivotColumnIdMap = columns.map { expr =>
+          expr match {
+            case c: ColumnRef[ColumnName, SoQLType] =>
+              (QualifiedColumnName(None, c.column) -> toUserColumnId(c.column))
+            case _ => // Should never happen
+              throw new Exception("pivot query must select from column")
+          }
+        }.toMap
+        val ra = remapAnalyses(pivotColumnIdMap, r)
+        PivotQuery(la, ra)
       case Compound(op, l, r) =>
         val la = remapAnalyses(columnIdMapping, l)
         val ra = remapAnalyses(columnIdMapping, r)
@@ -232,7 +250,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
             merged: Boolean = true): Result = {
     val compoundTypeFuser = CompoundTypeFuser(fuseMap)
     val postAnalyze = analyzeQuery(query, columnIdMapping, selectedSecondaryInstanceBase, compoundTypeFuser, schema)
-    val analyzeMaybeMerge = if (merged) { postAnalyze andThen soqlMerge } else { postAnalyze }
+    val analyzeMaybeMerge = if (false && merged) { postAnalyze andThen soqlMerge } else { postAnalyze }
     go(columnIdMapping, schema)(analyzeMaybeMerge)
   }
 
