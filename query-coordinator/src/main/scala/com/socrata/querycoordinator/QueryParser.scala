@@ -13,7 +13,7 @@ import com.socrata.soql.functions.SoQLFunctions
 import com.socrata.soql.parsing.{AbstractParser, Parser}
 import com.socrata.soql.typed._
 import com.socrata.soql.types.SoQLType
-import com.socrata.soql.{BinaryTree, Compound, Leaf, PipeQuery, SoQLAnalysis, SoQLAnalyzer, ast}
+import com.socrata.soql.{BinaryTree, Compound, Leaf, PipeQuery, PivotQuery, SoQLAnalysis, SoQLAnalyzer, ast}
 import com.typesafe.scalalogging.Logger
 import org.joda.time.DateTime
 
@@ -83,6 +83,17 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
         }
         val nr = r.asLeaf.get.mapColumnIds(prevQColumnIdToQColumnIdMap, toColumnNameJoinAlias, toUserColumnId, toUserColumnId)
         PipeQuery(nl, Leaf(nr))
+      case PivotQuery(l, r) =>
+        val la = remapAnalyses(columnIdMapping, l)
+        val columns = r.outputSchema.leaf.selection.values
+        val pivotColumnIdMap = columns.map { expr =>
+          expr match {
+            case c: ColumnRef[ColumnName, SoQLType] =>
+              (QualifiedColumnName(None, c.column) -> c.column.caseFolded)
+          }
+        }.toMap
+        val ra = remapAnalyses(pivotColumnIdMap, r)
+        PivotQuery(la, ra)
       case Compound(op, l, r) =>
         val la = remapAnalyses(columnIdMapping, l)
         val ra = remapAnalyses(columnIdMapping, r)
