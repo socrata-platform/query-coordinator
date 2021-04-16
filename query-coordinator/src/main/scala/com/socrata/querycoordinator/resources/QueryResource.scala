@@ -197,7 +197,7 @@ class QueryResource(secondary: Secondary,
           val extraHeaders = Map(RequestId.ReqIdHeader -> requestId) ++
             resourceName.map(fbf => Map(headerSocrataResource -> fbf)).getOrElse(Nil) ++
             (if (analyze) List("X-Socrata-Analyze" -> "true" ) else Nil)
-          queryExecutor(
+          val xx = queryExecutor(
             base = base.receiveTimeoutMS(receiveTimeout.toMillis.toInt).connectTimeoutMS(connectTimeout.toMillis.toInt),
             dataset = dataset,
             analyses = analyzedQuery,
@@ -217,7 +217,8 @@ class QueryResource(secondary: Secondary,
             queryTimeoutSeconds = queryTimeoutSeconds,
             debug = debug,
             explain = explain
-          ) match {
+          )
+          xx match {
             case QueryExecutor.Retry =>
               Left(nextRetry)
             case QueryExecutor.NotFound =>

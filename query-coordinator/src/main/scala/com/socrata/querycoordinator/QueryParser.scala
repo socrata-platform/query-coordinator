@@ -41,6 +41,11 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
         AnalysisError(e)
       case e: JoinedDatasetNotColocatedException =>
         QueryParser.JoinedTableNotFound(e.dataset, e.secondaryHost)
+      case ex: Exception =>
+        val ex1 = ex
+        println(ex1)
+        println(ex1)
+        throw ex
     }
   }
 
@@ -232,7 +237,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
             merged: Boolean = true): Result = {
     val compoundTypeFuser = CompoundTypeFuser(fuseMap)
     val postAnalyze = analyzeQuery(query, columnIdMapping, selectedSecondaryInstanceBase, compoundTypeFuser, schema)
-    val analyzeMaybeMerge = if (merged) { postAnalyze andThen soqlMerge } else { postAnalyze }
+    val analyzeMaybeMerge = if (false && merged) { postAnalyze andThen soqlMerge } else { postAnalyze }
     go(columnIdMapping, schema)(analyzeMaybeMerge)
   }
 
