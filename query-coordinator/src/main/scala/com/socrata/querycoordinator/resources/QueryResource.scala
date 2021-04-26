@@ -311,6 +311,8 @@ class QueryResource(secondary: Secondary,
                 val (schemaFrom, datasetOrResourceName) = analysis.from match {
                   case Some(TableName(TableName.This, _)) =>
                     (schema, Left(dataset))
+                  case Some(tableName@TableName(TableName.SingleRow, _)) =>
+                    (Schema.SingleRow, Right(tableName.name))
                   case Some(tableName) =>
                     val schemaWithFieldName = getSchemaByTableName(tableName)
                     (schemaWithFieldName.toSchema(), Right(tableName.name))

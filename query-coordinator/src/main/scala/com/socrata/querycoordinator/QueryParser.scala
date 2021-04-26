@@ -189,23 +189,27 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
                                  ctx: AnalysisContext)
     : (Map[QualifiedColumnName, String], AnalysisContext, DateTime) = {
     tableNames.foldLeft((primaryColumnIdMap, ctx, new DateTime(0))) { (acc, tableName) =>
-      val (accColumnIdMap, accCtx, accLastModified) = acc
-      val schemaResult = schemaFetcher(selectedSecondaryInstanceBase, tableName, None, useResourceName = true)
-      schemaResult match {
-        case Successful(schema, _, _, lastModified) =>
-          val combinedCtx = accCtx + (tableName -> schemaToDatasetContext(schema))
-          val combinedIdMap = accColumnIdMap ++ schema.schema.map {
-            case (columnId, (_, fieldName)) =>
-              QualifiedColumnName(Some(tableName), new ColumnName(fieldName)) -> columnId
-          }
-          val largestLastModified = if (lastModified.isAfter(accLastModified)) lastModified else accLastModified
-          (combinedIdMap, combinedCtx, largestLastModified)
-        case NoSuchDatasetInSecondary =>
-          throw new JoinedDatasetNotColocatedException(tableName, selectedSecondaryInstanceBase.host)
-        case other =>
-          // TODO: Keeping original semantic.  Improve error handling later.
-          logger.error(s"failed to fetch schema ${other}: ${tableName} ${selectedSecondaryInstanceBase.host}")
-          acc
+      if(tableName == TableName.SingleRow) {
+        acc
+      } else {
+        val (accColumnIdMap, accCtx, accLastModified) = acc
+        val schemaResult = schemaFetcher(selectedSecondaryInstanceBase, tableName, None, useResourceName = true)
+        schemaResult match {
+          case Successful(schema, _, _, lastModified) =>
+            val combinedCtx = accCtx + (tableName -> schemaToDatasetContext(schema))
+            val combinedIdMap = accColumnIdMap ++ schema.schema.map {
+              case (columnId, (_, fieldName)) =>
+                QualifiedColumnName(Some(tableName), new ColumnName(fieldName)) -> columnId
+            }
+            val largestLastModified = if (lastModified.isAfter(accLastModified)) lastModified else accLastModified
+            (combinedIdMap, combinedCtx, largestLastModified)
+          case NoSuchDatasetInSecondary =>
+            throw new JoinedDatasetNotColocatedException(tableName, selectedSecondaryInstanceBase.host)
+          case other =>
+            // TODO: Keeping original semantic.  Improve error handling later.
+            logger.error(s"failed to fetch schema ${other}: ${tableName} ${selectedSecondaryInstanceBase.host}")
+            acc
+        }
       }
     }
   }

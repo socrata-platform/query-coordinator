@@ -9,6 +9,8 @@ import com.socrata.soql.types.SoQLType
 case class Schema(hash: String, schema: Map[String, SoQLType], pk: String)
 
 object Schema {
+  object SingleRow extends Schema("", Map.empty, ":id")
+
   implicit object SchemaCodec extends JsonDecode[Schema] with JsonEncode[Schema] {
     private implicit val soQLTypeCodec = SoQLTypeCodec
 
