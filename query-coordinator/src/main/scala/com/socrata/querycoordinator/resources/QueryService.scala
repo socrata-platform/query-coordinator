@@ -109,6 +109,12 @@ trait QueryService {
        (unOrderableOrder, "Un-orderable order by", Map.empty, position)
      case RightSideOfChainQueryMustBeLeaf(_) =>
        (rightSideOfChainQueryMustBeLeaf, "Right side of chain query must be a leaf", Map.empty, position)
+     case ReservedTableAlias(_, _) =>
+       (reservedTableAlias, e.getMessage, Map("description" -> JString(e.getMessage)), position)
+     case NumberOfColumnsMismatch(_, _, _) =>
+       (numberOfColumnsMismatch, e.getMessage, Map("description" -> JString(e.getMessage)), position)
+     case TypeOfColumnsMismatch(_, _, _) =>
+       (columnTypesMismatch, e.getMessage, Map("description" -> JString(e.getMessage)), position)
     }
   }
 

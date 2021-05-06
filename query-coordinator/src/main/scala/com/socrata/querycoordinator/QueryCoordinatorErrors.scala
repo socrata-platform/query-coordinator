@@ -28,6 +28,9 @@ object QueryCoordinatorErrors {
     val nonGroupableGroup = "query.soql.non-groupable-group"
     val unOrderableOrder = "query.soql.un-orderable-order"
     val rightSideOfChainQueryMustBeLeaf = "query.soql.right-side-of-chain-query-must-be-leaf"
+    val reservedTableAlias= "query.soql.reserved-table-alias"
+    val numberOfColumnsMismatch = "query.soql.two-selects-number-of-columns-mismatch"
+    val columnTypesMismatch = "query.soql.two-selects-column-types-mismatch"
   }
 
   object QueryErrors extends QCErrors {
