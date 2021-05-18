@@ -5,7 +5,7 @@ import com.socrata.querycoordinator.SchemaFetcher.{NoSuchDatasetInSecondary, Suc
 import com.socrata.querycoordinator.exceptions.JoinedDatasetNotColocatedException
 import com.socrata.querycoordinator.fusion.{CompoundTypeFuser, SoQLRewrite}
 import com.socrata.querycoordinator.util.BinaryTreeHelper
-import com.socrata.soql.ast.{Select, SubSelect}
+import com.socrata.soql.ast.{Select, JoinTable, JoinQuery, JoinFunc}
 import com.socrata.soql.collection.OrderedMap
 import com.socrata.soql.environment._
 import com.socrata.soql.exceptions.SoQLException
@@ -173,11 +173,13 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
         collectTableNames(l) ++ collectTableNames(r)
       case Leaf(select) =>
         select.joins.foldLeft(select.from.map(_.name).filter(_ != TableName.This).toSet) { (acc, join) =>
-          join.from.subSelect match {
-            case Left(TableName(name, _)) =>
+          join.from match {
+            case JoinTable(TableName(name, _)) =>
               acc + name
-            case Right(SubSelect(selects, _)) =>
+            case JoinQuery(selects, _) =>
               acc ++ collectTableNames(selects)
+            case JoinFunc(_, _) =>
+              throw new Exception("Unexpected join function")
           }
         }
     }
