@@ -287,5 +287,5 @@ object QueryParser {
   // And function is used for chain SoQL merge.
   private val andFn = SoQLFunctions.And.monomorphic.get
 
-  private val systemColumns = Set(":id", ":created_at", ":updated_at").map(ColumnName(_))
+  private val systemColumns = Set(":id", ":created_at", ":updated_at", ":version").map(ColumnName(_))
 }
