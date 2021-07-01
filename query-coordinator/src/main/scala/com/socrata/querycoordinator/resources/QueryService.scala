@@ -115,6 +115,8 @@ trait QueryService {
        (numberOfColumnsMismatch, e.getMessage, Map("description" -> JString(e.getMessage)), position)
      case TypeOfColumnsMismatch(_, _, _) =>
        (columnTypesMismatch, e.getMessage, Map("description" -> JString(e.getMessage)), position)
+     case e: SoQLException =>
+       (badParse, e.getMessage, Map("description" -> JString(e.getMessage)), position)
     }
   }
 
