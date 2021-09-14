@@ -300,14 +300,14 @@ class QueryResource(secondary: Secondary,
             (analyzedQuery, Seq.empty)
           } else {
             analyzedQuery match {
-              case PipeQuery(l, r) =>
+              case PipeQuery(l, r, inParen) =>
                 val (nl, rollupLeft) = possiblyRewriteOneAnalysisInQuery(schema, l)
-                (PipeQuery(nl, r), rollupLeft)
+                (PipeQuery(nl, r, inParen), rollupLeft)
               case Compound(_, _, _) => // TODO: Support rollups in unions
                 (analyzedQuery, Seq.empty)
-              case Leaf(analysis) if analysis.joins.nonEmpty =>
+              case Leaf(analysis, _) if analysis.joins.nonEmpty =>
                 (analyzedQuery, Seq.empty)
-              case Leaf(analysis) =>
+              case Leaf(analysis, _) =>
                 val (schemaFrom, datasetOrResourceName) = analysis.from match {
                   case Some(TableName(TableName.This, _)) =>
                     (schema, Left(dataset))

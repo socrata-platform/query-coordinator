@@ -10,23 +10,23 @@ object BinaryTreeHelper {
    */
   def replace[T <: AnyRef](analyses: BinaryTree[T], a: T, b: T): BinaryTree[T] = {
     analyses match {
-      case Compound(op, l, r) =>
+      case c@Compound(op, l, r) =>
         val nl = replace(l, a, b)
         val nr = replace(r, a, b)
-        Compound(op, left = nl, right = nr)
-      case Leaf(analysis) =>
-        if (analysis.eq(a)) Leaf(b) // object reference comparison
+        Compound(op, left = nl, right = nr, c.inParen)
+      case Leaf(analysis, inParen) =>
+        if (analysis.eq(a)) Leaf(b, inParen) // object reference comparison
         else analyses
     }
   }
 
   def outerMostAnalyses[T](analyses: BinaryTree[SoQLAnalysis[T, SoQLType]], seq: Seq[SoQLAnalysis[T, SoQLType]] = Seq.empty): Seq[SoQLAnalysis[T, SoQLType]] = {
     analyses match {
-      case PipeQuery(_, r) =>
+      case PipeQuery(_, r, _) =>
         outerMostAnalyses(r, seq)
       case Compound(_, l, r) =>
         outerMostAnalyses(l, seq) ++ outerMostAnalyses(r, seq)
-      case Leaf(analysis) =>
+      case Leaf(analysis, _) =>
         seq :+ analysis
     }
   }

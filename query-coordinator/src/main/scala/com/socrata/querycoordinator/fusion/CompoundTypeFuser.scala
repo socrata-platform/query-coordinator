@@ -98,7 +98,7 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite {
 
       def expand(selects: BinaryTree[Select], ctx: Map[String, UntypedDatasetContext]): BinaryTree[Select] = {
         selects match {
-          case PipeQuery(l, r) =>
+          case PipeQuery(l, r, inParen) =>
             val nl = expand(l, ctx)
             val prev = l.outputSchemaLeaf
             val columnNames = prev.selection.expressions.map { se =>
@@ -108,8 +108,8 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite {
               override val columns: OrderedSet[ColumnName] = OrderedSet(columnNames: _*)
             }
             val nr = expand(r, toAnalysisContext(nextCtx))
-            PipeQuery(nl, nr)
-          case Leaf(select) =>
+            PipeQuery(nl, nr, inParen)
+          case Leaf(select, inParen) =>
             val expandedSelection = AliasAnalysis.expandSelection(select.selection)(ctx)
             val expandedStmt = select.copy(selection = Selection(None, Seq.empty, expandedSelection))
             // Column names collected are for building the context for the following SoQL in chained SoQLs like
@@ -117,7 +117,7 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite {
             // It is currently done using expression.toString or explicit column aliases.
             // TODO: A more correct way to do this maybe Expression.toSyntheticIdentifierBase or AliasAnalysis.
             // TODO: Similar processes/issues may exist somewhere else.
-            Leaf(expandedStmt)
+            Leaf(expandedStmt, inParen)
           case Compound(op, _, _) =>
             // Filtered out by isSupported and should never reach here.
             throw new Exception(s"Query operation $op not supported in CompoundTypeFuser")
@@ -136,9 +136,9 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite {
 
   private def isSupported(selects: BinaryTree[Select]): Boolean = {
     selects match {
-      case PipeQuery(l, r) =>
+      case PipeQuery(l, r, _) =>
         isSupported(l) && isSupported(r)
-      case Leaf(leaf) =>
+      case Leaf(leaf, _) =>
         leaf.joins.isEmpty
       case Compound(_, _, _) =>
         false

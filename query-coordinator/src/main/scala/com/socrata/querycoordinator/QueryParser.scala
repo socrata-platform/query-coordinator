@@ -62,7 +62,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
     def toUserColumnId(columnName: ColumnName) = columnName.name
 
     analyses match {
-      case PipeQuery(l, r) =>
+      case PipeQuery(l, r, inParen) =>
         val nl = remapAnalyses(columnIdMapping, l)
         val prev = nl.outputSchema.leaf
         val ra = r.asLeaf.get
@@ -77,12 +77,12 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
           acc + ((colName, prevQueryAlias) -> toUserColumnId(colName))
         }
         val nr = r.asLeaf.get.mapColumnIds(prevQColumnIdToQColumnIdMap, toColumnNameJoinAlias, toUserColumnId, toUserColumnId)
-        PipeQuery(nl, Leaf(nr))
-      case Compound(op, l, r) =>
+        PipeQuery(nl, Leaf(nr, r.inParen), inParen)
+      case c@Compound(op, l, r) =>
         val la = remapAnalyses(columnIdMapping, l)
         val ra = remapAnalyses(columnIdMapping, r)
-        Compound(op, la, ra)
-      case Leaf(analysis) =>
+        Compound(op, la, ra, c.inParen)
+      case Leaf(analysis, inParen) =>
         val newMappingThisAlias = analysis.from match {
           case Some(tn@TableName(TableName.This, Some(_))) =>
             newMapping.foldLeft(newMapping) { (acc, mapEntry) =>
@@ -99,7 +99,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
         }
 
         val remapped: SoQLAnalysis[String, SoQLType] = analysis.mapColumnIds(newMappingThisAlias, toColumnNameJoinAlias, toUserColumnId, toUserColumnId)
-        Leaf(remapped)
+        Leaf(remapped, inParen)
     }
   }
 
@@ -171,7 +171,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
     selects match {
       case Compound(_, l, r) =>
         collectTableNames(l) ++ collectTableNames(r)
-      case Leaf(select) =>
+      case Leaf(select, _) =>
         select.joins.foldLeft(select.from.map(_.name).filter(_ != TableName.This).toSet) { (acc, join) =>
           join.from match {
             case JoinTable(TableName(name, _)) =>
