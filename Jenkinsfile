@@ -2,7 +2,7 @@
 
 def deploy_environment = "staging"
 def service_sha = env.GIT_COMMIT
-def default_branch_specifier = "origin/master"
+def default_branch_specifier = "origin/main"
 
 def service = "query-coordinator"
 def project_wd = "query-coordinator"
@@ -64,7 +64,7 @@ pipeline {
           else if (env.CHANGE_ID != null) { // we're running a PR test
             stage_build = true
           }
-          else if (BRANCH_NAME == "master") { // we're doing a master branch build for integration deploy
+          else if (BRANCH_NAME == "main") { // we're doing a main branch build for integration deploy
             stage_build = true
             stage_dockerize = true
             stage_deploy = true
@@ -102,8 +102,8 @@ pipeline {
 
             // sbt release doesn't like running without these
             sh(returnStdout: true, script: "git config remote.origin.fetch +refs/heads/*:refs/remotes/origin/*")
-            sh(returnStdout: true, script: "git config branch.master.remote origin")
-            sh(returnStdout: true, script: "git config branch.master.merge refs/heads/master")
+            sh(returnStdout: true, script: "git config branch.main.remote origin")
+            sh(returnStdout: true, script: "git config branch.main.merge refs/heads/main")
 
             echo sh(returnStdout: true, script: "echo y | sbt \"release with-defaults\"")
 
