@@ -194,11 +194,17 @@ class QueryResource(secondary: Secondary,
                          explain: Boolean,
                          analyze: Boolean): Either[QueryRetryState, HttpResponse] = {
           val extendedScope = resourceScope.open(SharedHandle(new ResourceScope))
+          val (receiveTimeoutMs, connectTimeoutMs) = queryTimeoutSeconds match {
+            case Some(timeout) =>
+              val timeoutMs = timeout.toInt * 1000
+               (timeoutMs, timeoutMs)
+            case _ => (receiveTimeout.toMillis.toInt, connectTimeout.toMillis.toInt)
+          }
           val extraHeaders = Map(RequestId.ReqIdHeader -> requestId) ++
             resourceName.map(fbf => Map(headerSocrataResource -> fbf)).getOrElse(Nil) ++
             (if (analyze) List("X-Socrata-Analyze" -> "true" ) else Nil)
           queryExecutor(
-            base = base.receiveTimeoutMS(receiveTimeout.toMillis.toInt).connectTimeoutMS(connectTimeout.toMillis.toInt),
+            base = base.receiveTimeoutMS(receiveTimeoutMs).connectTimeoutMS(connectTimeoutMs),
             dataset = dataset,
             analyses = analyzedQuery,
             schema = schema.payload,
