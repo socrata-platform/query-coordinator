@@ -13,7 +13,7 @@ import com.socrata.http.server.SocrataServerJetty
 import com.socrata.http.server.curator.CuratorBroker
 import com.socrata.http.server.livenesscheck.LivenessCheckResponder
 import com.socrata.http.server.util.RequestId.ReqIdHeader
-import com.socrata.http.server.util.handlers.{LoggingOptions, NewLoggingHandler, ThreadRenamingHandler}
+import com.socrata.http.server.util.handlers.{LoggingOptions, ErrorCatcher, NewLoggingHandler, ThreadRenamingHandler}
 import com.socrata.querycoordinator.caching.Windower
 import com.socrata.querycoordinator.resources.{QueryResource, VersionResource}
 import com.socrata.querycoordinator.util.TeeToTempInputStream
@@ -122,7 +122,7 @@ object Main extends App {
                                    Some(auxData))
 
     val serv = new SocrataServerJetty(
-      ThreadRenamingHandler(NewLoggingHandler(logOptions)(handler)),
+      ThreadRenamingHandler(NewLoggingHandler(logOptions)(ErrorCatcher(handler))),
       SocrataServerJetty.defaultOptions.
                          withPort(config.network.port).
                          withExtraHandlers(List(SocrataHttpSupport.getHandler(config.metrics))).
