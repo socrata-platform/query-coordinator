@@ -454,7 +454,7 @@ class QueryExecutor(httpClient: HttpClient,
       (if (!obfuscateId) List(qpObfuscateId -> "false" ) else Nil) ++
       (if (debug) List("X-Socrata-Debug" -> "true" ) else Nil)
 
-    val route = if(explain) "info" else qpQuery
+    val route = if(explain) "info" else "query"
 
     try {
       val result = using(IOUtils.toInputStream(serializedAnalyses, StandardCharsets.UTF_8.name)) { queryInputStream =>
