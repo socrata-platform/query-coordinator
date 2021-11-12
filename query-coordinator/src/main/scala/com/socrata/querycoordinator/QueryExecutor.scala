@@ -455,15 +455,17 @@ class QueryExecutor(httpClient: HttpClient,
       (if (debug) List("X-Socrata-Debug" -> "true" ) else Nil)
 
     val route = if(explain) "info" else qpQuery
-    val request = base.p(route).
-      addHeaders(PreconditionRenderer(precondition) ++ ifModifiedSince.map("If-Modified-Since" -> _.toHttpDate)).
-      addHeaders(extraHeaders).
-      addParameters(params).
-      method("POST").
-      blob(IOUtils.toInputStream(serializedAnalyses, StandardCharsets.UTF_8.name), "application/octet-stream")
 
     try {
-      val result = httpClient.execute(request, resourceScope)
+      val result = using(IOUtils.toInputStream(serializedAnalyses, StandardCharsets.UTF_8.name)) { queryInputStream =>
+        val request = base.p(route).
+          addHeaders(PreconditionRenderer(precondition) ++ ifModifiedSince.map("If-Modified-Since" -> _.toHttpDate)).
+          addHeaders(extraHeaders).
+          addParameters(params).
+          method("POST").
+          blob(queryInputStream, "application/octet-stream")
+          httpClient.execute(request, resourceScope)
+      }
       result.resultCode match {
         case HttpServletResponse.SC_NOT_FOUND =>
           resourceScope.close(result)
