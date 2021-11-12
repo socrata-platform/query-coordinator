@@ -27,6 +27,7 @@ import com.socrata.soql.typed.FunctionCall
 import com.socrata.util.io.SplitStream
 import com.socrata.soql.types.SoQLType
 import com.socrata.soql.{AnalysisSerializer, BinaryTree, Leaf, SoQLAnalysis}
+import org.apache.commons.io.IOUtils
 import org.joda.time.DateTime
 
 import scala.annotation.tailrec
@@ -444,7 +445,6 @@ class QueryExecutor(httpClient: HttpClient,
     val serializedAnalyses = serializeAnalysis(analyses)
     val params = List(
       qpDataset -> dataset,
-      qpQuery -> serializedAnalyses,
       qpContext -> JsonUtil.renderJson(context, pretty=false),
       qpSchemaHash -> schema.hash,
       qpQueryTimeoutSeconds -> queryTimeoutSeconds.getOrElse((60 * 60 * 12).toString)) ++
@@ -458,7 +458,9 @@ class QueryExecutor(httpClient: HttpClient,
     val request = base.p(route).
       addHeaders(PreconditionRenderer(precondition) ++ ifModifiedSince.map("If-Modified-Since" -> _.toHttpDate)).
       addHeaders(extraHeaders).
-      form(params)
+      addParameters(params).
+      method("POST").
+      blob(IOUtils.toInputStream(serializedAnalyses, StandardCharsets.UTF_8.name), "application/octet-stream")
 
     try {
       val result = httpClient.execute(request, resourceScope)
