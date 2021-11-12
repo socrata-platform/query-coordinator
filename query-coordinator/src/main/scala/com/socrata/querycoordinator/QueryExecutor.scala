@@ -464,7 +464,7 @@ class QueryExecutor(httpClient: HttpClient,
           addParameters(params).
           method("POST").
           blob(queryInputStream, "application/octet-stream")
-          httpClient.execute(request, resourceScope)
+        httpClient.execute(request, resourceScope)
       }
       result.resultCode match {
         case HttpServletResponse.SC_NOT_FOUND =>
