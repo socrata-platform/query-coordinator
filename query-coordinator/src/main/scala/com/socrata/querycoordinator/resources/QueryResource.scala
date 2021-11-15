@@ -194,7 +194,8 @@ class QueryResource(secondary: Secondary,
                          explain: Boolean,
                          analyze: Boolean): Either[QueryRetryState, HttpResponse] = {
           val extendedScope = resourceScope.open(SharedHandle(new ResourceScope))
-          val extraHeaders = Map(RequestId.ReqIdHeader -> requestId) ++
+          val extraHeaders = Map(RequestId.ReqIdHeader -> requestId,
+                                 "X-Socrata-Last-Modified" -> schema.lastModified.toHttpDate) ++
             resourceName.map(fbf => Map(headerSocrataResource -> fbf)).getOrElse(Nil) ++
             (if (analyze) List("X-Socrata-Analyze" -> "true" ) else Nil)
           queryExecutor(

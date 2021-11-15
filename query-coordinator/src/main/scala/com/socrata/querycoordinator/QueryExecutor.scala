@@ -240,7 +240,7 @@ class QueryExecutor(httpClient: HttpClient,
           result
         case None =>
           val startTimeMs = System.currentTimeMillis()
-          val last = analyses.outputSchemaLeaf
+          val last = analyses.outputSchema.leaf
           val lastNoLimitOffset = last.copy[String, SoQLType](limit = Some(newLimit), offset = Some(newOffset))
           val relimitedAnalyses: BinaryTree[SoQLAnalysis[String, SoQLType]] =  BinaryTreeHelper.replace(analyses, last, lastNoLimitOffset)
           go(theAnalyses = relimitedAnalyses) match {
