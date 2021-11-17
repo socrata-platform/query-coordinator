@@ -462,8 +462,7 @@ class QueryExecutor(httpClient: HttpClient,
           addHeaders(PreconditionRenderer(precondition) ++ ifModifiedSince.map("If-Modified-Since" -> _.toHttpDate)).
           addHeaders(extraHeaders).
           addParameters(params).
-          method("POST").
-          blob(queryInputStream, "application/octet-stream")
+          blob(queryInputStream, "application/octet-stream") // blob implies POST
         httpClient.execute(request, resourceScope)
       }
       result.resultCode match {
