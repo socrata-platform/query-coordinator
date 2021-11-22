@@ -111,7 +111,8 @@ class QueryExecutor(httpClient: HttpClient,
       reallyApply(base = base, dataset = dataset, analyses = theAnalyses, context = context, schema = schema, precondition = precondition, ifModifiedSince = ifModifiedSince, rowCount = rowCount, copy = copy,
                   rollupName = rollupName, obfuscateId = obfuscateId, extraHeaders = extraHeaders, resourceScope = rs, queryTimeoutSeconds = queryTimeoutSeconds, debug = debug, explain = explain)
 
-    if((cacheSessionProvider == NoopCacheSessionProvider && !forceCacheEvenWhenNoop) ||
+    if(explain ||
+       (cacheSessionProvider == NoopCacheSessionProvider && !forceCacheEvenWhenNoop) ||
        cacheSessionProvider.disabled) {
       return go()
     }
