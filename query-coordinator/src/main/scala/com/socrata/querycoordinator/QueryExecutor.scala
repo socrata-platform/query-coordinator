@@ -37,7 +37,8 @@ class QueryExecutor(httpClient: HttpClient,
                     teeStreamProvider: InputStream => TeeToTempInputStream,
                     cacheSessionProvider: CacheSessionProvider,
                     windower: Windower,
-                    maxWindowsToCache: BigInt) {
+                    maxWindowsToCache: BigInt,
+                    queryTimeoutSecondsMax: Long) {
   private val forceCacheEvenWhenNoop = java.lang.Boolean.getBoolean("com.socrata.query-coordinator.force-cache-even-when-noop")
 
   private val qpDataset = "dataset"
@@ -443,11 +444,16 @@ class QueryExecutor(httpClient: HttpClient,
                           debug: Boolean,
                           explain: Boolean): Result = {
     val serializedAnalyses = serializeAnalysis(analyses)
+
+    val wantQueryTimeoutSeconds = queryTimeoutSeconds.map(x => try { Integer.parseInt(x) } catch { case _: NumberFormatException => queryTimeoutSecondsMax })
+                                                     .getOrElse(queryTimeoutSecondsMax)
+    val qtos = math.min(queryTimeoutSecondsMax, wantQueryTimeoutSeconds)
+
     val params = List(
       qpDataset -> dataset,
       qpContext -> JsonUtil.renderJson(context, pretty=false),
       qpSchemaHash -> schema.hash,
-      qpQueryTimeoutSeconds -> queryTimeoutSeconds.getOrElse((60 * 60 * 12).toString)) ++
+      qpQueryTimeoutSeconds -> qtos.toString) ++
       rowCount.map(rc => List(qpRowCount -> rc)).getOrElse(Nil) ++
       copy.map(c => List(qpCopy -> c)).getOrElse(Nil) ++
       rollupName.map(c => List(qpRollupName -> c)).getOrElse(Nil) ++
