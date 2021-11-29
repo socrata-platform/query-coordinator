@@ -244,7 +244,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
           // to a floating timestamp.  eg. my_floating_timestamp < '2010-01-01'::floating_timestamp
           // While it is eminently reasonable to also accept them in flipped order, that is being left for later.
           case (colRef@typed.ColumnRef(_, _, SoQLFloatingTimestamp),
-          cast@typed.FunctionCall(MonomorphicFunction(TextToFloatingTimestamp, _), Seq(typed.StringLiteral(ts, _)), None)) =>
+          cast@typed.FunctionCall(MonomorphicFunction(TextToFloatingTimestamp, _), Seq(typed.StringLiteral(ts, _)), None, None)) =>
             for {
               parsedTs <- SoQLFloatingTimestamp.StringRep.unapply(ts)
               truncatedTo <- truncatedTo(SoQLFloatingTimestamp(parsedTs))
@@ -288,20 +288,20 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
           val newSumCol = typed.ColumnRef(NoQualifier, rollupColumnId(idx), SoQLNumber.t)(fc.position)
           val sum = MonomorphicFunction(Sum, Map("a" -> SoQLNumber))
           val coalesce = MonomorphicFunction(Coalesce, Map("a" -> SoQLNumber))
-          typed.FunctionCall(coalesce, Seq(typed.FunctionCall(sum, Seq(newSumCol), fc.window)(fc.position, fc.position),
-                                           typed.NumberLiteral(0, SoQLNumber.t)(fc.position)), fc.window)(fc.position, fc.position)
+          typed.FunctionCall(coalesce, Seq(typed.FunctionCall(sum, Seq(newSumCol), fc.filter, fc.window)(fc.position, fc.position),
+                                           typed.NumberLiteral(0, SoQLNumber.t)(fc.position)), fc.filter, fc.window)(fc.position, fc.position)
         }
       // A count(...) on q gets mapped to a sum(...) on a matching column in the rollup.  We still need the count(*)
       // case above to ensure we can do things like map count(1) and count(*) which aren't exact matches.
-      case fc@typed.FunctionCall(MonomorphicFunction(Count, _), _, window) =>
+      case fc@typed.FunctionCall(MonomorphicFunction(Count, _), _, filter, window) =>
         for {
           idx <- rollupColIdx.get(fc) // find count(...) in rollup that matches exactly
         } yield {
           val newSumCol = typed.ColumnRef(NoQualifier, rollupColumnId(idx), SoQLNumber.t)(fc.position)
           val sum = MonomorphicFunction(Sum, Map("a" -> SoQLNumber))
           val coalesce = MonomorphicFunction(Coalesce, Map("a" -> SoQLNumber))
-          typed.FunctionCall(coalesce, Seq(typed.FunctionCall(sum, Seq(newSumCol), window)(fc.position, fc.position),
-                                           typed.NumberLiteral(0, SoQLNumber.t)(fc.position)), window)(fc.position, fc.position)
+          typed.FunctionCall(coalesce, Seq(typed.FunctionCall(sum, Seq(newSumCol), filter, window)(fc.position, fc.position),
+                                           typed.NumberLiteral(0, SoQLNumber.t)(fc.position)), filter, window)(fc.position, fc.position)
         }
       // If this is a between function operating on floating timestamps, and arguments b and c are both date aggregates,
       // then try to rewrite argument a to use a rollup.
@@ -311,7 +311,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
           fc.function.bindings.values.tail.forall(dateTruncHierarchy contains _) =>
         rewriteDateTruncBetweenExpr(rollupColIdx, fc)
       // If it is a >= or < with floating timestamp arguments, see if we can rewrite to date_trunc_xxx
-      case fc@typed.FunctionCall(MonomorphicFunction(fnType, bindings), _, _)
+      case fc@typed.FunctionCall(MonomorphicFunction(fnType, bindings), _, _, _)
         if (fnType == Gte || fnType == Lt) &&
           bindings.values.forall(_ == SoQLFloatingTimestamp) =>
         rewriteDateTruncGteLt(rollupColIdx, fc)
@@ -319,7 +319,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
       // There is actually a much more general case on this where non-aggregate functions can
       // be applied on top of other non-aggregate functions in many cases that we are not currently
       // implementing.
-      case fc@typed.FunctionCall(MonomorphicFunction(IsNotNull, _), Seq(colRef@typed.ColumnRef(_, _, _)), window)
+      case fc@typed.FunctionCall(MonomorphicFunction(IsNotNull, _), Seq(colRef@typed.ColumnRef(_, _, _)), filter, window)
         if findFunctionOnColumn(rollupColIdx, dateTruncHierarchy, colRef).isDefined =>
         for {
           colIdx <- findFunctionOnColumn(rollupColIdx, dateTruncHierarchy, colRef)
@@ -497,7 +497,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
       case (None, None) => None
       case (Some(a), None) => Some(a)
       case (None, Some(b)) => Some(b)
-      case (Some(a), Some(b)) => Some(typed.FunctionCall(SoQLFunctions.And.monomorphic.get, List(a, b), None)(NoPosition, NoPosition))
+      case (Some(a), Some(b)) => Some(typed.FunctionCall(SoQLFunctions.And.monomorphic.get, List(a, b), None, None)(NoPosition, NoPosition))
     }
   }
 

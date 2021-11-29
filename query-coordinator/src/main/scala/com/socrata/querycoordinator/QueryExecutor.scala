@@ -102,7 +102,7 @@ class QueryExecutor(httpClient: HttpClient,
     // Validate that there aren't any insane joins
     analyses.seq.head.joins.foreach {
       _.on match {
-        case FunctionCall(_, parameters, _) if parameters.length == 2 && parameters(0) == parameters(1) =>
+        case FunctionCall(_, parameters, _, _) if parameters.length == 2 && parameters(0) == parameters(1) =>
             return InvalidJoin
         case _ =>
       }

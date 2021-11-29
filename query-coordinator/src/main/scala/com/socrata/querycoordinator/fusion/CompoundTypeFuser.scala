@@ -218,23 +218,23 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite {
           case None =>
             Some(expr)
         }
-      case fc@FunctionCall(fnName, Seq(ColumnOrAliasRef(NoQualifier, name: ColumnName)), winodw)
+      case fc@FunctionCall(fnName, Seq(ColumnOrAliasRef(NoQualifier, name: ColumnName)), filter, winodw)
         if (Set(SoQLFunctions.PointToLatitude.name, SoQLFunctions.PointToLongitude.name).contains(fnName)) => Some(fc)
-      case fc@FunctionCall(fnName, Seq(ColumnOrAliasRef(NoQualifier, name: ColumnName), StringLiteral(prop)), window)
+      case fc@FunctionCall(fnName, Seq(ColumnOrAliasRef(NoQualifier, name: ColumnName), StringLiteral(prop)), filter, window)
         if fnName.name == SpecialFunctions.Subscript.name =>
         fuse.get(name.name) match {
           case Some(FTLocation) =>
             prop match {
               case "latitude" =>
                 val args = Seq(ColumnOrAliasRef(NoQualifier, ColumnName(s"${name.name}"))(NoPosition))
-                Some(FunctionCall(SoQLFunctions.PointToLatitude.name, args, window)(NoPosition, NoPosition))
+                Some(FunctionCall(SoQLFunctions.PointToLatitude.name, args, filter, window)(NoPosition, NoPosition))
               case "longitude" =>
                 val args = Seq(ColumnOrAliasRef(NoQualifier, ColumnName(s"${name.name}"))(NoPosition))
-                Some(FunctionCall(SoQLFunctions.PointToLongitude.name, args, window)(NoPosition, NoPosition))
+                Some(FunctionCall(SoQLFunctions.PointToLongitude.name, args, filter, window)(NoPosition, NoPosition))
               case "human_address" =>
                 val args = Seq("address", "city", "state", "zip")
                   .map(subProp => ColumnOrAliasRef(NoQualifier, ColumnName(s"${name.name}_$subProp"))(NoPosition))
-                Some(FunctionCall(SoQLFunctions.HumanAddress.name, args, window)(NoPosition, NoPosition))
+                Some(FunctionCall(SoQLFunctions.HumanAddress.name, args, filter, window)(NoPosition, NoPosition))
               case _ =>
                 throw BadParse("unknown location property", fc.position)
             }
@@ -261,7 +261,7 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite {
           case _ =>
             Some(fc)
         }
-      case fc@FunctionCall(fnName, params, window) =>
+      case fc@FunctionCall(fnName, params, filter, window) =>
          val rwParams: Seq[Expression] = params.map(e => rewriteExpr(e).getOrElse(e))
          Some(fc.copy(parameters = rwParams)(fc.functionNamePosition, fc.position))
       case _ =>
