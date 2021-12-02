@@ -278,7 +278,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
       // still rewrite a query with a window function in if the other clauses all match, however that requires
       // coordination between expression mapping and mapping other clauses at a higher level that isn't implemented,
       // so for now we just forbid it entirely to avoid incorrect rewrites.
-      case fc: FunctionCall if fc.window.nonEmpty =>
+      case fc: FunctionCall if fc.window.nonEmpty || fc.filter.nonEmpty =>
         None
       // A count(*) or count(non-null-literal) on q gets mapped to a sum on any such column in rollup
       case fc: FunctionCall if isCountStarOrLiteral(fc) =>
