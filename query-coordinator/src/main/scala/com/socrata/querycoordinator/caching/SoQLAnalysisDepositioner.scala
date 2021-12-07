@@ -35,7 +35,7 @@ object SoQLAnalysisDepositioner {
       case StringLiteral(value, typ) => StringLiteral(value, typ)(NoPosition)
       case BooleanLiteral(value, typ) => BooleanLiteral(value, typ)(NoPosition)
       case NullLiteral(typ) => NullLiteral(typ)(NoPosition)
-      case fc: FunctionCall[ColumnId, Type] => FunctionCall[ColumnId, Type](fc.function, fc.parameters.map(depositionExpr), fc.window)(NoPosition, NoPosition)
+      case fc: FunctionCall[ColumnId, Type] => FunctionCall[ColumnId, Type](fc.function, fc.parameters.map(depositionExpr), fc.filter.map(depositionExpr), fc.window)(NoPosition, NoPosition)
     }
   }
 

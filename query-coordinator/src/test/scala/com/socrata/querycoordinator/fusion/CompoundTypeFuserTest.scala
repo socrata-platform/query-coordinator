@@ -67,9 +67,9 @@ class CompoundTypeFuserTest extends TestBase {
                      ColumnRef(None, ColumnName("location_city"), SoQLText.t)(NoPosition),
                      ColumnRef(None, ColumnName("location_state"), SoQLText.t)(NoPosition),
                      ColumnRef(None, ColumnName("location_zip"), SoQLText.t)(NoPosition))
-      val fc = FunctionCall(SoQLFunctions.Location.monomorphic.get, args, None)(NoPosition, NoPosition)
+      val fc = FunctionCall(SoQLFunctions.Location.monomorphic.get, args, None, None)(NoPosition, NoPosition)
       val fcPointToLat = FunctionCall(SoQLFunctions.PointToLatitude.monomorphic.get,
-                                      Seq(ColumnRef(None, ColumnName("location"), SoQLPoint.t)(NoPosition)), None)(NoPosition, NoPosition)
+                                      Seq(ColumnRef(None, ColumnName("location"), SoQLPoint.t)(NoPosition)), None, None)(NoPosition, NoPosition)
       val argsEq = Seq(fcPointToLat,
                        NumberLiteral(BigDecimal(1.1), SoQLNumber.t)(NoPosition))
       val eqBindings = SoQLFunctions.Eq.parameters.map {
@@ -78,7 +78,7 @@ class CompoundTypeFuserTest extends TestBase {
       }.toMap
 
       val eqFn = MonomorphicFunction(SoQLFunctions.Eq, eqBindings)
-      val fcEq = FunctionCall(eqFn, argsEq, None)(NoPosition, NoPosition)
+      val fcEq = FunctionCall(eqFn, argsEq, None, None)(NoPosition, NoPosition)
 
       da.selection should be (Map(ColumnName("location") -> fc))
       da.where should be (Some(fcEq))
