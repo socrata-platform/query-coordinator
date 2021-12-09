@@ -45,6 +45,8 @@ object DatetimeRewriter {
         ), _, _) if truncateDateFormat.contains(truncateFn) =>
         val dateTimeFormat = truncateDateFormat(truncateFn)
         floatingNowAtTimeZone(fc, l, dateTimeFormat)
+      case fc@FunctionCall(_, _, Some(filter), _) =>
+        fc.copy(filter = Some(rewrite(filter)(datetimes)))(fc.functionNamePosition, fc.position)
       case _ =>
         expr
     }
