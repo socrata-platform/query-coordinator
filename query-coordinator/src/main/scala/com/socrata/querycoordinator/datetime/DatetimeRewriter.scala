@@ -36,7 +36,7 @@ object DatetimeRewriter {
   private def rewrite(expr: Expression)(implicit datetimes: mu.Set[DateTime]): Expression = {
     expr match {
       case fc@FunctionCall(GetUtcDate.name, _, _, _) =>
-        fixedTimestampNowAtUtc(fc)
+        fixedNowAtUtc(fc)
       case fc@FunctionCall(truncateFn, Seq(
         FunctionCall(ToFloatingTimestamp.name, Seq(
           ColumnOrAliasRef(_, _),
@@ -52,7 +52,7 @@ object DatetimeRewriter {
     }
   }
 
-  private def fixedTimestampNowAtUtc(fc: FunctionCall)(implicit datetimes: mu.Set[DateTime]): Expression = {
+  private def fixedNowAtUtc(fc: FunctionCall)(implicit datetimes: mu.Set[DateTime]): Expression = {
     val lastModified = new DateTime(DateTimeZone.UTC)
     val now = isoDateTimeFormat.print(lastModified)
     datetimes.add(lastModified)
