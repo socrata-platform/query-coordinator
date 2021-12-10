@@ -2,7 +2,6 @@ package com.socrata.querycoordinator
 
 import com.socrata.http.client.RequestBuilder
 import com.socrata.querycoordinator.SchemaFetcher.{NoSuchDatasetInSecondary, Successful}
-import com.socrata.querycoordinator.datetime.DatetimeRewriter
 import com.socrata.querycoordinator.exceptions.JoinedDatasetNotColocatedException
 import com.socrata.querycoordinator.fusion.{CompoundTypeFuser, SoQLRewrite}
 import com.socrata.querycoordinator.util.BinaryTreeHelper
@@ -106,7 +105,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
 
   private def limitRows(analyses: BinaryTree[SoQLAnalysis[ColumnName, SoQLType]])
     : Either[Result, BinaryTree[SoQLAnalysis[ColumnName, SoQLType]]] = {
-    val last = analyses.outputSchemaLeaf
+    val last = analyses.outputSchema.leaf
     last.limit match {
       case Some(lim) =>
         val actualMax = BigInt(maxRows.map(_.toLong).getOrElse(Long.MaxValue))
@@ -143,8 +142,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
       AbstractParser.Parameters(
         allowJoins = true,
         systemColumnAliasesAllowed = systemColumns ++ columnIdMap.keySet.filter(_.caseFolded.startsWith(":@")))
-    val parsed0 = new Parser(parserParams).binaryTreeSelect(query)
-    val (parsed, largestNow) = DatetimeRewriter.rewrite(parsed0)
+    val parsed = new Parser(parserParams).binaryTreeSelect(query)
 
     val (primaryAlias, ctxWithAlias) = parsed.leftMost.leaf.from match {
       case Some(tn@TableName(TableName.This, a@Some(alias))) =>
@@ -160,12 +158,8 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
 
     val tableNames = collectTableNames(parsed)
 
-    val (allColumnIdMap, allCtx, largestLastModifiedDataset) =
+    val (allColumnIdMap, allCtx, largestLastModified) =
       fetchRelatedTables(tableNames, selectedSecondaryInstanceBase, primaryColumnIdMap, ctxWithAlias)
-
-    val largestLastModified = largestNow.map { now =>
-      if (now.isAfter(largestLastModifiedDataset)) now else largestLastModifiedDataset
-    }.getOrElse(largestLastModifiedDataset)
 
     val rewritten = fuser.rewrite(parsed, columnIdMap, schema)
     val result = analyzer.analyzeBinary(rewritten)(allCtx)

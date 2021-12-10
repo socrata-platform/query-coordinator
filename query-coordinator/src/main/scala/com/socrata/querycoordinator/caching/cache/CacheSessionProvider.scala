@@ -25,7 +25,7 @@ trait CacheSessionProvider {
   }
 
   def shouldSkip(analyses: BinaryTree[SoQLAnalysis[String, SoQLType]], rollupName: Option[String]): Boolean = {
-    val last = analyses.outputSchemaLeaf
+    val last = analyses.outputSchema.leaf
     last.limit.isEmpty ||
     rollupName.isDefined ||
       !analyses.seq.exists { a =>

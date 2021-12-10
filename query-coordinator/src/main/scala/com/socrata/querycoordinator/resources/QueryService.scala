@@ -22,6 +22,11 @@ trait QueryService {
   val headerSocrataResource = "X-Socrata-Resource"
   val unexpectedError = "Unexpected response when fetching schema from secondary: {}"
 
+  // pass the calculated last modified (all datasets last-modified + latest now())
+  // to downstream query server for If-Modified-Since comparison
+  val headerSocrataLastModified = "X-Socrata-Last-Modified"
+  val contextVarNow = ":now" // context var to work with caching/ETag when using get_utc_date soql function
+
   val qpHyphen = "-"
   val qpFunction = "function"
   val qpColumn = "column"

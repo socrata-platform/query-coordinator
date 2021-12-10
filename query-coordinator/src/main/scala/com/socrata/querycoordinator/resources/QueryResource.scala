@@ -1,7 +1,6 @@
 package com.socrata.querycoordinator.resources
 
 import java.io.{InputStream, OutputStream}
-
 import javax.servlet.http.HttpServletResponse
 import com.rojoma.simplearm.v2.ResourceScope
 import com.rojoma.json.v3.util.JsonUtil
@@ -13,6 +12,7 @@ import com.socrata.http.server.util.RequestId
 import com.socrata.querycoordinator.SchemaFetcher.{BadResponseFromSecondary, NoSuchDatasetInSecondary, NonSchemaResponse, Result, SecondaryConnectFailed, Successful, TimeoutFromSecondary}
 import com.socrata.querycoordinator._
 import com.socrata.querycoordinator.caching.SharedHandle
+import com.socrata.querycoordinator.datetime.NowAnalyzer
 import com.socrata.querycoordinator.exceptions.JoinedDatasetNotColocatedException
 import com.socrata.soql.environment.{ColumnName, TableName}
 import com.socrata.soql.exceptions.{DuplicateAlias, NoSuchColumn, TypecheckException}
@@ -195,7 +195,7 @@ class QueryResource(secondary: Secondary,
                          analyze: Boolean): Either[QueryRetryState, HttpResponse] = {
           val extendedScope = resourceScope.open(SharedHandle(new ResourceScope))
           val extraHeaders = Map(RequestId.ReqIdHeader -> requestId,
-                                 "X-Socrata-Last-Modified" -> schema.lastModified.toHttpDate) ++
+                                 headerSocrataLastModified -> schema.lastModified.toHttpDate) ++
             resourceName.map(fbf => Map(headerSocrataResource -> fbf)).getOrElse(Nil) ++
             (if (analyze) List("X-Socrata-Analyze" -> "true" ) else Nil)
           queryExecutor(
@@ -399,8 +399,15 @@ class QueryResource(secondary: Secondary,
           getSchema(dataset, copy).right.flatMap(analyzeRequest(_, true)).right.flatMap { versionInfo =>
             val (finalSchema, analyses) = versionInfo.payload
             val (rewrittenAnalyses, rollupName) = possiblyRewriteOneAnalysisInQuery(finalSchema, analyses)
-            executeQuery(versionInfo.copy(payload = finalSchema),
-              rewrittenAnalyses, analyses, context, rollupName.headOption,
+            val now = (new NowAnalyzer(rewrittenAnalyses)).getNow()
+            val (largestLastModified, contextWithNow) = now match {
+              case Some(x) if x.isAfter(versionInfo.lastModified) =>
+                (x, context + (contextVarNow -> x.getMillis.toString))
+              case _ =>
+                (versionInfo.lastModified, context)
+            }
+            executeQuery(versionInfo.copy(payload = finalSchema, lastModified = largestLastModified),
+              rewrittenAnalyses, analyses, contextWithNow, rollupName.headOption,
               requestId, req.header(headerSocrataResource), req.resourceScope, explain, analyze)
           }
         }
