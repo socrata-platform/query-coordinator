@@ -8,6 +8,7 @@ import com.socrata.soql.typed.CoreExpr
 import org.joda.time.format.DateTimeFormat
 import org.joda.time.{DateTime, DateTimeZone}
 
+import java.time.ZoneId
 import java.util.TimeZone
 
 /**
@@ -41,8 +42,6 @@ class NowAnalyzer[A, B](selects: BinaryTree[SoQLAnalysis[A, B]]) {
 
   private def collectNow(expr: CoreExpr[A, B]): Seq[DateTime] = {
     expr match {
-      case FunctionCall(MonomorphicFunction(fn, _), _, _, _) if fn.name == GetUtcDate.name =>
-        fixedNowAtUtc()
       case FunctionCall(MonomorphicFunction(truncateFn, _), Seq(
              FunctionCall(MonomorphicFunction(toFloatingTimestampFn, _), Seq(
                FunctionCall(MonomorphicFunction(getUtcDateFn, _), _, _, _),
@@ -51,7 +50,15 @@ class NowAnalyzer[A, B](selects: BinaryTree[SoQLAnalysis[A, B]]) {
            truncateDateFormat.contains(truncateFn.name) &&
            toFloatingTimestampFn.name == ToFloatingTimestamp.name =>
         val dateTimeFormat = truncateDateFormat(truncateFn.name)
-        floatingNowAtTimeZone(l, dateTimeFormat)
+        floatingNowAtTimeZone(l.value, dateTimeFormat)
+      case FunctionCall(MonomorphicFunction(truncateFn, _), Seq(
+             FunctionCall(MonomorphicFunction(getUtcDateFn, _), _, _, _)), _, _)
+        if getUtcDateFn.name == GetUtcDate.name &&
+          truncateDateFormat.contains(truncateFn.name) =>
+        val dateTimeFormat = truncateDateFormat(truncateFn.name)
+        floatingNowAtTimeZone(DateTimeZone.UTC.getID, dateTimeFormat)
+      case FunctionCall(MonomorphicFunction(fn, _), _, _, _) if fn.name == GetUtcDate.name =>
+        fixedNowAtUtc()
       case FunctionCall(_, args, filter, _) =>
         args.flatMap(collectNow) ++ filter.toSeq.flatMap(collectNow)
       case _ =>
@@ -71,8 +78,8 @@ class NowAnalyzer[A, B](selects: BinaryTree[SoQLAnalysis[A, B]]) {
   /**
     * return now in datetime with year, month or day precision depending on datetimeFormat
     */
-  private def floatingNowAtTimeZone(timezone: StringLiteral[B], datetimeFormat: String): Seq[DateTime] = {
-    val tz =  TimeZone.getTimeZone(timezone.value)
+  private def floatingNowAtTimeZone(timezone: String, datetimeFormat: String): Seq[DateTime] = {
+    val tz =  TimeZone.getTimeZone(timezone)
     val dt = new DateTime(DateTimeZone.UTC)
     val daylightSaving = if (tz.inDaylightTime(dt.toDate)) tz.getDSTSavings else 0
     val dtAtTimezone = dt.plusMillis(tz.getRawOffset + daylightSaving)
@@ -86,6 +93,9 @@ object NowAnalyzer {
   private val truncateDateFormat = Map(
     FloatingTimeStampTruncYmd.name -> "yyyy-MM-dd",
     FloatingTimeStampTruncYm.name -> "yyyy-MM",
-    FloatingTimeStampTruncY.name -> "yyyy"
+    FloatingTimeStampTruncY.name -> "yyyy",
+    FixedTimeStampZTruncYmd.name -> "yyyy-MM-dd",
+    FixedTimeStampZTruncYm.name -> "yyyy-MM",
+    FixedTimeStampZTruncY.name -> "yyyy"
   )
 }
