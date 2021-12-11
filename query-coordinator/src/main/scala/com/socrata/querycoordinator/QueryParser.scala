@@ -5,7 +5,7 @@ import com.socrata.querycoordinator.SchemaFetcher.{NoSuchDatasetInSecondary, Suc
 import com.socrata.querycoordinator.exceptions.JoinedDatasetNotColocatedException
 import com.socrata.querycoordinator.fusion.{CompoundTypeFuser, SoQLRewrite}
 import com.socrata.querycoordinator.util.BinaryTreeHelper
-import com.socrata.soql.ast.{Select, JoinTable, JoinQuery, JoinFunc}
+import com.socrata.soql.ast.{JoinFunc, JoinQuery, JoinTable, Select}
 import com.socrata.soql.collection.OrderedMap
 import com.socrata.soql.environment._
 import com.socrata.soql.exceptions.SoQLException
@@ -105,7 +105,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
 
   private def limitRows(analyses: BinaryTree[SoQLAnalysis[ColumnName, SoQLType]])
     : Either[Result, BinaryTree[SoQLAnalysis[ColumnName, SoQLType]]] = {
-    val last = analyses.outputSchemaLeaf
+    val last = analyses.outputSchema.leaf
     last.limit match {
       case Some(lim) =>
         val actualMax = BigInt(maxRows.map(_.toLong).getOrElse(Long.MaxValue))
@@ -139,7 +139,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
                                schema: Map[String, SoQLType])(ctx: AnalysisContext)
     : (BinaryTree[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String], DateTime) = {
     val parserParams =
-      new AbstractParser.Parameters(
+      AbstractParser.Parameters(
         allowJoins = true,
         systemColumnAliasesAllowed = systemColumns ++ columnIdMap.keySet.filter(_.caseFolded.startsWith(":@")))
     val parsed = new Parser(parserParams).binaryTreeSelect(query)

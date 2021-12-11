@@ -100,7 +100,7 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite {
         selects match {
           case PipeQuery(l, r) =>
             val nl = expand(l, ctx)
-            val prev = l.outputSchemaLeaf
+            val prev = l.outputSchema.leaf
             val columnNames = prev.selection.expressions.map { se =>
               se.name.map(_._1).getOrElse(ColumnName(se.expression.toString.replaceAllLiterally("`", "")))
             }
@@ -126,7 +126,7 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite {
 
       val expandedStatements = expand(parsedStmts, toAnalysisContext(baseCtx))
       // rewrite only the last statement.
-      val outputSchemaLeaf = expandedStatements.outputSchemaLeaf
+      val outputSchemaLeaf = expandedStatements.outputSchema.leaf
       val rewritten = rewrite(outputSchemaLeaf)
       BinaryTreeHelper.replace(expandedStatements, outputSchemaLeaf, rewritten)
     } else {
@@ -182,7 +182,7 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite {
    * Columns involved are prefixed during ast rewrite and removed after analysis to avoid column name conflicts.
    */
   def postAnalyze(analyses: BinaryTree[SoQLAnalysis[ColumnName, SoQLType]]): BinaryTree[SoQLAnalysis[ColumnName, SoQLType]] = {
-    val last = analyses.outputSchemaLeaf
+    val last = analyses.outputSchema.leaf
     val newSelect = last.selection map {
       case (cn, expr) =>
         ColumnName(cn.name.replaceFirst(ColumnPrefix, "")) -> expr
