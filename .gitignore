@@ -4,3 +4,4 @@ query-coordinator-assembly.jar
 configs/local*.conf
 local-query-coordinator.conf
 /**/target/
+/.bsp/

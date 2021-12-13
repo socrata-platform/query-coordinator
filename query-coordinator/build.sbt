@@ -45,4 +45,4 @@ buildInfoPackage := "com.socrata.querycoordinator"
 
 buildInfoOptions += BuildInfoOption.ToMap
 
-test in assembly := {}
+assembly/test := {}
