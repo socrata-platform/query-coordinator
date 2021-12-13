@@ -5,11 +5,8 @@ import com.socrata.soql.{BinaryTree, SoQLAnalysis}
 import com.socrata.soql.typed._
 import com.socrata.soql.functions.SoQLFunctions._
 import com.socrata.soql.typed.CoreExpr
-import org.joda.time.format.DateTimeFormat
 import org.joda.time.{DateTime, DateTimeZone}
 
-import java.time.ZoneId
-import java.util.TimeZone
 
 /**
   *  Look for all uses of get_utc_date/now in a query and return the largest value.
@@ -47,18 +44,16 @@ class NowAnalyzer[A, B](selects: BinaryTree[SoQLAnalysis[A, B]]) {
                FunctionCall(MonomorphicFunction(getUtcDateFn, _), _, _, _),
                l@StringLiteral(_, _)), _, _)), _, _)
         if getUtcDateFn.name == GetUtcDate.name &&
-           truncateDateFormat.contains(truncateFn.name) &&
+           truncateDateFns.contains(truncateFn.name) &&
            toFloatingTimestampFn.name == ToFloatingTimestamp.name =>
-        val dateTimeFormat = truncateDateFormat(truncateFn.name)
-        floatingNowAtTimeZone(l.value, dateTimeFormat)
+        nowAtTimeZone(truncateFn)
       case FunctionCall(MonomorphicFunction(truncateFn, _), Seq(
              FunctionCall(MonomorphicFunction(getUtcDateFn, _), _, _, _)), _, _)
         if getUtcDateFn.name == GetUtcDate.name &&
-          truncateDateFormat.contains(truncateFn.name) =>
-        val dateTimeFormat = truncateDateFormat(truncateFn.name)
-        floatingNowAtTimeZone(DateTimeZone.UTC.getID, dateTimeFormat)
+          truncateDateFns.contains(truncateFn.name) =>
+        nowAtTimeZone(truncateFn)
       case FunctionCall(MonomorphicFunction(fn, _), _, _, _) if fn.name == GetUtcDate.name =>
-        fixedNowAtUtc()
+        nowAtTimeZone(GetUtcDate)
       case FunctionCall(_, args, filter, _) =>
         args.flatMap(collectNow) ++ filter.toSeq.flatMap(collectNow)
       case _ =>
@@ -67,35 +62,33 @@ class NowAnalyzer[A, B](selects: BinaryTree[SoQLAnalysis[A, B]]) {
   }
 
   /**
-    * return now in datetime with second precision
+    * return now in datetime with year, month, day or second precision depending on the date_trunc/get_utc_date function
     */
-  private def fixedNowAtUtc(): Seq[DateTime] = {
-    val nowMs = new DateTime(DateTimeZone.UTC)
-    val now = nowMs.minusMillis(nowMs.getMillisOfSecond) // Remove milliseconds precision
-    Seq(now)
-  }
-
-  /**
-    * return now in datetime with year, month or day precision depending on datetimeFormat
-    */
-  private def floatingNowAtTimeZone(timezone: String, datetimeFormat: String): Seq[DateTime] = {
-    val tz =  TimeZone.getTimeZone(timezone)
-    val dt = new DateTime(DateTimeZone.UTC)
-    val daylightSaving = if (tz.inDaylightTime(dt.toDate)) tz.getDSTSavings else 0
-    val dtAtTimezone = dt.plusMillis(tz.getRawOffset + daylightSaving)
-    val fmt = DateTimeFormat.forPattern(datetimeFormat)
-    val now = fmt.print(dtAtTimezone)
-    Seq(DateTime.parse(now))
+  private def nowAtTimeZone(dateTrunc: com.socrata.soql.functions.Function[_]): Seq[DateTime] = {
+    val now = new DateTime(DateTimeZone.UTC)
+    val nowTruncated = dateTrunc match {
+      case GetUtcDate =>
+        now.minusMillis(now.millisOfSecond.get)
+      case FloatingTimeStampTruncYmd | FixedTimeStampZTruncYmd =>
+        now.minusMillis(now.millisOfDay.get)
+      case FloatingTimeStampTruncYm | FixedTimeStampZTruncYm =>
+        now.minusDays(now.dayOfMonth.get - 1).minusMillis(now.millisOfDay.get)
+      case FloatingTimeStampTruncY | FixedTimeStampZTruncY =>
+        now.minusDays(now.dayOfYear.get - 1).minusMillis(now.millisOfDay.get)
+      case unknownFn =>
+        throw new Exception(s"should never get other function ${unknownFn.name.name}")
+    }
+    Seq(nowTruncated)
   }
 }
 
 object NowAnalyzer {
-  private val truncateDateFormat = Map(
-    FloatingTimeStampTruncYmd.name -> "yyyy-MM-dd",
-    FloatingTimeStampTruncYm.name -> "yyyy-MM",
-    FloatingTimeStampTruncY.name -> "yyyy",
-    FixedTimeStampZTruncYmd.name -> "yyyy-MM-dd",
-    FixedTimeStampZTruncYm.name -> "yyyy-MM",
-    FixedTimeStampZTruncY.name -> "yyyy"
-  )
+  private val truncateDateFns = Set(
+    FloatingTimeStampTruncYmd,
+    FloatingTimeStampTruncYm,
+    FloatingTimeStampTruncY,
+    FixedTimeStampZTruncYmd,
+    FixedTimeStampZTruncYm,
+    FixedTimeStampZTruncY
+  ).map(_.name)
 }

@@ -10,7 +10,7 @@ import com.socrata.soql.functions._
 import com.socrata.soql.parsing.SoQLPosition
 import com.socrata.soql.{Leaf, SoQLAnalyzer}
 import com.socrata.soql.typed.{ColumnRef, FunctionCall, StringLiteral}
-import com.socrata.soql.types.{SoQLText, SoQLType}
+import com.socrata.soql.types.{SoQLFixedTimestamp, SoQLFloatingTimestamp, SoQLText, SoQLType}
 
 import scala.util.parsing.input.NoPosition
 
@@ -23,7 +23,9 @@ class QueryParserTest extends TestBase {
     val starPos = query.indexOf("*") + 1
     val expected = com.socrata.soql.collection.OrderedMap(
       ColumnName("a") -> ColumnRef(NoQualifier, "ai", SoQLText)(new SoQLPosition(1, starPos, query, 0)),
-      ColumnName("b") -> ColumnRef(NoQualifier, "bi", SoQLText)(new SoQLPosition(1, starPos, query, 0))
+      ColumnName("b") -> ColumnRef(NoQualifier, "bi", SoQLText)(new SoQLPosition(1, starPos, query, 0)),
+      ColumnName("d") -> ColumnRef(NoQualifier, "di", SoQLFloatingTimestamp)(new SoQLPosition(1, starPos, query, 0)),
+      ColumnName("dz") -> ColumnRef(NoQualifier, "dzi", SoQLFixedTimestamp)(new SoQLPosition(1, starPos, query, 0))
     )
     val actual = qp.apply(query, truthColumns, upToDateSchema, fakeRequestBuilder) match {
       case SuccessfulParse(analyses, _) => analyses.asLeaf.get.selection
@@ -132,9 +134,11 @@ object QueryParserTest {
 
   val qp = new QueryParser(analyzer, FakeSchemaFetcher, Some(maxRowLimit), defaultRowLimit)
 
-  val truthColumns = Map[ColumnName, String](ColumnName("a") -> "ai", ColumnName("b") -> "bi")
+  val truthColumns = Map[ColumnName, String](ColumnName("a") -> "ai", ColumnName("b") -> "bi",
+    ColumnName("d") -> "di", ColumnName("dz") -> "dzi")
 
-  val upToDateSchema = Map[String, SoQLType]("ai" -> SoQLText, "bi" -> SoQLText)
+  val upToDateSchema = Map[String, SoQLType]("ai" -> SoQLText, "bi" -> SoQLText,
+    "di" -> SoQLFloatingTimestamp, "dzi" -> SoQLFixedTimestamp)
 
   val outdatedSchema = Map[String, SoQLType]("ai" -> SoQLText) // Does not have "column bi"
 
