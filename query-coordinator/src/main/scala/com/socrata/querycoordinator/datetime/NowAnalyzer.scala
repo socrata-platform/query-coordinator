@@ -46,14 +46,14 @@ class NowAnalyzer[A, B](selects: BinaryTree[SoQLAnalysis[A, B]]) {
         if getUtcDateFn.name == GetUtcDate.name &&
            truncateDateFns.contains(truncateFn.name) &&
            toFloatingTimestampFn.name == ToFloatingTimestamp.name =>
-        nowAtTimeZone(truncateFn)
+        nowTruncatedAtUtc(truncateFn)
       case FunctionCall(MonomorphicFunction(truncateFn, _), Seq(
              FunctionCall(MonomorphicFunction(getUtcDateFn, _), _, _, _)), _, _)
         if getUtcDateFn.name == GetUtcDate.name &&
           truncateDateFns.contains(truncateFn.name) =>
-        nowAtTimeZone(truncateFn)
+        nowTruncatedAtUtc(truncateFn)
       case FunctionCall(MonomorphicFunction(fn, _), _, _, _) if fn.name == GetUtcDate.name =>
-        nowAtTimeZone(GetUtcDate)
+        nowTruncatedAtUtc(GetUtcDate)
       case FunctionCall(_, args, filter, _) =>
         args.flatMap(collectNow) ++ filter.toSeq.flatMap(collectNow)
       case _ =>
@@ -64,7 +64,7 @@ class NowAnalyzer[A, B](selects: BinaryTree[SoQLAnalysis[A, B]]) {
   /**
     * return now in datetime with year, month, day or second precision depending on the date_trunc/get_utc_date function
     */
-  private def nowAtTimeZone(dateTrunc: com.socrata.soql.functions.Function[_]): Seq[DateTime] = {
+  private def nowTruncatedAtUtc(dateTrunc: com.socrata.soql.functions.Function[_]): Seq[DateTime] = {
     val now = new DateTime(DateTimeZone.UTC)
     val nowTruncated = dateTrunc match {
       case GetUtcDate =>
