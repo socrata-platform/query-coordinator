@@ -42,18 +42,18 @@ class NowAnalyzer[A, B](selects: BinaryTree[SoQLAnalysis[A, B]]) {
       case FunctionCall(MonomorphicFunction(truncateFn, _), Seq(
              FunctionCall(MonomorphicFunction(toFloatingTimestampFn, _), Seq(
                FunctionCall(MonomorphicFunction(getUtcDateFn, _), _, _, _),
-               l@StringLiteral(_, _)), _, _)), _, _)
+               StringLiteral(tz, _)), _, _)), _, _)
         if getUtcDateFn.name == GetUtcDate.name &&
            truncateDateFns.contains(truncateFn.name) &&
            toFloatingTimestampFn.name == ToFloatingTimestamp.name =>
-        nowTruncatedAtUtc(truncateFn)
+        nowTruncatedAtTimezone(truncateFn, tz)
       case FunctionCall(MonomorphicFunction(truncateFn, _), Seq(
              FunctionCall(MonomorphicFunction(getUtcDateFn, _), _, _, _)), _, _)
         if getUtcDateFn.name == GetUtcDate.name &&
           truncateDateFns.contains(truncateFn.name) =>
-        nowTruncatedAtUtc(truncateFn)
+        nowTruncatedAtTimezone(truncateFn, DateTimeZone.UTC.getID)
       case FunctionCall(MonomorphicFunction(fn, _), _, _, _) if fn.name == GetUtcDate.name =>
-        nowTruncatedAtUtc(GetUtcDate)
+        nowTruncatedAtTimezone(GetUtcDate, DateTimeZone.UTC.getID)
       case FunctionCall(_, args, filter, _) =>
         args.flatMap(collectNow) ++ filter.toSeq.flatMap(collectNow)
       case _ =>
@@ -64,8 +64,9 @@ class NowAnalyzer[A, B](selects: BinaryTree[SoQLAnalysis[A, B]]) {
   /**
     * return now in datetime with year, month, day or second precision depending on the date_trunc/get_utc_date function
     */
-  private def nowTruncatedAtUtc(dateTrunc: com.socrata.soql.functions.Function[_]): Seq[DateTime] = {
-    val now = new DateTime(DateTimeZone.UTC)
+  private def nowTruncatedAtTimezone(dateTrunc: com.socrata.soql.functions.Function[_],  timezone: String): Seq[DateTime] = {
+    val tz = DateTimeZone.forID(timezone)
+    val now = new DateTime(DateTimeZone.UTC).toDateTime(tz)
     val nowTruncated = dateTrunc match {
       case GetUtcDate =>
         now.minusMillis(now.millisOfSecond.get)
