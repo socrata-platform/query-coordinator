@@ -20,7 +20,7 @@ import com.socrata.soql.{BinaryTree, Compound, Leaf, PipeQuery, SoQLAnalysis}
 import com.socrata.soql.types.{SoQLID, SoQLNumber, SoQLType}
 import org.apache.http.HttpStatus
 import org.joda.time.format.ISODateTimeFormat
-import org.joda.time.{DateTime, Interval}
+import org.joda.time.{DateTime, DateTimeZone, Interval}
 
 import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
@@ -402,7 +402,7 @@ class QueryResource(secondary: Secondary,
             val now = (new NowAnalyzer(rewrittenAnalyses)).getNow()
             val (largestLastModified, contextWithNow) = now match {
               case Some(x) if x.isAfter(versionInfo.lastModified) =>
-                (x, context + (contextVarNow -> x.getMillis.toString))
+                (x.toDateTime(DateTimeZone.UTC), context + (contextVarNow -> x.getMillis.toString))
               case _ =>
                 (versionInfo.lastModified, context)
             }
