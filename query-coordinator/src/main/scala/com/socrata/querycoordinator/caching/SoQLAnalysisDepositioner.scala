@@ -9,7 +9,7 @@ import scala.util.parsing.input.NoPosition
 
 object SoQLAnalysisDepositioner {
   def apply[ColumnId,Type](sa: SoQLAnalysis[ColumnId,Type]): SoQLAnalysis[ColumnId,Type] = {
-    val SoQLAnalysis(isGrouped, distinct, selection, from, joins, where, groupBys, having, orderBys, limit, offset, search) = sa
+    val SoQLAnalysis(isGrouped, distinct, selection, from, joins, where, groupBys, having, orderBys, limit, offset, search, hints) = sa
     SoQLAnalysis(isGrouped = isGrouped,
                  distinct = distinct,
                  selection = depositionSelection(selection),
@@ -21,7 +21,8 @@ object SoQLAnalysisDepositioner {
                  orderBys = depositionOrderBys(orderBys),
                  limit = limit,
                  offset = offset,
-                 search = search)
+                 search = search,
+                 hints = hints.map(depositionHint))
   }
 
   private def depositionSelection[ColumnId,Type](selection: OrderedMap[ColumnName, CoreExpr[ColumnId, Type]]) = {
@@ -54,6 +55,12 @@ object SoQLAnalysisDepositioner {
         sa.copy(analyses = depositioned)
       }
       Join(join.typ, join.from.copy(subAnalysis = mappedSubAna), depositionExpr(join.on), join.lateral)
+    }
+  }
+
+  private def depositionHint[ColumnId,Type](hint: Hint[ColumnId, Type]) = {
+    hint match {
+      case x@Materialized(_) => x.copy(NoPosition)
     }
   }
 }
