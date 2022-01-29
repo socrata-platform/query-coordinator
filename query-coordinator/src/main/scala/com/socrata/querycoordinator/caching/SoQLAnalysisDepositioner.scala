@@ -61,7 +61,8 @@ object SoQLAnalysisDepositioner {
   private def depositionHint[ColumnId,Type](hint: Hint[ColumnId, Type]) = {
     hint match {
       case x@Materialized(_) => x.copy(NoPosition)
-      case x@UniqueOrder(_) => x.copy(NoPosition)
+      case x@NoRollup(_) => x.copy(NoPosition)
+      case x@NoChainMerge(_) => x.copy(NoPosition)
     }
   }
 }
