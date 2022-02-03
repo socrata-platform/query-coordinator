@@ -13,7 +13,7 @@ import scala.collection.JavaConverters._
 import com.rojoma.json.v3.ast.{JObject, JString, JValue}
 import com.rojoma.json.v3.codec.JsonDecode
 import com.rojoma.json.v3.io.{FusedBlockJsonEventIterator, JsonReader}
-import com.rojoma.json.v3.util.{ArrayIteratorEncode, AutomaticJsonCodecBuilder, JsonArrayIterator, JsonUtil}
+import com.rojoma.json.v3.util.{ArrayIteratorEncode, AutomaticJsonCodec, JsonArrayIterator, JsonUtil}
 import com.rojoma.simplearm.v2._
 import com.socrata.http.client.exceptions.{ConnectFailed, ConnectTimeout, HttpClientTimeoutException, LivenessCheckFailed}
 import com.socrata.http.client.{HttpClient, RequestBuilder, Response}
@@ -23,6 +23,7 @@ import com.socrata.querycoordinator.QueryExecutor.{SchemaHashMismatch, ToForward
 import com.socrata.querycoordinator.util.{BinaryTreeHelper, TeeToTempInputStream}
 import com.socrata.querycoordinator.caching.cache.{CacheSession, CacheSessionProvider, ValueRef}
 import com.socrata.querycoordinator.caching.SharedHandle
+import com.socrata.soql.stdlib.Context
 import com.socrata.soql.typed.FunctionCall
 import com.socrata.util.io.SplitStream
 import com.socrata.soql.types.SoQLType
@@ -51,12 +52,12 @@ class QueryExecutor(httpClient: HttpClient,
   private val qpObfuscateId = "obfuscateId"
   private val qpQueryTimeoutSeconds = "queryTimeoutSeconds"
 
+  @AutomaticJsonCodec
   private case class Headers(http: Map[String, Seq[String]], cjson: JValue)
-  private implicit val hCodec = AutomaticJsonCodecBuilder[Headers]
 
   private def makeCacheKeyBase(dsId: String,
                                query: BinaryTree[SoQLAnalysis[String, SoQLType]],
-                               context: Map[String, String],
+                               context: Context,
                                schemaHash: String,
                                lastModified: DateTime,
                                copyNum: Long,
@@ -87,7 +88,7 @@ class QueryExecutor(httpClient: HttpClient,
             rowCount: Option[String],
             copy: Option[String],
             rollupName: Option[String],
-            context: Map[String, String],
+            context: Context,
             obfuscateId: Boolean,
             extraHeaders: Map[String, String],
             currentCopyNumber: Long,
@@ -308,7 +309,7 @@ class QueryExecutor(httpClient: HttpClient,
   private def doCache(dataset: String,
                       unlimitedAnalyses: BinaryTree[SoQLAnalysis[String, SoQLType]],
                       relimitedAnalyses: BinaryTree[SoQLAnalysis[String, SoQLType]],
-                      context: Map[String, String],
+                      context: Context,
                       schema: Schema,
                       rollupName: Option[String],
                       obfuscateId: Boolean,
@@ -431,7 +432,7 @@ class QueryExecutor(httpClient: HttpClient,
   private def reallyApply(base: RequestBuilder, // scalastyle:ignore parameter.number method.length cyclomatic.complexity
                           dataset: String,
                           analyses: BinaryTree[SoQLAnalysis[String, SoQLType]],
-                          context: Map[String, String],
+                          context: Context,
                           schema: Schema,
                           precondition: Precondition,
                           ifModifiedSince: Option[DateTime],
