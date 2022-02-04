@@ -18,6 +18,7 @@ import com.socrata.soql.environment.{ColumnName, TableName}
 import com.socrata.soql.exceptions.{DuplicateAlias, NoSuchColumn, TypecheckException}
 import com.socrata.soql.{BinaryTree, Compound, Leaf, PipeQuery, SoQLAnalysis}
 import com.socrata.soql.types.{SoQLID, SoQLNumber, SoQLType}
+import com.socrata.soql.stdlib.Context
 import org.apache.http.HttpStatus
 import org.joda.time.format.ISODateTimeFormat
 import org.joda.time.{DateTime, DateTimeZone, Interval}
@@ -81,8 +82,8 @@ class QueryResource(secondary: Secondary,
                                             .getOrElse(Map.empty)
 
       val query = servReq.getParameter("q")
-      val context = Option(servReq.getParameter("c")).fold(Map.empty[String,String]) { cStr =>
-        JsonUtil.parseJson[Map[String,String]](cStr).right.get
+      val context = Option(servReq.getParameter("c")).fold(Context.empty) { cStr =>
+        JsonUtil.parseJson[Context](cStr).right.get
       }
 
       val rowCount = Option(servReq.getParameter("rowCount"))
@@ -186,7 +187,7 @@ class QueryResource(secondary: Secondary,
         def executeQuery(schema: Versioned[Schema],
                          analyzedQuery: BinaryTree[SoQLAnalysis[String, SoQLType]],
                          analyzedQueryNoRollup: BinaryTree[SoQLAnalysis[String, SoQLType]],
-                         context: Map[String, String],
+                         context: Context,
                          rollupName: Option[String],
                          requestId: String,
                          resourceName: Option[String],
@@ -402,7 +403,7 @@ class QueryResource(secondary: Secondary,
             val now = (new NowAnalyzer(rewrittenAnalyses)).getNow()
             val (largestLastModified, contextWithNow) = now match {
               case Some(x) if x.isAfter(versionInfo.lastModified) =>
-                (x.toDateTime(DateTimeZone.UTC), context + (contextVarNow -> x.getMillis.toString))
+                (x.toDateTime(DateTimeZone.UTC), context.augmentSystemContext(contextVarNow, x.getMillis.toString))
               case _ =>
                 (versionInfo.lastModified, context)
             }

@@ -31,6 +31,8 @@ libraryDependencies ++= Seq(
   scalaCheck
 )
 
+addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.full)
+
 lazy val gitSha = Process(Seq("git", "describe", "--always", "--dirty", "--long", "--abbrev=10")).!!.stripLineEnd
 
 buildInfoKeys := Seq[BuildInfoKey](

@@ -1,11 +1,14 @@
 package com.socrata.querycoordinator.caching
 
 import scala.language.implicitConversions
-import scala.collection.immutable.SortedMap
+import scala.collection.immutable.{SortedMap, SortedSet}
 import java.nio.charset.StandardCharsets
+import java.io.{ByteArrayOutputStream, DataOutputStream}
 import java.security.MessageDigest
 import com.rojoma.json.v3.ast.{JObject, JString}
 import com.rojoma.json.v3.io.CompactJsonWriter
+import com.socrata.soql.stdlib.{Context, UserContext}
+import com.socrata.soql.types.SoQLFloatingTimestamp
 
 object Hasher {
   trait ImplicitlyByteable {
@@ -25,13 +28,6 @@ object Hasher {
       override def asBytes: Array[Byte] = optStr.toString.getBytes(StandardCharsets.UTF_8)
     }
 
-    implicit def implicitlyBytable(optStr: Map[String, String]): ImplicitlyByteable = new ImplicitlyByteable {
-      override def asBytes: Array[Byte] = {
-        val obj = JObject(SortedMap.empty[String, Nothing] ++ optStr.iterator.map { case (k, v) => (k, JString(v)) })
-        CompactJsonWriter.toString(obj).getBytes(StandardCharsets.UTF_8)
-      }
-    }
-
     implicit def implicitlyBytable(n: Long): ImplicitlyByteable = new ImplicitlyByteable {
       override def asBytes: Array[Byte] = {
         val os = new Array[Byte](8)
@@ -44,6 +40,65 @@ object Hasher {
         os(6) = (n >> 8).toByte
         os(7) = n.toByte
         os
+      }
+    }
+
+    implicit def implicitlyByteable(ctx: Context): ImplicitlyByteable = new ImplicitlyByteable {
+      override def asBytes: Array[Byte] = {
+        val baos = new ByteArrayOutputStream
+        val dos = new DataOutputStream(baos)
+
+        val Context(system, UserContext(text, bool, num, float, fixed)) = ctx
+
+        // n.b., 255 and 254 are bytes that do not appear in UTF-8-encoded text
+
+        dos.writeInt(system.size)
+        for(k <- system.keys.to[SortedSet]) {
+          dos.write(k.getBytes(StandardCharsets.UTF_8))
+          dos.write(255)
+          dos.write(system(k).getBytes(StandardCharsets.UTF_8))
+          dos.write(255)
+        }
+
+        dos.writeInt(text.size)
+        for(k <- text.keys.to[SortedSet]) {
+          dos.write(k.getBytes(StandardCharsets.UTF_8))
+          dos.write(255)
+          dos.write(text(k).value.getBytes(StandardCharsets.UTF_8))
+          dos.write(255)
+        }
+
+        dos.writeInt(bool.size)
+        for(k <- bool.keys.to[SortedSet]) {
+          dos.write(k.getBytes(StandardCharsets.UTF_8))
+          dos.write(if(bool(k).value) 255 else 254)
+        }
+
+        dos.writeInt(num.size)
+        for(k <- num.keys.to[SortedSet]) {
+          dos.write(k.getBytes(StandardCharsets.UTF_8))
+          dos.write(255)
+          dos.write(num(k).toString.getBytes(StandardCharsets.UTF_8)) // ick
+          dos.write(255)
+        }
+
+        dos.writeInt(float.size)
+        for(k <- float.keys.to[SortedSet]) {
+          dos.write(k.getBytes(StandardCharsets.UTF_8))
+          dos.write(255)
+          dos.write(SoQLFloatingTimestamp.StringRep(float(k).value).getBytes(StandardCharsets.UTF_8)) // blech
+          dos.write(255)
+        }
+
+        dos.writeInt(fixed.size)
+        for(k <- fixed.keys.to[SortedSet]) {
+          dos.write(k.getBytes(StandardCharsets.UTF_8))
+          dos.write(255)
+          dos.writeLong(fixed(k).value.getMillis) // fixed size, doesn't need a terminator
+        }
+
+        dos.flush()
+        baos.toByteArray
       }
     }
   }
