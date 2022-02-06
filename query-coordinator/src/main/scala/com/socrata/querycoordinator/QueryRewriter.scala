@@ -367,9 +367,12 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     log.debug(s"Attempting to map query where expression '${qeOpt}' to rollup ${r}")
 
     (qeOpt, r.where) match {
-      // don't support rollups with where clauses yet.  To do so, we need to validate that r.where
-      // is also contained in q.where.
-      case (_, Some(re)) => None
+      // To allow rollups with where clauses, validate that r.where is contained in q.where (top level and).
+      case (Some(qe), Some(re)) if (topLevelAndContain(re, qe)) =>
+        val strippedQe = stripExprInTopLevelAnd(re, qe)
+        rewriteExpr(strippedQe, r, rollupColIdx).map(Some(_))
+      case (_, Some(_)) =>
+        None
       // no where on query or rollup, so good!  No work to do.
       case (None, None) => Some(None)
       // have a where on query so try to map recursively
@@ -377,13 +380,17 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     }
   }
 
-  def rewriteHaving(qeOpt: Option[Expr], r: Anal, rollupColIdx: Map[Expr, Int]): Option[Having] = {
+  def rewriteHaving(qeOpt: Option[Expr], qgs: Seq[Expr], r: Anal, rollupColIdx: Map[Expr, Int]): Option[Having] = {
     log.debug(s"Attempting to map query having expression '${qeOpt}' to rollup ${r}")
 
     (qeOpt, r.having) match {
-      // don't support rollups with having clauses yet.  To do so, we need to validate that r.having
-      // is also contained in q.having.
-      case (_, Some(re)) => None
+      // To allow rollups with having clauses, validate that r.having is contained in q.having (top level and) and
+      // they have the same group by.
+      case (Some(qe), Some(re))  if (topLevelAndContain(re, qe) && qgs.toSet == r.groupBys.toSet) =>
+        val strippedQe = stripExprInTopLevelAnd(re, qe)
+        rewriteExpr(strippedQe, r, rollupColIdx).map(Some(_))
+      case (_, Some(_)) =>
+        None
       // no having on query or rollup, so good!  No work to do.
       case (None, None) => Some(None)
       // have a having on query so try to map recursively
@@ -460,7 +467,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
         else o
       }
 
-      val having = rewriteHaving(q.having, r, rollupColIdx) map { h =>
+      val having = rewriteHaving(q.having, q.groupBys, r, rollupColIdx) map { h =>
         if (shouldRemoveAggregates) h.map(removeAggregates)
         else h
       }
@@ -611,6 +618,29 @@ object QueryRewriter {
     fc.filter match {
       case Some(_) => fc.copy(filter = None)
       case None => fc
+    }
+  }
+
+  private def topLevelAndContain(target: Expr, expr: Expr): Boolean = {
+    expr match {
+      case e: Expr if e == target =>
+        true
+      case fc: FunctionCall if fc.function.name == And.name =>
+        topLevelAndContain(target, fc.parameters.head) ||
+          topLevelAndContain(target, fc.parameters.tail.head)
+      case _ =>
+        false
+    }
+  }
+
+  private def stripExprInTopLevelAnd(target: Expr, expr: Expr): Expr = {
+    expr match {
+      case e: Expr if e == target =>
+        typed.BooleanLiteral(true, SoQLBoolean.t)(e.position)
+      case fc: FunctionCall if fc.function.name == And.name =>
+        fc.copy(parameters = fc.parameters.map(stripExprInTopLevelAnd(target, _)))
+      case e =>
+        e
     }
   }
 }
