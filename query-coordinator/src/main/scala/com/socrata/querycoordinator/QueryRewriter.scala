@@ -380,13 +380,18 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     }
   }
 
-  def rewriteHaving(qeOpt: Option[Expr], qgs: Seq[Expr], r: Anal, rollupColIdx: Map[Expr, Int]): Option[Having] = {
+  /**
+    * @param qeOpt query having expression option
+    * @param qbs group by sequence
+    * @param r rollup analysis
+    */
+  def rewriteHaving(qeOpt: Option[Expr], qbs: Seq[Expr], r: Anal, rollupColIdx: Map[Expr, Int]): Option[Having] = {
     log.debug(s"Attempting to map query having expression '${qeOpt}' to rollup ${r}")
 
     (qeOpt, r.having) match {
       // To allow rollups with having clauses, validate that r.having is contained in q.having (top level and) and
       // they have the same group by.
-      case (Some(qe), Some(re))  if (topLevelAndContain(re, qe) && qgs.toSet == r.groupBys.toSet) =>
+      case (Some(qe), Some(re))  if (topLevelAndContain(re, qe) && qbs.toSet == r.groupBys.toSet) =>
         val strippedQe = stripExprInTopLevelAnd(re, qe)
         rewriteExpr(strippedQe, r, rollupColIdx).map(Some(_))
       case (_, Some(_)) =>
