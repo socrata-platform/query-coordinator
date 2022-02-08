@@ -25,7 +25,9 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     ("r6", "SELECT `:wido-ward`, `_crim-typ3`"),
     ("r7", "SELECT `:wido-ward`, min(`_dxyz-num1`), max(`_dxyz-num1`), sum(`_dxyz-num1`), count(*) GROUP BY `:wido-ward`"),
     ("r8", "SELECT date_trunc_ym(`_crim-date`), `:wido-ward`, count(*) GROUP BY date_trunc_ym(`_crim-date`), `:wido-ward`"),
-    ("r9", "SELECT `_crim-typ3`, count(case(`_crim-date` IS NOT NULL, `_crim-date`, true, `_some-date`)) group by `_crim-typ3`")
+    ("r9", "SELECT `_crim-typ3`, count(case(`_crim-date` IS NOT NULL, `_crim-date`, true, `_some-date`)) group by `_crim-typ3`"),
+    ("rw1", "SELECT `_dxyz-num1`, count(`_dxyz-num1`) WHERE `_crim-typ3`='traffic' GROUP BY `_dxyz-num1`"),
+    ("rw4", "SELECT `:wido-ward`, `_crim-typ3`, count(*), `_dxyz-num1`, `_crim-date` WHERE `_crim-typ3`='traffic' GROUP BY `:wido-ward`, `_crim-typ3`, `_dxyz-num1`, `_crim-date`")
   )
 
   val rollupInfos = rollups.map { x => new RollupInfo(x._1, x._2) }
@@ -406,5 +408,26 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     rewrites.get("r2").get should equal(rewrittenQueryAnalysis)
 
     rewrites should have size 1
+  }
+
+  test("rewrite where with where removed") {
+    val q = "SELECT number1, count(number1) AS cn1 WHERE crime_type = 'traffic' GROUP BY number1"
+    val queryAnalysis = analyzeQuery(q)
+    val rewrittenQuery = "SELECT c1 AS number1, coalesce(c2, 0) AS cn1"
+    val rewrittenQueryAnalysis = analyzeRewrittenQuery("rw1", rewrittenQuery)
+    val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
+    rewrites should contain key "rw1"
+    rewrites.get("rw1").get should equal(rewrittenQueryAnalysis)
+    rewrites should have size 1
+  }
+
+  test("rewrite where with subset where removed") {
+    val q = "SELECT number1, count(*) AS ct WHERE ward=1 AND crime_type = 'traffic' GROUP BY number1"
+    val queryAnalysis = analyzeQuery(q)
+    val rewrittenQuery = "SELECT c4 AS number1, coalesce(sum(c3), 0) AS ct WHERE c1=1 GROUP BY number1"
+    val rewrittenQueryAnalysis = analyzeRewrittenQuery("rw4", rewrittenQuery)
+    val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
+    rewrites should contain key "rw4"
+    rewrites.get("rw4").get should equal(rewrittenQueryAnalysis)
   }
 }
