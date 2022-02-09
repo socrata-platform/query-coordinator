@@ -430,4 +430,18 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     rewrites should contain key "rw4"
     rewrites.get("rw4").get should equal(rewrittenQueryAnalysis)
   }
+
+  test("don't rewrite if rollup where is not a subset of query top level AND part") {
+    assertNoRollupMatch("SELECT number1, count(number1) AS cn1 WHERE crime_type = 'non-traffic' GROUP BY number1")
+  }
+
+  test("don't rewrite if rollup where is a subset of query top level OR part") {
+    assertNoRollupMatch("SELECT number1, count(number1) AS cn1 WHERE crime_type = 'traffic' OR number1 = 2 GROUP BY number1")
+  }
+
+  private def assertNoRollupMatch(q: String): Unit = {
+    val queryAnalysis = analyzeQuery(q)
+    val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
+    rewrites should have size 0
+  }
 }
