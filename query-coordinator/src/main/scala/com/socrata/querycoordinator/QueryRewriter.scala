@@ -283,24 +283,28 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
         None
       // A count(*) or count(non-null-literal) on q gets mapped to a sum on any such column in rollup
       case fc: FunctionCall if isCountStarOrLiteral(fc) =>
+        val filterAndRollupWhere = andRollupWhereToFilter(fc.filter, r: Anal)
         for {
           idx <- findCountStarOrLiteral(rollupColIdx) // find count(*) column in rollup
-          rwFilter <- rewriteWhere(fc.filter, r, rollupColIdx)
+          rwFilter <- rewriteWhere(filterAndRollupWhere, r, rollupColIdx)
         } yield {
+          val simplifiedRwFilter = simplifyAndTrue(rwFilter)
           val newSumCol = typed.ColumnRef(NoQualifier, rollupColumnId(idx), SoQLNumber.t)(fc.position)
-          typed.FunctionCall(CoalesceNumber, Seq(typed.FunctionCall(SumNumber, Seq(newSumCol), rwFilter, fc.window)(fc.position, fc.position),
+          typed.FunctionCall(CoalesceNumber, Seq(typed.FunctionCall(SumNumber, Seq(newSumCol), simplifiedRwFilter, fc.window)(fc.position, fc.position),
                                                  typed.NumberLiteral(0, SoQLNumber.t)(fc.position)), None, fc.window)(fc.position, fc.position)
         }
       // A count(...) on q gets mapped to a sum(...) on a matching column in the rollup.  We still need the count(*)
       // case above to ensure we can do things like map count(1) and count(*) which aren't exact matches.
       case fc@typed.FunctionCall(MonomorphicFunction(Count, _), _, filter, window) =>
         val fcMinusFilter = stripFilter(fc)
+        val filterAndRollupWhere = andRollupWhereToFilter(filter, r: Anal)
         for {
           idx <- rollupColIdx.get(fcMinusFilter) // find count(...) in rollup that matches exactly
-          rwFilter <- rewriteWhere(filter, r, rollupColIdx)
+          rwFilter <- rewriteWhere(filterAndRollupWhere, r, rollupColIdx)
         } yield {
+          val simplifiedRwFilter = simplifyAndTrue(rwFilter)
           val newSumCol = typed.ColumnRef(NoQualifier, rollupColumnId(idx), SoQLNumber.t)(fc.position)
-          typed.FunctionCall(CoalesceNumber, Seq(typed.FunctionCall(SumNumber, Seq(newSumCol), rwFilter, window)(fc.position, fc.position),
+          typed.FunctionCall(CoalesceNumber, Seq(typed.FunctionCall(SumNumber, Seq(newSumCol), simplifiedRwFilter, window)(fc.position, fc.position),
                                                  typed.NumberLiteral(0, SoQLNumber.t)(fc.position)), None, window)(fc.position, fc.position)
         }
       // If this is a between function operating on floating timestamps, and arguments b and c are both date aggregates,
@@ -332,12 +336,14 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
       // If we have a matching column, we just need to update its argument to reference the rollup column.
       case fc: FunctionCall if isSelfAggregatableAggregate(fc.function.function) =>
         val fcMinusFilter = stripFilter(fc)
+        val filterAndRollupWhere = andRollupWhereToFilter(fc.filter, r: Anal)
         for {
           idx <- rollupColIdx.get(fcMinusFilter)
-          rwFilter <- rewriteWhere(fc.filter, r, rollupColIdx)
+          rwFilter <- rewriteWhere(filterAndRollupWhere, r, rollupColIdx)
         } yield {
+          val simplifiedRwFilter = simplifyAndTrue(rwFilter)
           fc.copy(parameters = Seq(typed.ColumnRef(NoQualifier, rollupColumnId(idx), fc.typ)(fc.position)),
-                  filter = rwFilter)
+                  filter = simplifiedRwFilter)
         }
       case _ => None
     }
@@ -366,29 +372,43 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
   def rewriteWhere(qeOpt: Option[Expr], r: Anal, rollupColIdx: Map[Expr, Int]): Option[Where] = {
     log.debug(s"Attempting to map query where expression '${qeOpt}' to rollup ${r}")
 
-    (qeOpt, r.where) match {
-      // don't support rollups with where clauses yet.  To do so, we need to validate that r.where
-      // is also contained in q.where.
-      case (_, Some(re)) => None
+    val rw = (qeOpt, r.where) match {
+      // To allow rollups with where clauses, validate that r.where is contained in q.where (top level and).
+      case (Some(qe), Some(re)) if (topLevelAndContain(re, qe)) =>
+        val strippedQe = stripExprInTopLevelAnd(re, qe)
+        rewriteExpr(strippedQe, r, rollupColIdx).map(Some(_))
+      case (_, Some(_)) =>
+        None
       // no where on query or rollup, so good!  No work to do.
       case (None, None) => Some(None)
       // have a where on query so try to map recursively
       case (Some(qe), None) => rewriteExpr(qe, r, rollupColIdx).map(Some(_))
     }
+    rw.map(simplifyAndTrue)
   }
 
-  def rewriteHaving(qeOpt: Option[Expr], r: Anal, rollupColIdx: Map[Expr, Int]): Option[Having] = {
+  /**
+    * @param qeOpt query having expression option
+    * @param qbs group by sequence
+    * @param r rollup analysis
+    */
+  def rewriteHaving(qeOpt: Option[Expr], qbs: Seq[Expr], r: Anal, rollupColIdx: Map[Expr, Int]): Option[Having] = {
     log.debug(s"Attempting to map query having expression '${qeOpt}' to rollup ${r}")
 
-    (qeOpt, r.having) match {
-      // don't support rollups with having clauses yet.  To do so, we need to validate that r.having
-      // is also contained in q.having.
-      case (_, Some(re)) => None
+    val rw = (qeOpt, r.having) match {
+      // To allow rollups with having clauses, validate that r.having is contained in q.having (top level and) and
+      // they have the same group by.
+      case (Some(qe), Some(re)) if (topLevelAndContain(re, qe) && qbs.toSet == r.groupBys.toSet) =>
+        val strippedQe = stripExprInTopLevelAnd(re, qe)
+        rewriteExpr(strippedQe, r, rollupColIdx).map(Some(_))
+      case (_, Some(_)) =>
+        None
       // no having on query or rollup, so good!  No work to do.
       case (None, None) => Some(None)
       // have a having on query so try to map recursively
       case (Some(qe), None) => rewriteExpr(qe, r, rollupColIdx).map(Some(_))
     }
+    rw.map(simplifyAndTrue)
   }
 
   def rewriteOrderBy(obsOpt: Seq[OrderBy], r: Anal, rollupColIdx: Map[Expr, Int]): Option[Seq[OrderBy]] = {
@@ -460,7 +480,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
         else o
       }
 
-      val having = rewriteHaving(q.having, r, rollupColIdx) map { h =>
+      val having = rewriteHaving(q.having, q.groupBys, r, rollupColIdx) map { h =>
         if (shouldRemoveAggregates) h.map(removeAggregates)
         else h
       }
@@ -611,6 +631,54 @@ object QueryRewriter {
     fc.filter match {
       case Some(_) => fc.copy(filter = None)
       case None => fc
+    }
+  }
+
+  private def topLevelAndContain(target: Expr, expr: Expr): Boolean = {
+    expr match {
+      case e: Expr if e == target =>
+        true
+      case fc: FunctionCall if fc.function.name == And.name =>
+        topLevelAndContain(target, fc.parameters.head) ||
+          topLevelAndContain(target, fc.parameters.tail.head)
+      case _ =>
+        false
+    }
+  }
+
+  private def stripExprInTopLevelAnd(target: Expr, expr: Expr): Expr = {
+    expr match {
+      case e: Expr if e == target =>
+        typed.BooleanLiteral(true, SoQLBoolean.t)(e.position)
+      case fc: FunctionCall if fc.function.name == And.name =>
+        fc.copy(parameters = fc.parameters.map(stripExprInTopLevelAnd(target, _)))
+      case e =>
+        e
+    }
+  }
+
+  private def andRollupWhereToFilter(filter: Option[Expr], r: Anal): Option[Expr] = {
+    (r.where, filter) match {
+      case (None, _) => filter
+      case (s@Some(_), None) => s
+      case (Some(rw), Some(f)) =>
+        Some(typed.FunctionCall(SoQLFunctions.And.monomorphic.get, List(rw, f), None, None)(rw.position, rw.position))
+    }
+  }
+
+  private def simplifyAndTrue(optExpr: Option[Expr]): Option[Expr] = {
+    optExpr match {
+      case Some(BooleanLiteral(true, _)) =>
+        None
+      case Some(FunctionCall(fn, Seq(left, right), _, _)) if fn.name == And.name =>
+        (simplifyAndTrue(Some(left)), simplifyAndTrue(Some(right))) match {
+          case (None, None) => None
+          case (l, None) => l
+          case (None, r) => r
+          case _ => optExpr
+        }
+      case _ =>
+        optExpr
     }
   }
 }
