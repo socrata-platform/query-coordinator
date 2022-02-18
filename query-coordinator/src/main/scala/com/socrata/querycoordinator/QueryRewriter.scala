@@ -74,10 +74,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
       // If the query isn't grouped but the rollup is, everything in the selection must be an aggregate.
       // For example, a "SELECT sum(cost) where type='Boat'" could be satisfied by a rollup grouped by type.
       // We rely on the selection rewrite to ensure the columns are there, validate if it is self aggregatable, etc.
-      case (Nil, r) if r.nonEmpty && qSelection.forall {
-        case (_, f: FunctionCall) if f.function.isAggregate => true
-        case _ => false
-      } => Some(Nil)
+      case (Nil, r) if r.nonEmpty && qSelection.forall { case (_, e) => selectableWhenGroup(e) } => Some(Nil)
       // if the query is grouping, every grouping in the query must grouped in the rollup.
       // The analysis already validated there are no un-grouped columns in the selection
       // that aren't in the group by.
@@ -679,6 +676,22 @@ object QueryRewriter {
         }
       case _ =>
         optExpr
+    }
+  }
+
+  /**
+    * Whether the expression is valid in SELECT clause when the query is grouped (both explicitly or implicitly)
+    */
+  private def selectableWhenGroup(expr: Expr): Boolean = {
+    expr match {
+      case fc: FunctionCall if fc.function.isAggregate =>
+        true
+      case fc: FunctionCall =>
+        fc.parameters.forall(selectableWhenGroup)
+      case _: typed.TypedLiteral[_] =>
+        true
+      case _ =>
+        false
     }
   }
 }

@@ -19,7 +19,9 @@ class TestQueryRewriterDateTruncBase extends TestQueryRewriterBase {
   val rollups = Seq(
     ("r_ymd", "SELECT date_trunc_ymd(`_crim-date`), `:wido-ward`, count(*) GROUP BY date_trunc_ymd(`_crim-date`), `:wido-ward`"),
     ("r_ym", "SELECT date_trunc_ym(`_crim-date`), `:wido-ward`, count(*) GROUP BY date_trunc_ym(`_crim-date`), `:wido-ward`"),
-    ("r_y", "SELECT date_trunc_y(`_crim-date`), `:wido-ward`, count(*) GROUP BY date_trunc_y(`_crim-date`), `:wido-ward`")
+    ("r_y", "SELECT date_trunc_y(`_crim-date`), `:wido-ward`, count(*) GROUP BY date_trunc_y(`_crim-date`), `:wido-ward`"),
+    ("r_sca_ymd", "SELECT date_trunc_ymd(`_crim-date`), sum(`_dxyz-num1`), count(`_dxyz-num1`), avg(`_dxyz-num1`) GROUP BY date_trunc_ymd(`_crim-date`)"),
+    ("r_arithmetic_outside_aggregate_ymd", "SELECT date_trunc_ymd(`_crim-date`), sum(`_dxyz-num1`)*60, count(`_dxyz-num1`), avg(`_dxyz-num1`), `:wido-ward` GROUP BY date_trunc_ymd(`_crim-date`),`:wido-ward`")
   )
 
   val rollupInfos = rollups.map { x => new RollupInfo(x._1, x._2) }
