@@ -1,14 +1,16 @@
 package com.socrata.querycoordinator
 
 import com.socrata.querycoordinator.QueryRewriter._
+import com.socrata.soql.ast.{JoinFunc, JoinQuery, JoinTable, Select}
 import com.socrata.soql.collection.OrderedMap
 import com.socrata.soql.environment.{ColumnName, TableName}
 import com.socrata.soql.exceptions.SoQLException
 import com.socrata.soql.functions.SoQLFunctions._
 import com.socrata.soql.functions._
-import com.socrata.soql.typed.{ColumnRef => _, FunctionCall => _, OrderBy => _, _}
+import com.socrata.soql.parsing.StandaloneParser
+import com.socrata.soql.typed.{ColumnRef => _, FunctionCall => _, OrderBy => _, Join => _, _}
 import com.socrata.soql.types._
-import com.socrata.soql.{SoQLAnalysis, SoQLAnalyzer, typed}
+import com.socrata.soql.{BinaryTree, Compound, Leaf, SoQLAnalysis, SoQLAnalyzer, typed}
 import org.joda.time.{DateTimeConstants, LocalDateTime}
 
 import scala.util.parsing.input.NoPosition
@@ -59,6 +61,14 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
         // recurse in case we have a function on top of an aggregation
         fc.copy(parameters = fc.parameters.map(p => removeAggregates(p)))
       case _ => e
+    }
+  }
+
+  def rewriteJoin(joins: Seq[Join], r: Anal): Option[Seq[Join]] = {
+    if (joins == r.joins) {
+      Some(Seq.empty)
+    } else {
+      None
     }
   }
 
@@ -319,7 +329,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     e match {
       case literal: typed.TypedLiteral[_] => Some(literal) // This is literally a literal, so so literal.
       // for a column reference we just need to map the column id
-      case cr: ColumnRef => for {idx <- rollupColIdx.get(cr)} yield cr.copy(column = rollupColumnId(idx))
+      case cr: ColumnRef => for {idx <- rollupColIdx.get(cr)} yield cr.copy(qualifier = None, column = rollupColumnId(idx))
       // window functions run after where / group by / having so can't be rewritten in isolation.  We could
       // still rewrite a query with a window function in if the other clauses all match, however that requires
       // coordination between expression mapping and mapping other clauses at a higher level that isn't implemented,
@@ -501,8 +511,8 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     possibleRewrites(q, rollups, false)
   }
 
-  def possibleRewrites(schema: Schema, q: Anal, rollups: Seq[RollupInfo], project: Map[String, String], debug: Boolean): Map[RollupName, Anal] = {
-    possibleRewrites(q, analyzeRollups(schema, rollups, project), debug)
+  def possibleRewrites(schema: Schema, q: Anal, rollups: Seq[RollupInfo], getSchemaByTableName: TableName => SchemaWithFieldName, debug: Boolean): Map[RollupName, Anal] = {
+    possibleRewrites(q, analyzeRollups(schema, rollups, getSchemaByTableName), debug)
   }
 
   def possibleRewrites(q: Anal, rollups: Map[RollupName, Anal], debug: Boolean): Map[RollupName, Anal] = {
@@ -554,12 +564,15 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
         else h
       }
 
+      val joins = rewriteJoin(q.joins, r)
+
       val mismatch =
         ensure(selection.isDefined, "mismatch on select") orElse
           ensure(where.isDefined, "mismatch on where") orElse
           ensure(groupBy.nonEmpty, "mismatch on groupBy") orElse
           ensure(having.isDefined, "mismatch on having") orElse
           ensure(orderBy.nonEmpty, "mismatch on orderBy") orElse
+          ensure(joins.nonEmpty,"mismatch on join") orElse
           // For limit and offset, we can always apply them from the query  as long as the rollup
           // doesn't have any.  For certain cases it would be possible to rewrite even if the rollup
           // has a limit or offset, but we currently don't.
@@ -576,6 +589,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
           (name, Some(r.copy(
             isGrouped = if (shouldRemoveAggregates) groupBy.exists(_.nonEmpty) else q.isGrouped,
             selection = selection.get,
+            joins = joins.get,
             groupBys = groupBy.get,
             orderBys = orderBy.get,
             // If we are removing aggregates then we are no longer grouping and need to put the condition
@@ -632,18 +646,33 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
   // maps prefixed column name to type
   private def prefixedDsContext(schema: Schema) = {
     val columnIdMap = schema.schema.map { case (k, v) => addRollupPrefix(k) -> k }
-    Map(TableName.PrimaryTable.qualifier -> QueryParser.dsContext(columnIdMap, schema.schema))
+    QueryParser.dsContext(columnIdMap, schema.schema)
   }
 
-  def analyzeRollups(schema: Schema, rollups: Seq[RollupInfo], project: Map[String, String]): Map[RollupName, Anal] = {
+  def analyzeRollups(schema: Schema, rollups: Seq[RollupInfo],
+                     getSchemaByTableName: TableName => SchemaWithFieldName): Map[RollupName, Anal] = {
 
-    // TODO: Join - qualifier
-    def reprojectColumn(cn: ColumnId, qual: Qualifier): ColumnId = project.getOrElse(cn, cn)
-
-    val dsContext = prefixedDsContext(schema)
+    val dsContext = Map(TableName.PrimaryTable.qualifier -> prefixedDsContext(schema))
     val rollupMap = rollups.map { r => (r.name, r.soql) }.toMap
     val analysisMap = rollupMap.mapValues { soql =>
-      Try(analyzer.analyzeUnchainedQuery(soql)(dsContext).mapColumnIds(removeRollupPrefix).mapColumnIds(reprojectColumn))
+      Try {
+        val parsedQueries = new StandaloneParser().binaryTreeSelect(soql)
+        val tableNames = collectTableNames(parsedQueries)
+        val contexts = tableNames.foldLeft(dsContext) { (acc, tn) =>
+          val tableName = TableName(tn)
+          val sch = getSchemaByTableName(tableName)
+          val dsctx = prefixedDsContext(sch.toSchema())
+          acc + (tn -> dsctx)
+        }
+
+        val analysis = analyzer.analyzeBinary(parsedQueries)(contexts) match {
+          case Leaf(a) =>
+            a.mapColumnIds(removeRollupPrefix)
+          case Compound(_, _, _) =>
+            throw new Exception("Rollup does not support compound query")
+        }
+        analysis
+      }
     }
 
     analysisMap.foreach {
@@ -653,22 +682,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     }
 
     analysisMap collect {
-      case (k, Success(a)) =>
-        val ruAnalysis =
-          if (project.nonEmpty) {
-            val reprojectedSelection = a.selection.map {
-              case x@(cn: ColumnName, expr) =>
-                project.get(cn.name.stripMargin('_')) match {
-                  case Some(newName) =>
-                    (new ColumnName(newName), expr)
-                  case None =>
-                    x
-                }
-            }
-            a.copy(selection = reprojectedSelection)
-          } else {
-            a
-          }
+      case (k, Success(ruAnalysis)) =>
         k -> ruAnalysis
     }
   }
@@ -689,6 +703,7 @@ object QueryRewriter {
   type Selection = OrderedMap[ColumnName, Expr]
   type Where = Option[Expr]
   type Having = Option[Expr]
+  type Join = typed.Join[ColumnId, SoQLType]
 
   val SumNumber = MonomorphicFunction(Sum, Map("a" -> SoQLNumber))
   val CoalesceNumber = MonomorphicFunction(Coalesce, Map("a" -> SoQLNumber))
@@ -772,6 +787,24 @@ object QueryRewriter {
         true
       case _ =>
         false
+    }
+  }
+
+  def collectTableNames(selects: BinaryTree[Select]): Set[String] = {
+    selects match {
+      case Compound(_, l, r) =>
+        collectTableNames(l) ++ collectTableNames(r)
+      case Leaf(select) =>
+        select.joins.foldLeft(select.from.map(_.name).filter(_ != TableName.This).toSet) { (acc, join) =>
+          join.from match {
+            case JoinTable(TableName(name, _)) =>
+              acc + name
+            case JoinQuery(selects, _) =>
+              acc ++ collectTableNames(selects)
+            case JoinFunc(_, _) =>
+              throw new Exception("Unsupported join function")
+          }
+        }
     }
   }
 }
