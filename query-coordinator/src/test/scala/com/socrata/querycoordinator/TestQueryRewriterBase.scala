@@ -3,7 +3,7 @@ package com.socrata.querycoordinator
 import com.socrata.querycoordinator.QueryRewriter.{Anal, ColumnId, Expr, RollupName}
 import com.socrata.querycoordinator.util.Join
 import com.socrata.soql.{SoQLAnalysis, SoQLAnalyzer}
-import com.socrata.soql.environment.{ColumnName, TypeName}
+import com.socrata.soql.environment.{ColumnName, TableName, TypeName}
 import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
 import com.socrata.soql.types.SoQLType
 
@@ -41,6 +41,8 @@ abstract class TestQueryRewriterBase extends TestBase {
 
   /** The dataset context, used for parsing the query */
   val dsContext = QueryParser.dsContext(columnIdMapping, rawSchema)
+
+  def schemaFetcherUnsupported(tn: TableName): SchemaWithFieldName = ???
 
   override def beforeAll() {
     withClue("Not all rollup definitions successfully parsed, check log for failures") {
