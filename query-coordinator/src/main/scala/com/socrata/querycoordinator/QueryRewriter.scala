@@ -429,18 +429,22 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     }
   }
 
-  def possibleRewrites(schema: Schema, q: Anal, rollups: Seq[RollupInfo], project: Map[String, String]): Map[RollupName, Anal] = {
-    possibleRewrites(q, analyzeRollups(schema, rollups, project))
+  def possibleRewrites(q: Anal, rollups: Map[RollupName, Anal]): Map[RollupName, Anal] = {
+    possibleRewrites(q, rollups, false)
   }
 
-  def possibleRewrites(q: Anal, rollups: Map[RollupName, Anal]): Map[RollupName, Anal] = {
+  def possibleRewrites(schema: Schema, q: Anal, rollups: Seq[RollupInfo], project: Map[String, String], debug: Boolean): Map[RollupName, Anal] = {
+    possibleRewrites(q, analyzeRollups(schema, rollups, project), debug)
+  }
+
+  def possibleRewrites(q: Anal, rollups: Map[RollupName, Anal], debug: Boolean): Map[RollupName, Anal] = {
     log.debug("looking for candidates to rewrite for query: {}", q)
 
     if (noRollup(q)) {
       return Map.empty
     }
 
-    val candidates = rollups.mapValues { r =>
+    val candidates = rollups.map { case (name, r) =>
       log.debug("checking for compat with: {}", r)
 
       // this lets us lookup the column and get the 0 based index in the select list
@@ -498,7 +502,10 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
 
       mismatch match {
         case None =>
-          Some(r.copy(
+          if (debug) {
+            log.info(s"rollup matched ${name}")
+          }
+          (name, Some(r.copy(
             isGrouped = if (shouldRemoveAggregates) groupBy.exists(_.nonEmpty) else q.isGrouped,
             selection = selection.get,
             groupBys = groupBy.get,
@@ -509,10 +516,13 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
             having = if (shouldRemoveAggregates) None else having.get,
             limit = q.limit,
             offset = q.offset
-          ))
+          )))
         case Some(s) =>
           log.debug("Not compatible: {}", s)
-          None
+          if (debug) {
+            log.info(s"rollup not matched ${name} $s")
+          }
+          (name, None)
       }
     }
 

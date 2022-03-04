@@ -360,7 +360,7 @@ class QueryResource(secondary: Secondary,
         def possiblyRewriteQuery(schema: Schema, analyzedQuery: SoQLAnalysis[String, SoQLType], rollups: Seq[RollupInfo], project: Map[String, String]):
             (SoQLAnalysis[String, SoQLType], Option[String]) = {
           val rewritten = RollupScorer.bestRollup(
-            queryRewriter.possibleRewrites(schema, analyzedQuery, rollups, project).toSeq)
+            queryRewriter.possibleRewrites(schema, analyzedQuery, rollups, project, debug).toSeq)
           val (rollupName, analysis) = rewritten map { x => (Option(x._1), x._2) } getOrElse ((None, analyzedQuery))
           rollupName.foreach(ru => log.info(s"Rewrote query on dataset $dataset to rollup $ru")) // only log rollup name if it is defined.
           log.debug(s"Rewritten analysis: $analysis")
