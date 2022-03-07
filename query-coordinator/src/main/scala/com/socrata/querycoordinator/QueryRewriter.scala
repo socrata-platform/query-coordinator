@@ -29,8 +29,8 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
   /** Maps the rollup column expression to the 0 based index in the rollup table.  If we have
     * multiple columns with the same definition, that is fine but we will only use one.
     */
-  def rewriteSelection(q: Selection, r: Anal, rollupColIdx: Map[Expr, Int]): Option[Selection] = {
-    val mapped: OrderedMap[ColumnName, Option[Expr]] = q.mapValues(e => rewriteExpr(e, r, rollupColIdx))
+  def rewriteSelection(q: Anal, r: Anal, rollupColIdx: Map[Expr, Int]): Option[Selection] = {
+    val mapped: OrderedMap[ColumnName, Option[Expr]] = q.selection.mapValues(e => rewriteExpr(e, q, r, rollupColIdx))
 
     if (mapped.values.forall(c => c.isDefined)) {
       Some(mapped.mapValues { v => v.get })
@@ -62,24 +62,22 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     }
   }
 
-  def rewriteGroupBy(qOpt: GroupBy, r: Anal, qSelection: Selection,
-      rollupColIdx: Map[Expr, Int]): Option[GroupBy] = {
-    val rOpt: GroupBy = r.groupBys
-    (qOpt, rOpt) match {
+  def rewriteGroupBy(q: Anal, r: Anal, rollupColIdx: Map[Expr, Int]): Option[GroupBy] = {
+    (q.groupBys, r.groupBys) match {
       // If the query has no group by and the rollup has no group by then all is well
       case (Nil, Nil) => Some(Nil)
       // If the query and the rollup are grouping on the same columns (possibly in a different order) then
       // we can just leave the grouping off when querying the rollup to make it less expensive.
-      case (q, r) if q.nonEmpty && r.nonEmpty && q.toSet == r.toSet => Some(Nil)
+      case (qg, rg) if qg.nonEmpty && rg.nonEmpty && qg.toSet == rg.toSet => Some(Nil)
       // If the query isn't grouped but the rollup is, everything in the selection must be an aggregate.
       // For example, a "SELECT sum(cost) where type='Boat'" could be satisfied by a rollup grouped by type.
       // We rely on the selection rewrite to ensure the columns are there, validate if it is self aggregatable, etc.
-      case (Nil, r) if r.nonEmpty && qSelection.forall { case (_, e) => selectableWhenGroup(e) } => Some(Nil)
+      case (Nil, rg) if rg.nonEmpty && q.selection.forall { case (_, e) => selectableWhenGroup(e) } => Some(Nil)
       // if the query is grouping, every grouping in the query must grouped in the rollup.
       // The analysis already validated there are no un-grouped columns in the selection
       // that aren't in the group by.
-      case (q, _) if q.nonEmpty =>
-        val grouped = q.map { expr => rewriteExpr(expr, r, rollupColIdx) }
+      case (qg, _) if qg.nonEmpty =>
+        val grouped = qg.map { expr => rewriteExpr(expr, q, r, rollupColIdx) }
 
         if (grouped.forall(_.isDefined)) {
           Some(grouped.flatten)
@@ -152,7 +150,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
    *
    * @param fc A NOT BETWEEN or BETWEEN function call.
    */
-  private def rewriteDateTruncBetweenExpr(r: Anal, rollupColIdx: Map[Expr, Int], fc: FunctionCall): Option[Expr] = {
+  private def rewriteDateTruncBetweenExpr(q: Anal, r: Anal, rollupColIdx: Map[Expr, Int], fc: FunctionCall): Option[Expr] = {
     assert(fc.function.function == Between || fc.function.function == NotBetween)
     val maybeColRef +: lower +: upper +: _ = fc.parameters
     val commonTruncFunction = commonDateTrunc(lower, upper)
@@ -177,8 +175,8 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
         // ie. 'foo_date BETWEEN date_trunc_y("2014/01/01") AND date_trunc_y("2019/05/05")'
         // just has to replace foo_date with rollup column "c<n>"
         for {
-          lowerRewrite <- rewriteExpr(lower, r, rollupColIdx)
-          upperRewrite <- rewriteExpr(upper, r, rollupColIdx)
+          lowerRewrite <- rewriteExpr(lower, q, r, rollupColIdx)
+          upperRewrite <- rewriteExpr(upper, q, r, rollupColIdx)
           newParams <- Some(Seq(
             typed.ColumnRef(NoQualifier, rollupColumnId(idx), SoQLFloatingTimestamp.t)(fc.position),
             lowerRewrite,
@@ -266,7 +264,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     * Note that every case here needs to ensure to map every expression recursively
     * to ensure it is either a literal or mapped to the rollup.
     */
-  def rewriteExpr(e: Expr, r: Anal, rollupColIdx: Map[Expr, Int]): Option[Expr] = { // scalastyle:ignore cyclomatic.complexity
+  def rewriteExpr(e: Expr, q: Anal, r: Anal, rollupColIdx: Map[Expr, Int]): Option[Expr] = { // scalastyle:ignore cyclomatic.complexity
     log.trace("Attempting to match expr: {}", e)
     e match {
       case literal: typed.TypedLiteral[_] => Some(literal) // This is literally a literal, so so literal.
@@ -283,7 +281,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
         val filterAndRollupWhere = andRollupWhereToFilter(fc.filter, r: Anal)
         for {
           idx <- findCountStarOrLiteral(rollupColIdx) // find count(*) column in rollup
-          rwFilter <- rewriteWhere(filterAndRollupWhere, r, rollupColIdx)
+          rwFilter <- rewriteWhere(filterAndRollupWhere, q, r, rollupColIdx)
         } yield {
           val simplifiedRwFilter = simplifyAndTrue(rwFilter)
           val newSumCol = typed.ColumnRef(NoQualifier, rollupColumnId(idx), SoQLNumber.t)(fc.position)
@@ -297,7 +295,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
         val filterAndRollupWhere = andRollupWhereToFilter(filter, r: Anal)
         for {
           idx <- rollupColIdx.get(fcMinusFilter) // find count(...) in rollup that matches exactly
-          rwFilter <- rewriteWhere(filterAndRollupWhere, r, rollupColIdx)
+          rwFilter <- rewriteWhere(filterAndRollupWhere, q, r, rollupColIdx)
         } yield {
           val simplifiedRwFilter = simplifyAndTrue(rwFilter)
           val newSumCol = typed.ColumnRef(NoQualifier, rollupColumnId(idx), SoQLNumber.t)(fc.position)
@@ -310,7 +308,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
         if (fc.function.function == Between || fc.function.function == NotBetween) &&
           fc.function.bindings.values.forall(_ == SoQLFloatingTimestamp) &&
           fc.function.bindings.values.tail.forall(dateTruncHierarchy contains _) =>
-        rewriteDateTruncBetweenExpr(r, rollupColIdx, fc)
+        rewriteDateTruncBetweenExpr(q, r, rollupColIdx, fc)
       // If it is a >= or < with floating timestamp arguments, see if we can rewrite to date_trunc_xxx
       case fc@typed.FunctionCall(MonomorphicFunction(fnType, bindings), _, _, _)
         if (fnType == Gte || fnType == Lt) &&
@@ -327,7 +325,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
         } yield fc.copy(
           parameters = Seq(typed.ColumnRef(NoQualifier, rollupColumnId(colIdx), colRef.typ)(fc.position)),
           window = window)
-      case fc: FunctionCall if !fc.function.isAggregate => rewriteNonagg(r, rollupColIdx, fc)
+      case fc: FunctionCall if !fc.function.isAggregate => rewriteNonagg(q, r, rollupColIdx, fc)
       // If the function is "self aggregatable" we can apply it on top of an already aggregated rollup
       // column, eg. select foo, bar, max(x) max_x group by foo, bar --> select foo, max(max_x) group by foo
       // If we have a matching column, we just need to update its argument to reference the rollup column.
@@ -336,7 +334,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
         val filterAndRollupWhere = andRollupWhereToFilter(fc.filter, r: Anal)
         for {
           idx <- rollupColIdx.get(fcMinusFilter)
-          rwFilter <- rewriteWhere(filterAndRollupWhere, r, rollupColIdx)
+          rwFilter <- rewriteWhere(filterAndRollupWhere, q, r, rollupColIdx)
         } yield {
           val simplifiedRwFilter = simplifyAndTrue(rwFilter)
           fc.copy(parameters = Seq(typed.ColumnRef(NoQualifier, rollupColumnId(idx), fc.typ)(fc.position)),
@@ -347,7 +345,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
   }
 
   // remaining non-aggregate functions
-  private def rewriteNonagg(r: Anal, rollupColIdx: Map[Expr, Int],
+  private def rewriteNonagg(q: Anal, r: Anal, rollupColIdx: Map[Expr, Int],
                             fc: FunctionCall): Option[typed.CoreExpr[ColumnId, SoQLType] with Serializable] = {
     // if we have the exact same function in rollup and query, just turn it into a column ref in the rollup
     val functionMatch = for {
@@ -355,7 +353,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     } yield typed.ColumnRef(NoQualifier, rollupColumnId(idx), fc.typ)(fc.position)
     // otherwise, see if we can recursively rewrite
     functionMatch.orElse {
-      val mapped = fc.parameters.map(fe => rewriteExpr(fe, r, rollupColIdx))
+      val mapped = fc.parameters.map(fe => rewriteExpr(fe, q, r, rollupColIdx))
       log.trace("mapped expr params {} {} -> {}", "", fc.parameters, mapped)
       if (mapped.forall(fe => fe.isDefined)) {
         log.trace("expr params all defined")
@@ -366,20 +364,19 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     }
   }
 
-  def rewriteWhere(qeOpt: Option[Expr], r: Anal, rollupColIdx: Map[Expr, Int]): Option[Where] = {
+  def rewriteWhere(qeOpt: Option[Expr], q: Anal, r: Anal, rollupColIdx: Map[Expr, Int]): Option[Where] = {
     log.debug(s"Attempting to map query where expression '${qeOpt}' to rollup ${r}")
-
     val rw = (qeOpt, r.where) match {
       // To allow rollups with where clauses, validate that r.where is contained in q.where (top level and).
       case (Some(qe), Some(re)) if (topLevelAndContain(re, qe)) =>
         val strippedQe = stripExprInTopLevelAnd(re, qe)
-        rewriteExpr(strippedQe, r, rollupColIdx).map(Some(_))
+        rewriteExpr(strippedQe, q, r, rollupColIdx).map(Some(_))
       case (_, Some(_)) =>
         None
       // no where on query or rollup, so good!  No work to do.
       case (None, None) => Some(None)
       // have a where on query so try to map recursively
-      case (Some(qe), None) => rewriteExpr(qe, r, rollupColIdx).map(Some(_))
+      case (Some(qe), None) => rewriteExpr(qe, q, r, rollupColIdx).map(Some(_))
     }
     rw.map(simplifyAndTrue)
   }
@@ -389,7 +386,9 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     * @param qbs group by sequence
     * @param r rollup analysis
     */
-  def rewriteHaving(qeOpt: Option[Expr], qbs: Seq[Expr], r: Anal, rollupColIdx: Map[Expr, Int]): Option[Having] = {
+  def rewriteHaving(q: Anal, r: Anal, rollupColIdx: Map[Expr, Int]): Option[Having] = {
+    val qeOpt: Option[Expr] = q.having
+    val qbs: Seq[Expr] = q.groupBys
     log.debug(s"Attempting to map query having expression '${qeOpt}' to rollup ${r}")
 
     val rw = (qeOpt, r.having) match {
@@ -397,18 +396,19 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
       // they have the same group by.
       case (Some(qe), Some(re)) if (topLevelAndContain(re, qe) && qbs.toSet == r.groupBys.toSet) =>
         val strippedQe = stripExprInTopLevelAnd(re, qe)
-        rewriteExpr(strippedQe, r, rollupColIdx).map(Some(_))
+        rewriteExpr(strippedQe, q, r, rollupColIdx).map(Some(_))
       case (_, Some(_)) =>
         None
       // no having on query or rollup, so good!  No work to do.
       case (None, None) => Some(None)
       // have a having on query so try to map recursively
-      case (Some(qe), None) => rewriteExpr(qe, r, rollupColIdx).map(Some(_))
+      case (Some(qe), None) => rewriteExpr(qe, q, r, rollupColIdx).map(Some(_))
     }
     rw.map(simplifyAndTrue)
   }
 
-  def rewriteOrderBy(obsOpt: Seq[OrderBy], r: Anal, rollupColIdx: Map[Expr, Int]): Option[Seq[OrderBy]] = {
+  def rewriteOrderBy(q: Anal, r: Anal, rollupColIdx: Map[Expr, Int]): Option[Seq[OrderBy]] = {
+    val obsOpt: Seq[OrderBy] = q.orderBys
     log.debug(s"Attempting to map order by expression '${obsOpt}'") // scalastyle:ignore multiple.string.literals
 
     // it is silly if the rollup has an order by, but we really don't care.
@@ -416,7 +416,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
       case Nil => Some(Nil)
       case obs =>
         val mapped = obs.map { ob =>
-          rewriteExpr(ob.expression, r, rollupColIdx) match {
+          rewriteExpr(ob.expression, q, r, rollupColIdx) match {
             case Some(e) => Some(ob.copy(expression = e))
             case None => None
           }
@@ -450,8 +450,8 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
       // this lets us lookup the column and get the 0 based index in the select list
       val rollupColIdx = r.selection.values.zipWithIndex.toMap
 
-      val groupBy = rewriteGroupBy(q.groupBys, r, q.selection, rollupColIdx)
-      val where = rewriteWhere(q.where, r, rollupColIdx)
+      val groupBy = rewriteGroupBy(q, r, rollupColIdx)
+      val where = rewriteWhere(q.where, q, r, rollupColIdx)
 
       /*
        * As an optimization for query performance, the group rewrite code can turn a grouped query into an ungrouped
@@ -471,17 +471,17 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
         case _ => false
       }
 
-      val selection = rewriteSelection(q.selection, r, rollupColIdx) map { s =>
+      val selection = rewriteSelection(q, r, rollupColIdx) map { s =>
         if (shouldRemoveAggregates) s.mapValues(removeAggregates)
         else s
       }
 
-      val orderBy = rewriteOrderBy(q.orderBys, r, rollupColIdx) map { o =>
+      val orderBy = rewriteOrderBy(q, r, rollupColIdx) map { o =>
         if (shouldRemoveAggregates) o.map(removeAggregates)
         else o
       }
 
-      val having = rewriteHaving(q.having, q.groupBys, r, rollupColIdx) map { h =>
+      val having = rewriteHaving(q, r, rollupColIdx) map { h =>
         if (shouldRemoveAggregates) h.map(removeAggregates)
         else h
       }
