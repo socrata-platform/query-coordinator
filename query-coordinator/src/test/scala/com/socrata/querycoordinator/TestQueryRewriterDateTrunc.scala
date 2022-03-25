@@ -122,4 +122,43 @@ class TestQueryRewriterDateTrunc extends TestQueryRewriterDateTruncBase {
 
     rewrites should have size 2
   }
+
+
+  test("BETWEEN date_trunc_y GROUP BY date_trunc_y") {
+
+    val qBetweenDateTruncYGroupByDateTruncY = """
+      SELECT ward, count(*) AS count, date_trunc_y(crime_date) as cdt
+       WHERE crime_date BETWEEN date_trunc_y('2011-02-01') AND date_trunc_y('2012-05-02')
+       GROUP BY ward, date_trunc_y(crime_date)"""
+
+    val rewrQueryRymd = """SELECT c2 as ward, coalesce(sum(c3), 0) as count, date_trunc_y(c1) as cdt
+                            WHERE c1 BETWEEN date_trunc_y('2011-02-01') AND date_trunc_y('2012-05-02')
+                            GROUP BY c2, date_trunc_y(c1)"""
+    val rewrQueryAnalysisRymd = analyzeRewrittenQuery("r_ymd", rewrQueryRymd)
+
+    val rewrQueryRym = rewrQueryRymd // not used, just exist to keep the structure
+    val rewrQueryAnalysisRym = rewrQueryAnalysisRymd
+
+    val rewrQueryRy = """SELECT c2 as ward, coalesce(c3, 0) as count, c1 as cdt
+                          WHERE c1 BETWEEN date_trunc_y('2011-02-01') AND date_trunc_y('2012-05-02')"""
+    val rewrQueryAnalysisRy = analyzeRewrittenQuery("r_y", rewrQueryRy)
+
+    val queryAnalysis = analyzeQuery(qBetweenDateTruncYGroupByDateTruncY)
+
+    val rewrExprs = rewriteExpr(rewriter, queryAnalysis.selection.values.head, queryAnalysis, rollupAnalysis)
+    rewrExprs("r_y").isDefined should be (true)
+
+    val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
+
+    rewrites should contain key "r_ymd"
+    rewrites.get("r_ymd").get should equal(rewrQueryAnalysisRymd)
+
+    rewrites should contain key "r_ym"
+    rewrites.get("r_ym").get should equal(rewrQueryAnalysisRym)
+
+    rewrites should contain key "r_y"
+    rewrites.get("r_y").get should equal(rewrQueryAnalysisRy)
+
+    rewrites should have size 3
+  }
 }

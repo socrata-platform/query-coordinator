@@ -1,6 +1,6 @@
 package com.socrata.querycoordinator
 
-import com.socrata.querycoordinator.QueryRewriter.{Anal, ColumnId, RollupName}
+import com.socrata.querycoordinator.QueryRewriter.{Anal, ColumnId, Expr, RollupName}
 import com.socrata.querycoordinator.util.Join
 import com.socrata.soql.{SoQLAnalysis, SoQLAnalyzer}
 import com.socrata.soql.environment.{ColumnName, TypeName}
@@ -61,6 +61,16 @@ abstract class TestQueryRewriterBase extends TestBase {
         case (xx: Product, yy: Product) => compareProducts(xx, yy, indent + 1)
         case _ => println(">" * indent + s"Can't compare ${x} with ${y} but ... ${x.hashCode} vs ${y.hashCode}")
       }
+    }
+  }
+
+  /**
+    * A handy function to test QueryRewriter.rewriteExpr
+    */
+  def rewriteExpr(rewriter: QueryRewriter, e: Expr, q: Anal, rollups: Map[RollupName, Anal]): Map[RollupName, Option[Expr]] = {
+    rollups.mapValues { case r =>
+      val rollupColIdx = r.selection.values.zipWithIndex.toMap
+      rewriter.rewriteExpr(e, r, rollupColIdx)
     }
   }
 }
