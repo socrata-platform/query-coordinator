@@ -260,6 +260,54 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     }
   }
 
+  def isLiteral(expr: Expr): Boolean = {
+    expr match {
+      case _: ColumnRef =>
+        false
+      case _: TypedLiteral[_] =>
+        true
+      case fc: FunctionCall =>
+        !fc.function.isAggregate &&
+          fc.parameters.nonEmpty &&
+          fc.parameters.forall(x => isLiteral(x))
+      case _ =>
+        false
+    }
+  }
+
+  private def rewriteDateTrunc(r: Anal, rollupColIdx: Map[Expr, Int], fc: FunctionCall): Option[Expr] = {
+    val fn = fc.function.function
+    val dateTrunFn: Option[Function[SoQLType]] = dateTruncHierarchy.find(f => f == fn)
+    dateTrunFn.flatMap { _ =>
+      rollupColIdx.get(fc) match {
+        case Some(ruColIdx) =>
+          Some(typed.ColumnRef(NoQualifier, rollupColumnId(ruColIdx), SoQLFloatingTimestamp.t)(fc.position))
+        case None =>
+          val left +: _ = fc.parameters
+          left match {
+            // The left hand side should be a floating timestamp, and the right hand side will be a string being cast
+            // to a floating timestamp.  eg. my_floating_timestamp < '2010-01-01'::floating_timestamp
+            // While it is eminently reasonable to also accept them in flipped order, that is being left for later.
+            case colRef@typed.ColumnRef(_, _, SoQLFloatingTimestamp) =>
+              for {
+                truncatedTo <- Some(fc.function.function)
+                // we can rewrite to any date_trunc_xx that is the same or after the desired one in the hierarchy
+                possibleTruncFunctions <- Some(dateTruncHierarchy.dropWhile { f => f != truncatedTo })
+                // match date_trunc hierachy or plain datetime column without truncate
+                ruColIdx <- findFunctionOnColumn(rollupColIdx, possibleTruncFunctions, colRef).orElse(rollupColIdx.get(colRef))
+              } yield {
+                val newParams = Seq(typed.ColumnRef(NoQualifier, rollupColumnId(ruColIdx), SoQLFloatingTimestamp.t)(fc.position))
+                fc.copy(parameters = newParams)
+              }
+            case l if isLiteral(l) =>
+              Some(fc)
+            case _ =>
+              None
+          }
+      }
+    }
+  }
+
   /** Recursively maps the Expr based on the rollupColIdx map, returning either
     * a mapped expression or None if the expression couldn't be mapped.
     *
@@ -327,6 +375,8 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
         } yield fc.copy(
           parameters = Seq(typed.ColumnRef(NoQualifier, rollupColumnId(colIdx), colRef.typ)(fc.position)),
           window = window)
+      case fc: FunctionCall if dateTruncHierarchy.exists(dtf => dtf == fc.function.function) =>
+        rewriteDateTrunc(r, rollupColIdx, fc)
       case fc: FunctionCall if !fc.function.isAggregate => rewriteNonagg(r, rollupColIdx, fc)
       // If the function is "self aggregatable" we can apply it on top of an already aggregated rollup
       // column, eg. select foo, bar, max(x) max_x group by foo, bar --> select foo, max(max_x) group by foo
