@@ -260,7 +260,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     }
   }
 
-  def isLiteral(expr: Expr): Boolean = {
+  def isConstant(expr: Expr): Boolean = {
     expr match {
       case _: ColumnRef =>
         false
@@ -269,7 +269,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
       case fc: FunctionCall =>
         !fc.function.isAggregate &&
           fc.parameters.nonEmpty &&
-          fc.parameters.forall(x => isLiteral(x))
+          fc.parameters.forall(x => isConstant(x))
       case _ =>
         false
     }
@@ -283,12 +283,12 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
         case Some(ruColIdx) =>
           Some(typed.ColumnRef(NoQualifier, rollupColumnId(ruColIdx), SoQLFloatingTimestamp.t)(fc.position))
         case None =>
-          val left +: _ = fc.parameters
+          val left = fc.parameters.headOption
           left match {
             // The left hand side should be a floating timestamp, and the right hand side will be a string being cast
             // to a floating timestamp.  eg. my_floating_timestamp < '2010-01-01'::floating_timestamp
             // While it is eminently reasonable to also accept them in flipped order, that is being left for later.
-            case colRef@typed.ColumnRef(_, _, SoQLFloatingTimestamp) =>
+            case Some(colRef@typed.ColumnRef(_, _, SoQLFloatingTimestamp)) =>
               for {
                 truncatedTo <- Some(fc.function.function)
                 // we can rewrite to any date_trunc_xx that is the same or after the desired one in the hierarchy
@@ -299,7 +299,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
                 val newParams = Seq(typed.ColumnRef(NoQualifier, rollupColumnId(ruColIdx), SoQLFloatingTimestamp.t)(fc.position))
                 fc.copy(parameters = newParams)
               }
-            case l if isLiteral(l) =>
+            case Some(l) if isConstant(l) =>
               Some(fc)
             case _ =>
               None
