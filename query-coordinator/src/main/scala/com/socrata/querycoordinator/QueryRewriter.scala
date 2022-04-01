@@ -646,8 +646,13 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
           val dsctx = prefixedDsContext(sch.toSchema())
           acc + (tn -> dsctx)
         }
-        val analysis0 = analyzer.analyzeBinary(parsedQueries)(contexts).outputSchema.leaf
-        val analysis = analysis0.mapColumnIds(removeRollupPrefix)
+
+        val analysis = analyzer.analyzeBinary(parsedQueries)(contexts) match {
+          case Leaf(a) =>
+            a.mapColumnIds(removeRollupPrefix)
+          case Compound(_, _, _) =>
+            throw new Exception("Rollup does not support compound query")
+        }
         analysis
       }
     }
