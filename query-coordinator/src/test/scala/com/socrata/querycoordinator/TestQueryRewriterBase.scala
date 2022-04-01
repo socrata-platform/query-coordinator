@@ -13,7 +13,7 @@ abstract class TestQueryRewriterBase extends TestBase {
   import Join._
 
   val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
-  val rewriter = new QueryRewriter(analyzer)
+  val rewriter = new QueryRewriterWithJoinEnabled(analyzer)
   val rollups: Seq[(String, String)]
   val rollupAnalysis: Map[RollupName, Anal]
 

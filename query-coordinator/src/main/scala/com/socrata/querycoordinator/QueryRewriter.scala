@@ -564,7 +564,12 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
         else h
       }
 
-      val joins = rewriteJoin(q.joins, r)
+      val joins = {
+        // might want to tackle updated-ness issue of related table
+        // before we open up join to the public
+        if (!debug && r.joins.nonEmpty) None
+        else rewriteJoin(q.joins, r)
+      }
 
       val mismatch =
         ensure(selection.isDefined, "mismatch on select") orElse
