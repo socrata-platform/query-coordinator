@@ -796,7 +796,7 @@ object QueryRewriter {
             case JoinQuery(selects, _) =>
               acc ++ collectTableNames(selects)
             case JoinFunc(_, _) =>
-              throw new Exception("Unexpected join function")
+              throw new Exception("Unsupported join function")
           }
         }
     }
