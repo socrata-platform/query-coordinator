@@ -325,7 +325,7 @@ class QueryResource(secondary: Secondary,
                     rollupInfoFetcher(base.receiveTimeoutMS(schemaTimeout.toMillis.toInt), datasetOrResourceName, copy) match {
                       case RollupInfoFetcher.Successful(rollups) =>
                         // Only the leftmost soql in a chain can use rollups.
-                        possiblyRewriteQuery(schemaFrom, analysis, rollups, Map.empty[String, String], getSchemaByTableName) match {
+                        possiblyRewriteQuery(schemaFrom, analysis, rollups, getSchemaByTableName) match {
                           case (rewrittenAnal, ru@Some(_)) =>
                             (Leaf(rewrittenAnal), ru.toSeq)
                           case (_, None) =>
@@ -357,11 +357,10 @@ class QueryResource(secondary: Secondary,
 
         def possiblyRewriteQuery(schema: Schema, analyzedQuery: SoQLAnalysis[String, SoQLType],
                                  rollups: Seq[RollupInfo],
-                                 project: Map[String, String],
                                  schemaFetcher: TableName => SchemaWithFieldName):
             (SoQLAnalysis[String, SoQLType], Option[String]) = {
           val rewritten = RollupScorer.bestRollup(
-            queryRewriter.possibleRewrites(schema, analyzedQuery, rollups, project, schemaFetcher, debug).toSeq)
+            queryRewriter.possibleRewrites(schema, analyzedQuery, rollups, schemaFetcher, debug).toSeq)
           val (rollupName, analysis) = rewritten map { x => (Option(x._1), x._2) } getOrElse ((None, analyzedQuery))
           rollupName.foreach(ru => log.info(s"Rewrote query on dataset $dataset to rollup $ru")) // only log rollup name if it is defined.
           log.debug(s"Rewritten analysis: $analysis")

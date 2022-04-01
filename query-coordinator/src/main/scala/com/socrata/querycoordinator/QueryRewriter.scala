@@ -493,8 +493,8 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     possibleRewrites(q, rollups, false)
   }
 
-  def possibleRewrites(schema: Schema, q: Anal, rollups: Seq[RollupInfo], project: Map[String, String], getSchemaByTableName: TableName => SchemaWithFieldName, debug: Boolean): Map[RollupName, Anal] = {
-    possibleRewrites(q, analyzeRollups(schema, rollups, project, getSchemaByTableName), debug)
+  def possibleRewrites(schema: Schema, q: Anal, rollups: Seq[RollupInfo], getSchemaByTableName: TableName => SchemaWithFieldName, debug: Boolean): Map[RollupName, Anal] = {
+    possibleRewrites(q, analyzeRollups(schema, rollups, getSchemaByTableName), debug)
   }
 
   def possibleRewrites(q: Anal, rollups: Map[RollupName, Anal], debug: Boolean): Map[RollupName, Anal] = {
@@ -631,11 +631,8 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     QueryParser.dsContext(columnIdMap, schema.schema)
   }
 
-  def analyzeRollups(schema: Schema, rollups: Seq[RollupInfo], project: Map[String, String],
+  def analyzeRollups(schema: Schema, rollups: Seq[RollupInfo],
                      getSchemaByTableName: TableName => SchemaWithFieldName): Map[RollupName, Anal] = {
-
-    // TODO: Join - qualifier
-    def reprojectColumn(cn: ColumnId, qual: Qualifier): ColumnId = project.getOrElse(cn, cn)
 
     val dsContext = Map(TableName.PrimaryTable.qualifier -> prefixedDsContext(schema))
     val rollupMap = rollups.map { r => (r.name, r.soql) }.toMap
@@ -650,9 +647,8 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
           acc + (tn -> dsctx)
         }
         val analysis0 = analyzer.analyzeBinary(parsedQueries)(contexts).outputSchema.leaf
-        val analysis1 = analysis0.mapColumnIds(removeRollupPrefix)
-        val analysis2 = analysis1.mapColumnIds(reprojectColumn)
-        analysis2
+        val analysis = analysis0.mapColumnIds(removeRollupPrefix)
+        analysis
       }
     }
 
@@ -663,22 +659,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     }
 
     analysisMap collect {
-      case (k, Success(a)) =>
-        val ruAnalysis =
-          if (project.nonEmpty) {
-            val reprojectedSelection = a.selection.map {
-              case x@(cn: ColumnName, expr) =>
-                project.get(cn.name.stripMargin('_')) match {
-                  case Some(newName) =>
-                    (new ColumnName(newName), expr)
-                  case None =>
-                    x
-                }
-            }
-            a.copy(selection = reprojectedSelection)
-          } else {
-            a
-          }
+      case (k, Success(ruAnalysis)) =>
         k -> ruAnalysis
     }
   }
