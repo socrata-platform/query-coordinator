@@ -26,6 +26,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     ("r7", "SELECT `:wido-ward`, min(`_dxyz-num1`), max(`_dxyz-num1`), sum(`_dxyz-num1`), count(*) GROUP BY `:wido-ward`"),
     ("r8", "SELECT date_trunc_ym(`_crim-date`), `:wido-ward`, count(*) GROUP BY date_trunc_ym(`_crim-date`), `:wido-ward`"),
     ("r9", "SELECT `_crim-typ3`, count(case(`_crim-date` IS NOT NULL, `_crim-date`, true, `_some-date`)) group by `_crim-typ3`"),
+    ("r10", "SELECT `:wido-ward`, sum(`_dxyz-num1`), count(`_dxyz-num1`) GROUP BY `:wido-ward`"),
     ("rw1", "SELECT `_dxyz-num1`, count(`_dxyz-num1`) WHERE `_crim-typ3`='traffic' GROUP BY `_dxyz-num1`"),
     ("rw4", "SELECT `:wido-ward`, `_crim-typ3`, count(*), `_dxyz-num1`, `_crim-date` WHERE `_crim-typ3`='traffic' GROUP BY `:wido-ward`, `_crim-typ3`, `_dxyz-num1`, `_crim-date`")
   )
@@ -313,6 +314,25 @@ class TestQueryRewriter extends TestQueryRewriterBase {
 
     rewrites should contain key "r7"
     rewrites.get("r7").get should equal(rewrittenQueryAnalysis)
+
+    // TODO should be 2 eventually... should also rewrite from table w/o group by
+    //    rewrites should contain key("r4")
+
+    rewrites should have size 1
+  }
+
+  test("map query ward, avg(number1)") {
+    val q = "SELECT ward, avg(number1) AS ward_avg GROUP BY ward"
+    val queryAnalysis = analyzeQuery(q)
+
+    val rewrittenQuery = "SELECT c1 AS ward, c2/c3 as ward_avg"
+
+    val rewrittenQueryAnalysis = analyzeRewrittenQuery("r10", rewrittenQuery)
+
+    val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
+
+    rewrites should contain key "r10"
+    rewrites.get("r10").get should equal(rewrittenQueryAnalysis)
 
     // TODO should be 2 eventually... should also rewrite from table w/o group by
     //    rewrites should contain key("r4")

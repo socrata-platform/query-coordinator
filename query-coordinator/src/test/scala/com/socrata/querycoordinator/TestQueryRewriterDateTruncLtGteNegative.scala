@@ -22,10 +22,4 @@ trait TestQueryRewriterDateTruncLtGteNegative { this: TestQueryRewriterDateTrunc
       }
     }
   }
-
-  test("does not support avg rewrite") {
-    val q = "SELECT avg(number1) WHERE crime_date >= '2011-01-01' AND crime_date < '2019-01-01'"
-    val rewrites = rewritesFor(q)
-    rewrites should have size 0
-  }
 }
