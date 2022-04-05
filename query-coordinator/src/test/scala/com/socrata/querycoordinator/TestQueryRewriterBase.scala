@@ -3,8 +3,9 @@ package com.socrata.querycoordinator
 import com.socrata.querycoordinator.QueryRewriter.{Anal, ColumnId, Expr, RollupName}
 import com.socrata.querycoordinator.util.Join
 import com.socrata.soql.{SoQLAnalysis, SoQLAnalyzer}
-import com.socrata.soql.environment.{ColumnName, TypeName}
+import com.socrata.soql.environment.{ColumnName, TableName, TypeName}
 import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
+import com.socrata.soql.typed.Qualifier
 import com.socrata.soql.types.SoQLType
 
 abstract class TestQueryRewriterBase extends TestBase {
@@ -12,7 +13,7 @@ abstract class TestQueryRewriterBase extends TestBase {
   import Join._
 
   val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
-  val rewriter = new QueryRewriter(analyzer)
+  val rewriter = new QueryRewriterWithJoinEnabled(analyzer)
   val rollups: Seq[(String, String)]
   val rollupAnalysis: Map[RollupName, Anal]
 
@@ -42,6 +43,52 @@ abstract class TestQueryRewriterBase extends TestBase {
   /** The dataset context, used for parsing the query */
   val dsContext = QueryParser.dsContext(columnIdMapping, rawSchema)
 
+  val rawSchemaJoin = Map[String, SoQLType](
+    "crim-typ3" -> SoQLType.typesByName(TypeName("text")),
+    "aaaa-aaaa" -> SoQLType.typesByName(TypeName("text")),
+    "bbbb-bbbb" -> SoQLType.typesByName(TypeName("text")),
+    "dddd-dddd" -> SoQLType.typesByName(TypeName("floating_timestamp")),
+    "nnnn-nnnn" -> SoQLType.typesByName(TypeName("number"))
+  )
+
+  val schemaJoin = Schema("NOHASH", rawSchemaJoin, "NOPK")
+
+  val columnIdMappingJoin = Map[ColumnName, ColumnId](
+    ColumnName("crime_type") -> "crim-typ3",
+    ColumnName("aa") -> "aaaa-aaaa",
+    ColumnName("bb") -> "bbbb-bbbb",
+    ColumnName("floating") -> "dddd-dddd",
+    ColumnName("nn") -> "nnnn-nnnn"
+  )
+
+  val dsContextJoin = QueryParser.dsContext(columnIdMappingJoin, rawSchemaJoin)
+
+  val joinTable = TableName("_tttt-tttt", Some("t1"))
+
+  def multiTablesColumnIdMapping(cn: ColumnName, q: Qualifier): ColumnId = {
+    q match {
+      case None =>
+        columnIdMapping(cn)
+      case Some(q) => q == TableName.SodaFountainPrefix + joinTable.qualifier
+        columnIdMappingJoin(cn)
+      case Some(unknown) =>
+        throw new Exception(s"Unknown qualifier $unknown")
+    }
+  }
+
+  def getSchemaWithFieldName(tn: TableName): SchemaWithFieldName = {
+    tn match {
+      case tn: TableName if tn.name == joinTable.name =>
+        val schemaWithFieldName = columnIdMappingJoin.map {
+          case (cn: ColumnName, cid) =>
+            (cid, (rawSchemaJoin(cid), cn.name))
+        }
+        SchemaWithFieldName("NOHASH", schemaWithFieldName, "NOPK")
+      case _ =>
+        throw new Exception("table not found")
+    }
+  }
+
   override def beforeAll() {
     withClue("Not all rollup definitions successfully parsed, check log for failures") {
       rollupAnalysis should have size (rollups.size)
@@ -49,8 +96,11 @@ abstract class TestQueryRewriterBase extends TestBase {
   }
 
   /** Analyze the query and map to column ids, just like we have in real life. */
-  def analyzeQuery(q: String): SoQLAnalysis[ColumnId, SoQLType] =
-    analyzer.analyzeUnchainedQuery(q)(toAnalysisContext(dsContext)).mapColumnIds(mapIgnoringQualifier(columnIdMapping))
+  def analyzeQuery(q: String): SoQLAnalysis[ColumnId, SoQLType] = {
+    val ctx = toAnalysisContext(dsContext) + (joinTable.nameWithSodaFountainPrefix -> dsContextJoin)
+    val analysis = analyzer.analyzeUnchainedQuery(q)(ctx)
+    analysis.mapColumnIds(multiTablesColumnIdMapping)
+  }
 
   /** Silly half-assed function for debugging when things don't match */
   def compareProducts(a: Product, b: Product, indent: Int = 0): Unit = {

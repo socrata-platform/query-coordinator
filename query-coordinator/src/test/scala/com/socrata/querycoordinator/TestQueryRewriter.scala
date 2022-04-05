@@ -28,13 +28,14 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     ("r9", "SELECT `_crim-typ3`, count(case(`_crim-date` IS NOT NULL, `_crim-date`, true, `_some-date`)) group by `_crim-typ3`"),
     ("r10", "SELECT `:wido-ward`, sum(`_dxyz-num1`), count(`_dxyz-num1`) GROUP BY `:wido-ward`"),
     ("rw1", "SELECT `_dxyz-num1`, count(`_dxyz-num1`) WHERE `_crim-typ3`='traffic' GROUP BY `_dxyz-num1`"),
-    ("rw4", "SELECT `:wido-ward`, `_crim-typ3`, count(*), `_dxyz-num1`, `_crim-date` WHERE `_crim-typ3`='traffic' GROUP BY `:wido-ward`, `_crim-typ3`, `_dxyz-num1`, `_crim-date`")
+    ("rw4", "SELECT `:wido-ward`, `_crim-typ3`, count(*), `_dxyz-num1`, `_crim-date` WHERE `_crim-typ3`='traffic' GROUP BY `:wido-ward`, `_crim-typ3`, `_dxyz-num1`, `_crim-date`"),
+    ("rj4", "SELECT `_crim-typ3`, @t1.`_aaaa-aaaa`, count(1) JOIN @tttt-tttt as t1 ON `_crim-typ3` = @t1.`_crim-typ3` GROUP BY `_crim-typ3`, @t1.`_aaaa-aaaa`")
   )
 
   val rollupInfos = rollups.map { x => new RollupInfo(x._1, x._2) }
 
   /** Pull in the rollupAnalysis for easier debugging */
-  val rollupAnalysis = rewriter.analyzeRollups(schema, rollupInfos, Map.empty)
+  val rollupAnalysis = rewriter.analyzeRollups(schema, rollupInfos, getSchemaWithFieldName)
 
   val rollupRawSchemas = rollupAnalysis.mapValues { case analysis: Anal =>
     analysis.selection.values.toSeq.zipWithIndex.map { case (expr, idx) =>
@@ -457,6 +458,24 @@ class TestQueryRewriter extends TestQueryRewriterBase {
 
   test("don't rewrite if rollup where is a subset of query top level OR part") {
     assertNoRollupMatch("SELECT number1, count(number1) AS cn1 WHERE crime_type = 'traffic' OR number1 = 2 GROUP BY number1")
+  }
+
+  test("rewrite query with join") {
+    val q = "SELECT crime_type, @t1.aa, count(0) as crimes, count('potato') as crimes_potato JOIN @tttt-tttt as t1 ON crime_type=@t1.crime_type GROUP BY crime_type, @t1.aa"
+    val queryAnalysis = analyzeQuery(q)
+    val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
+    val rewrittenQueryRJ4 = "SELECT c1 AS crime_type, c2 AS aa, coalesce(c3, 0) as crimes, coalesce(c3, 0) as crimes_potato"
+    val rewrittenQueryAnalysisRJ4 = analyzeRewrittenQuery("rj4", rewrittenQueryRJ4)
+    rewrites should contain key "rj4"
+    rewrites.get("rj4").get should equal(rewrittenQueryAnalysisRJ4)
+    rewrites should have size 1
+  }
+
+  test("don't rewrite if join is different") {
+    val q = "SELECT crime_type, @t1.aa, count(0) as crimes, count('potato') as crimes_potato LEFT OUTER JOIN @tttt-tttt as t1 ON crime_type=@t1.crime_type GROUP BY crime_type, @t1.aa"
+    val queryAnalysis = analyzeQuery(q)
+    val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
+    rewrites should have size 0
   }
 
   private def assertNoRollupMatch(q: String): Unit = {
