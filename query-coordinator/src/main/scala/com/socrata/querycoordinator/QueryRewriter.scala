@@ -352,6 +352,24 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
           typed.FunctionCall(CoalesceNumber, Seq(typed.FunctionCall(SumNumber, Seq(newSumCol), simplifiedRwFilter, window)(fc.position, fc.position),
                                                  typed.NumberLiteral(0, SoQLNumber.t)(fc.position)), None, window)(fc.position, fc.position)
         }
+      // An avg(...) on q gets mapped to a sum(...)/count(...) on a matching column in the rollup
+      case fc@typed.FunctionCall(MonomorphicFunction(Avg, _), _, filter, window) =>
+        val sumMinusFilter = stripFilter(fc).copy(function = SumNumber)
+        val countMinusFilter = stripFilter(fc).copy(function = CountNumber)
+        val filterAndRollupWhere = andRollupWhereToFilter(filter, r)
+        for {
+          sumIdx <- rollupColIdx.get(sumMinusFilter)
+          countIdx <- rollupColIdx.get(countMinusFilter)
+          rwFilter <- rewriteWhere(filterAndRollupWhere, r, rollupColIdx)
+        } yield {
+          val simplifiedRwFilter = simplifyAndTrue(rwFilter)
+          val newSumCol = typed.ColumnRef(NoQualifier, rollupColumnId(sumIdx), SoQLNumber.t)(fc.position)
+          val newCountCol = typed.ColumnRef(NoQualifier, rollupColumnId(countIdx), SoQLNumber.t)(fc.position)
+          typed.FunctionCall(DivNumber,
+                             Seq(typed.FunctionCall(SumNumber, Seq(newSumCol), simplifiedRwFilter, window)(fc.position, fc.position),
+                                 typed.FunctionCall(CountNumber, Seq(newCountCol), simplifiedRwFilter, window)(fc.position, fc.position)),
+                             None, window)(fc.position, fc.position)
+        }
       // If this is a between function operating on floating timestamps, and arguments b and c are both date aggregates,
       // then try to rewrite argument a to use a rollup.
       case fc: FunctionCall
@@ -674,6 +692,8 @@ object QueryRewriter {
 
   val SumNumber = MonomorphicFunction(Sum, Map("a" -> SoQLNumber))
   val CoalesceNumber = MonomorphicFunction(Coalesce, Map("a" -> SoQLNumber))
+  val DivNumber = DivNumNum.monomorphic.get
+  val CountNumber = MonomorphicFunction(Count, Map("a" -> SoQLNumber))
 
   private def noRollup(q: Anal): Boolean = {
     q.hints.exists {

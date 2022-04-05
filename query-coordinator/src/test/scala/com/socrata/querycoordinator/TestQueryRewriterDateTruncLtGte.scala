@@ -104,4 +104,15 @@ class TestQueryRewriterDateTruncLtGte extends TestQueryRewriterDateTruncBase
     val rewrite = rewrites("r_sca_ymd")
     rewrite should equal(ra)
   }
+
+  test("supports avg rewrite") {
+    val q = "SELECT avg(number1) WHERE crime_date >= '2011-01-01' AND crime_date < '2019-01-01'"
+    val rq = "SELECT sum(c2) /  count(c3) as avg_number1 WHERE c1 >= '2011-01-01' AND c1 < '2019-01-01'"
+    val ra = analyzeRewrittenQuery("r_sca_ymd", rq)
+    val rewrites = rewritesFor(q)
+    rewrites should have size 1
+    rewrites should contain key "r_sca_ymd"
+    val rewrite = rewrites("r_sca_ymd")
+    rewrite should equal(ra)
+  }
 }
