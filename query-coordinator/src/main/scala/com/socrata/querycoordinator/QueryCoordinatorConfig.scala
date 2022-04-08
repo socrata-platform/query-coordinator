@@ -22,7 +22,6 @@ class QueryCoordinatorConfig(config: Config, root: String)
 
   val connectTimeout = config.getDuration(path("connect-timeout"), TimeUnit.MILLISECONDS).millis
   val schemaTimeout = config.getDuration(path("get-schema-timeout"), TimeUnit.MILLISECONDS).millis
-  val receiveTimeout = config.getDuration(path("query-timeout"), TimeUnit.MILLISECONDS).millis // http query (not db query)
   val maxDbQueryTimeout = config.getDuration(path("max-db-query-timeout"), TimeUnit.MILLISECONDS).millis
   val maxRows = optionally(getInt("max-rows"))
   val defaultRowsLimit = getInt("default-rows-limit")
