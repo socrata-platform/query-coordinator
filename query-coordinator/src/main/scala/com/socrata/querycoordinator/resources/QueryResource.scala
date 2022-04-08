@@ -199,8 +199,9 @@ class QueryResource(secondary: Secondary,
                                  headerSocrataLastModified -> schema.lastModified.toHttpDate) ++
             resourceName.map(fbf => Map(headerSocrataResource -> fbf)).getOrElse(Nil) ++
             (if (analyze) List("X-Socrata-Analyze" -> "true" ) else Nil)
+          val recvTimeout = queryTimeoutSeconds.map(x => Integer.parseInt(x) * 1000).getOrElse(receiveTimeout.toMillis.toInt)
           queryExecutor(
-            base = base.receiveTimeoutMS(receiveTimeout.toMillis.toInt).connectTimeoutMS(connectTimeout.toMillis.toInt),
+            base = base.receiveTimeoutMS(recvTimeout).connectTimeoutMS(connectTimeout.toMillis.toInt),
             dataset = dataset,
             analyses = analyzedQuery,
             schema = schema.payload,
