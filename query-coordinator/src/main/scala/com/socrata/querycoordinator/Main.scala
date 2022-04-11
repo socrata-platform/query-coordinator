@@ -100,7 +100,7 @@ object Main extends App {
       secondary = secondary,
       schemaFetcher = schemaFetcher,
       queryParser = new QueryParser(analyzer, schemaFetcher, config.maxRows, config.defaultRowsLimit),
-      queryExecutor = new QueryExecutor(httpClient, analysisSerializer, teeStream, cacheSessionProvider, windower, maxWindowCount, config.maxDbQueryTimeout.toSeconds),
+      queryExecutor = new QueryExecutor(httpClient, analysisSerializer, teeStream, cacheSessionProvider, windower, maxWindowCount, config.receiveTimeout.toSeconds),
       connectTimeout = config.connectTimeout,
       schemaTimeout = config.schemaTimeout,
       receiveTimeout = config.receiveTimeout,

@@ -189,6 +189,10 @@ trait QueryService {
     BadRequest ~> errContent(RequestErrors.invalidJoin, "Can not join using the same expression on both sides of the operator", Map())
   }
 
+  def requestedQueryTimeoutLimitExceededResponse: HttpResponse = {
+    BadRequest ~> errContent(RequestErrors.requestedQueryTimeoutLimitExceeded, "Requested query timeout limit exceeded", Map())
+  }
+
   def noContentTypeResponse: HttpResponse = {
     internalServerError
   }

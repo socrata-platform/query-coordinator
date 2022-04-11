@@ -272,6 +272,8 @@ class QueryResource(secondary: Secondary,
               }
             case QueryExecutor.InvalidJoin =>
               finishRequest(invalidJoinResponse)
+            case QueryExecutor.RequestTimeoutExceedLimit(_) =>
+              finishRequest(requestedQueryTimeoutLimitExceededResponse)
           }
         }
 
