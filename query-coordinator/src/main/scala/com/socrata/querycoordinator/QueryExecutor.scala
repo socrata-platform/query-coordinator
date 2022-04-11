@@ -451,7 +451,7 @@ class QueryExecutor(httpClient: HttpClient,
                                   .getOrElse(defaultQueryTimeoutSeconds)
 
     if (qtos > defaultQueryTimeoutSeconds && !debug) {
-      return RequestTimeoutExceedLimit(defaultQueryTimeoutSeconds)
+      return RequestedTimeoutLimitExceeded(defaultQueryTimeoutSeconds)
     }
 
     val params = List(
@@ -565,7 +565,7 @@ object QueryExecutor {
 
   case object InvalidJoin extends Result
 
-  case class RequestTimeoutExceedLimit(maxTimeoutSeconds: Long) extends Result
+  case class RequestedTimeoutLimitExceeded(maxTimeoutSeconds: Long) extends Result
 
   def checkSchemaHashMismatch(json: JValue): Option[Schema] = {
     for {
