@@ -33,7 +33,6 @@ class QueryResource(secondary: Secondary,
                     queryExecutor: QueryExecutor,
                     connectTimeout: FiniteDuration,
                     schemaTimeout: FiniteDuration,
-                    receiveTimeout: FiniteDuration,
                     schemaCache: (String, Option[String], Schema) => Unit,
                     schemaDecache: (String, Option[String]) => Option[Schema],
                     secondaryInstance: SecondaryInstanceSelector,
@@ -199,9 +198,8 @@ class QueryResource(secondary: Secondary,
                                  headerSocrataLastModified -> schema.lastModified.toHttpDate) ++
             resourceName.map(fbf => Map(headerSocrataResource -> fbf)).getOrElse(Nil) ++
             (if (analyze) List("X-Socrata-Analyze" -> "true" ) else Nil)
-          val recvTimeout = queryTimeoutSeconds.map(x => Integer.parseInt(x) * 1000).getOrElse(receiveTimeout.toMillis.toInt)
           queryExecutor(
-            base = base.receiveTimeoutMS(recvTimeout).connectTimeoutMS(connectTimeout.toMillis.toInt),
+            base = base.connectTimeoutMS(connectTimeout.toMillis.toInt),
             dataset = dataset,
             analyses = analyzedQuery,
             schema = schema.payload,
@@ -515,7 +513,6 @@ object QueryResource {
             queryExecutor: QueryExecutor,
             connectTimeout: FiniteDuration,
             schemaTimeout: FiniteDuration,
-            receiveTimeout: FiniteDuration,
             schemaCache: (String, Option[String], Schema) => Unit,
             schemaDecache: (String, Option[String]) => Option[Schema],
             secondaryInstance: SecondaryInstanceSelector,
@@ -527,7 +524,6 @@ object QueryResource {
       queryExecutor,
       connectTimeout,
       schemaTimeout,
-      receiveTimeout,
       schemaCache,
       schemaDecache,
       secondaryInstance,
