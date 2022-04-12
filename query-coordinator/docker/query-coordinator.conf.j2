@@ -6,7 +6,7 @@ com.socrata.query-coordinator {
 
   all-secondary-instance-names = [{{ SECONDARY_INSTANCES }}]
 
-  query-timeout = {{ QUERY_TIMEOUT }}
+  max-db-query-timeout = {{ MAX_DB_QUERY_TIMEOUT }}
 
   {% if CACHE_DATABASE_HOST is defined and CACHE_DATABASE_PORT is defined and CACHE_DATABASE_PASSWORD is defined and CACHE_DATABASE_USERNAME is defined -%}
   cache {

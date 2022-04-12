@@ -39,7 +39,7 @@ class QueryExecutor(httpClient: HttpClient,
                     cacheSessionProvider: CacheSessionProvider,
                     windower: Windower,
                     maxWindowsToCache: BigInt,
-                    defaultQueryTimeoutSeconds: Long) {
+                    queryTimeoutSecondsMax: Long) {
   private val forceCacheEvenWhenNoop = java.lang.Boolean.getBoolean("com.socrata.query-coordinator.force-cache-even-when-noop")
 
   private val qpDataset = "dataset"
@@ -447,12 +447,10 @@ class QueryExecutor(httpClient: HttpClient,
                           explain: Boolean): Result = {
     val serializedAnalyses = serializeAnalysis(analyses)
 
-    val qtos = queryTimeoutSeconds.map(x => try { Integer.parseInt(x) } catch { case _: NumberFormatException => defaultQueryTimeoutSeconds })
-                                  .getOrElse(defaultQueryTimeoutSeconds)
-
-    if (qtos > defaultQueryTimeoutSeconds && !debug) {
-      return RequestedTimeoutLimitExceeded(defaultQueryTimeoutSeconds)
-    }
+    val wantQueryTimeoutSeconds = queryTimeoutSeconds.map(x => try { Integer.parseInt(x) } catch { case _: NumberFormatException => queryTimeoutSecondsMax })
+                                                     .getOrElse(queryTimeoutSecondsMax)
+    val qtos = if (debug) wantQueryTimeoutSeconds
+               else math.min(queryTimeoutSecondsMax, wantQueryTimeoutSeconds)
 
     val params = List(
       qpDataset -> dataset,
@@ -564,8 +562,6 @@ object QueryExecutor {
   case class ToForward(responseCode: Int, headers: Map[String, Seq[String]], body: InputStream) extends Result
 
   case object InvalidJoin extends Result
-
-  case class RequestedTimeoutLimitExceeded(maxTimeoutSeconds: Long) extends Result
 
   def checkSchemaHashMismatch(json: JValue): Option[Schema] = {
     for {

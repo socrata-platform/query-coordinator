@@ -45,7 +45,6 @@ object QueryCoordinatorErrors {
     val unknownColumnIds = "req.unknown.column-ids"
     val rowLimitExceeded = "req.row-limit-exceeded"
     val invalidJoin = "req.invalid-join"
-    val requestedQueryTimeoutLimitExceeded = "req.requested-query-timeout-limit-exceeded"
   }
 
 }
