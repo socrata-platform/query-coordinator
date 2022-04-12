@@ -449,7 +449,8 @@ class QueryExecutor(httpClient: HttpClient,
 
     val wantQueryTimeoutSeconds = queryTimeoutSeconds.map(x => try { Integer.parseInt(x) } catch { case _: NumberFormatException => queryTimeoutSecondsMax })
                                                      .getOrElse(queryTimeoutSecondsMax)
-    val qtos = math.min(queryTimeoutSecondsMax, wantQueryTimeoutSeconds)
+    val qtos = if (debug) wantQueryTimeoutSeconds
+               else math.min(queryTimeoutSecondsMax, wantQueryTimeoutSeconds)
 
     val params = List(
       qpDataset -> dataset,
