@@ -2,20 +2,14 @@ package com.socrata.querycoordinator
 
 import com.socrata.querycoordinator.QueryRewriter.{Anal, ColumnId, Expr, RollupName}
 import com.socrata.querycoordinator.util.Join
-import com.socrata.soql.{SoQLAnalysis, SoQLAnalyzer}
+import com.socrata.soql.SoQLAnalysis
 import com.socrata.soql.environment.{ColumnName, TableName, TypeName}
-import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
 import com.socrata.soql.typed.Qualifier
 import com.socrata.soql.types.SoQLType
 
-abstract class TestQueryRewriterBase extends TestBase {
+abstract class TestQueryRewriterBase extends TestBase with TestCompoundQueryRewriterBase {
 
   import Join._
-
-  val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
-  val rewriter = new QueryRewriterWithJoinEnabled(analyzer)
-  val rollups: Seq[(String, String)]
-  val rollupAnalysis: Map[RollupName, Anal]
 
   /** The raw of the table that we get as part of the secondary /schema call */
   val rawSchema = Map[String, SoQLType](
@@ -91,12 +85,16 @@ abstract class TestQueryRewriterBase extends TestBase {
 
   override def beforeAll() {
     withClue("Not all rollup definitions successfully parsed, check log for failures") {
-      rollupAnalysis should have size (rollups.size)
+      if (rollupAnalyses.isEmpty) {
+        rollupAnalysis should have size (rollups.size)
+      } else {
+        rollupAnalyses should have size (rollups.size)
+      }
     }
   }
 
   /** Analyze the query and map to column ids, just like we have in real life. */
-  def analyzeQuery(q: String): SoQLAnalysis[ColumnId, SoQLType] = {
+  override def analyzeQuery(q: String): SoQLAnalysis[ColumnId, SoQLType] = {
     val ctx = toAnalysisContext(dsContext) + (joinTable.nameWithSodaFountainPrefix -> dsContextJoin)
     val analysis = analyzer.analyzeUnchainedQuery(q)(ctx)
     analysis.mapColumnIds(multiTablesColumnIdMapping)

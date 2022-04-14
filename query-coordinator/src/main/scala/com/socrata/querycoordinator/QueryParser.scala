@@ -288,4 +288,58 @@ object QueryParser {
   private val andFn = SoQLFunctions.And.monomorphic.get
 
   private val systemColumns = Set(":id", ":created_at", ":updated_at", ":version").map(ColumnName(_))
+
+  def remapAnalysesXXX(columnIdMapping: Map[QualifiedColumnName, String],
+                            analyses: BinaryTree[SoQLAnalysis[ColumnName, SoQLType]])
+  : BinaryTree[SoQLAnalysis[String, SoQLType]] = {
+
+    val newMapping: Map[(ColumnName, Qualifier), String] = columnIdMapping map {
+      case (QualifiedColumnName(qualifier, columnName), userColumnId) =>
+        ((columnName, qualifier), userColumnId)
+    }
+
+    def toColumnNameJoinAlias(joinAlias: Option[String], columnName: ColumnName) = (columnName, joinAlias)
+    def toUserColumnId(columnName: ColumnName) = columnName.name
+
+    analyses match {
+      case PipeQuery(l, r) =>
+        val nl = remapAnalysesXXX(columnIdMapping, l)
+        val prev = nl.outputSchema.leaf
+        val ra = r.asLeaf.get
+        val prevQueryAlias = ra.from match {
+          case Some(TableName(TableName.This, alias@Some(_))) =>
+            alias
+          case _ =>
+            None
+        }
+        val prevQColumnIdToQColumnIdMap = prev.selection.foldLeft(newMapping) { (acc, selCol) =>
+          val (colName, _expr) = selCol
+          acc + ((colName, prevQueryAlias) -> toUserColumnId(colName))
+        }
+        val nr = r.asLeaf.get.mapColumnIds(prevQColumnIdToQColumnIdMap, toColumnNameJoinAlias, toUserColumnId, toUserColumnId)
+        PipeQuery(nl, Leaf(nr))
+      case Compound(op, l, r) =>
+        val la = remapAnalysesXXX(columnIdMapping, l)
+        val ra = remapAnalysesXXX(columnIdMapping, r)
+        Compound(op, la, ra)
+      case Leaf(analysis) =>
+        val newMappingThisAlias = analysis.from match {
+          case Some(tn@TableName(TableName.This, Some(_))) =>
+            newMapping.foldLeft(newMapping) { (acc, mapEntry) =>
+              mapEntry match {
+                case ((columnName, None), userColumnId) =>
+                  acc ++ Map((columnName, Some(tn.qualifier)) -> userColumnId,
+                    (columnName, Some(TableName.This)) -> userColumnId)
+                case _ =>
+                  acc
+              }
+            }
+          case _ =>
+            newMapping
+        }
+
+        val remapped: SoQLAnalysis[String, SoQLType] = analysis.mapColumnIds(newMappingThisAlias, toColumnNameJoinAlias, toUserColumnId, toUserColumnId)
+        Leaf(remapped)
+    }
+  }
 }
