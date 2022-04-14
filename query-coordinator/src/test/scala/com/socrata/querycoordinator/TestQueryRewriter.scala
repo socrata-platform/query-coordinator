@@ -35,7 +35,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
   val rollupInfos = rollups.map { x => new RollupInfo(x._1, x._2) }
 
   /** Pull in the rollupAnalysis for easier debugging */
-  val rollupAnalysis = rewriter.analyzeRollups(schema, rollupInfos, getSchemaWithFieldName)
+  val rollupAnalysis = QueryRewriter.simpleRollups(rewriter.analyzeRollups(schema, rollupInfos, getSchemaWithFieldName))
 
   val rollupRawSchemas = rollupAnalysis.mapValues { case analysis: Anal =>
     analysis.selection.values.toSeq.zipWithIndex.map { case (expr, idx) =>
