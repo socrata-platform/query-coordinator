@@ -6,7 +6,13 @@ import com.socrata.soql.SoQLAnalysis
 import com.socrata.soql.environment.ColumnName
 import com.socrata.soql.types.SoQLType
 
-class TestQueryRewriter extends TestQueryRewriterBase {
+/**
+  * This test class is enhanced to support compound queries and exact match mode.
+  * Query and rollup preparation is also streamlined.
+  * TODO: Change other sibling of QueryRewriter tests to look like this class, i.e.
+  *       change the base class from TestQueryRewriterBase to TestCompoundQueryRewriterBase
+  */
+class TestQueryRewriter extends TestBase with TestCompoundQueryRewriterBase {
 
   import Join._
 
@@ -16,26 +22,35 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     * i.e. non-system columns prefixed by an _, and backtick escaped
     * - a Seq of the soql types for each column in the rollup selection
     */
-  val rollups = Seq(
-    ("r1", "SELECT `_dxyz-num1`, count(`_dxyz-num1`) GROUP BY `_dxyz-num1`"),
-    ("r2", "SELECT count(`:wido-ward`), `:wido-ward` GROUP BY `:wido-ward`"),
-    ("r3", "SELECT `:wido-ward`, count(*), count(`_crim-typ3`) GROUP BY `:wido-ward`"),
-    ("r4", "SELECT `:wido-ward`, `_crim-typ3`, count(*), `_dxyz-num1`, `_crim-date` GROUP BY `:wido-ward`, `_crim-typ3`, `_dxyz-num1`, `_crim-date`"),
-    ("r5", "SELECT `_crim-typ3`, count(1) group by `_crim-typ3`"),
-    ("r6", "SELECT `:wido-ward`, `_crim-typ3`"),
-    ("r7", "SELECT `:wido-ward`, min(`_dxyz-num1`), max(`_dxyz-num1`), sum(`_dxyz-num1`), count(*) GROUP BY `:wido-ward`"),
-    ("r8", "SELECT date_trunc_ym(`_crim-date`), `:wido-ward`, count(*) GROUP BY date_trunc_ym(`_crim-date`), `:wido-ward`"),
-    ("r9", "SELECT `_crim-typ3`, count(case(`_crim-date` IS NOT NULL, `_crim-date`, true, `_some-date`)) group by `_crim-typ3`"),
-    ("r10", "SELECT `:wido-ward`, sum(`_dxyz-num1`), count(`_dxyz-num1`) GROUP BY `:wido-ward`"),
-    ("rw1", "SELECT `_dxyz-num1`, count(`_dxyz-num1`) WHERE `_crim-typ3`='traffic' GROUP BY `_dxyz-num1`"),
-    ("rw4", "SELECT `:wido-ward`, `_crim-typ3`, count(*), `_dxyz-num1`, `_crim-date` WHERE `_crim-typ3`='traffic' GROUP BY `:wido-ward`, `_crim-typ3`, `_dxyz-num1`, `_crim-date`"),
-    ("rj4", "SELECT `_crim-typ3`, @t1.`_aaaa-aaaa`, count(1) JOIN @tttt-tttt as t1 ON `_crim-typ3` = @t1.`_crim-typ3` GROUP BY `_crim-typ3`, @t1.`_aaaa-aaaa`")
+  val rollups = Map(
+    "r1" -> "SELECT number1, count(number1) GROUP BY number1",
+    "r2" -> "SELECT count(ward), ward GROUP BY ward",
+    "r3" -> "SELECT ward, count(*), count(crime_type) GROUP BY ward",
+    "r4" -> "SELECT ward, crime_type, count(*), number1, crime_date GROUP BY ward, crime_type, number1, crime_date",
+    "r5" -> "SELECT crime_type, count(1) group by crime_type",
+    "r6" -> "SELECT ward, crime_type",
+    "r7" -> "SELECT ward, min(number1), max(number1), sum(number1), count(*) GROUP BY ward",
+    "r8" -> "SELECT date_trunc_ym(crime_date), ward, count(*) GROUP BY date_trunc_ym(crime_date), ward",
+    "r9" -> "SELECT crime_type, count(case(crime_date IS NOT NULL, crime_date, true, some_date)) group by crime_type",
+    "r10" -> "SELECT ward, sum(number1), count(number1) GROUP BY ward",
+    "rw1" -> "SELECT number1, count(number1) WHERE crime_type='traffic' GROUP BY number1",
+    "rw4" -> "SELECT ward, crime_type, count(*), number1, crime_date WHERE crime_type='traffic' GROUP BY ward, crime_type, number1, crime_date",
+    "rj4" -> "SELECT crime_type, @t1.aa, count(1) JOIN @tttt-tttt as t1 ON crime_type = @t1.crime_type GROUP BY crime_type, @t1.aa",
+    "rwin1" -> "SELECT crime_type, sum(number1) over (partition by crime_type) as sno, median(number1) over (partition by crime_type) as median",
+    "ru1" -> """SELECT number1, sum(number1) as sum_number1 GROUP BY number1
+                 UNION ALL
+                SELECT nn, sum(nn) as sum_nn FROM @tttt-tttt GROUP BY nn
+              """
   )
 
-  val rollupInfos = rollups.map { x => new RollupInfo(x._1, x._2) }
+  override val rollupAnalyses = rollups.map {
+    case (ruName, ruSoql) =>
+      val x = new RollupName(ruName)
+      (x, analyzeCompoundQuery(ruSoql))
+  }
 
   /** Pull in the rollupAnalysis for easier debugging */
-  val rollupAnalysis = rewriter.analyzeRollups(schema, rollupInfos, getSchemaWithFieldName)
+  override val rollupAnalysis = QueryRewriter.simpleRollups(rollupAnalyses)
 
   val rollupRawSchemas = rollupAnalysis.mapValues { case analysis: Anal =>
     analysis.selection.values.toSeq.zipWithIndex.map { case (expr, idx) =>
@@ -63,7 +78,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
 
     val rewrittenQuery = "SELECT c1 AS ward, coalesce(sum(c3), 0) AS ward_count GROUP by c1"
 
-    val rewrittenQueryAnalysis = analyzeRewrittenQuery("r4", rewrittenQuery)
+    val rewrittenQueryAnalysis = analyzeRewrittenCompoundQuery(rewrittenQuery, rollups("r4")).outputSchema.leaf
 
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
 
@@ -78,11 +93,11 @@ class TestQueryRewriter extends TestQueryRewriterBase {
 
   test("map query crime_type, ward, count(*)") {
     val q = "SELECT crime_type, ward, count(*) AS ward_count GROUP BY crime_type, ward"
-    val queryAnalysis = analyzeQuery(q)
+    val queryAnalysis = analyzeCompoundQuery(q).outputSchema.leaf
 
     val rewrittenQuery = "SELECT c2 AS crime_type, c1 as ward, coalesce(sum(c3), 0) AS ward_count GROUP by c2, c1"
 
-    val rewrittenQueryAnalysis = analyzeRewrittenQuery("r4", rewrittenQuery)
+    val rewrittenQueryAnalysis = analyzeRewrittenCompoundQuery(rewrittenQuery, rollups("r4")).outputSchema.leaf
 
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
 
@@ -102,7 +117,6 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     rewrites should have size 0
   }
 
-
   test("shouldn't rewrite column not in rollup") {
     val q = "SELECT ward, dont_create_rollups, count(*) AS ward_count GROUP BY ward, dont_create_rollups"
     val queryAnalysis = analyzeQuery(q)
@@ -112,20 +126,18 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     rewrites should be(empty)
   }
 
-
   test("hidden column aliasing") {
     val q = "SELECT crime_type as crimey, ward as crime_type"
     val queryAnalysis = analyzeQuery(q)
 
     val rewrittenQuery = "SELECT c1 as crimey, c1 as crime_type"
-    val rewrittenQueryAnalysis = analyzeRewrittenQuery("r6", rewrittenQuery)
+    val rewrittenQueryAnalysis = analyzeRewrittenCompoundQuery(rewrittenQuery, rollups("r6")).outputSchema.leaf
 
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
 
     rewrites should contain key "r6"
     rewrites.get("r6").get should equal(rewrittenQueryAnalysis)
   }
-
 
   test("map query crime_type, ward, 1, count(*) with LIMIT / OFFSET") {
     val q = "SELECT crime_type, ward, 1, count(*) AS ward_count GROUP BY crime_type, ward LIMIT 100 OFFSET 200"
@@ -134,7 +146,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val rewrittenQuery =
       "SELECT c2 AS crime_type, c1 as ward, 1, coalesce(sum(c3), 0) AS ward_count GROUP by c2, c1 LIMIT 100 OFFSET 200"
 
-    val rewrittenQueryAnalysis = analyzeRewrittenQuery("r4", rewrittenQuery)
+    val rewrittenQueryAnalysis = analyzeRewrittenCompoundQuery(rewrittenQuery, rollups("r4")).outputSchema.leaf
 
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
 
@@ -144,7 +156,6 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     rewrites should have size 1
   }
 
-
   test("count on literal - map query crime_type, count(0), count('potato')") {
     val q = "SELECT crime_type, count(0) as crimes, count('potato') as crimes_potato GROUP BY crime_type"
     val queryAnalysis = analyzeQuery(q)
@@ -152,12 +163,12 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
 
     val rewrittenQueryR4 = "SELECT c2 AS crime_type, coalesce(sum(c3), 0) as crimes, coalesce(sum(c3), 0) as crimes_potato GROUP by c2"
-    val rewrittenQueryAnalysisR4 = analyzeRewrittenQuery("r4", rewrittenQueryR4)
+    val rewrittenQueryAnalysisR4 = analyzeRewrittenCompoundQuery(rewrittenQueryR4, rollups("r4")).outputSchema.leaf
     rewrites should contain key "r4"
     rewrites.get("r4").get should equal(rewrittenQueryAnalysisR4)
 
     val rewrittenQueryR5 = "SELECT c1 AS crime_type, coalesce(c2, 0) as crimes, coalesce(c2, 0) as crimes_potato"
-    val rewrittenQueryAnalysisR5 = analyzeRewrittenQuery("r5", rewrittenQueryR5)
+    val rewrittenQueryAnalysisR5 = analyzeRewrittenCompoundQuery(rewrittenQueryR5, rollups("r5")).outputSchema.leaf
     rewrites should contain key "r5"
     rewrites.get("r5").get should equal(rewrittenQueryAnalysisR5)
 
@@ -171,7 +182,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
 
     val rewrittenQuery = "SELECT c1 AS ward, coalesce(sum(c3), 0) AS ward_count WHERE c2 = 'Clownicide' AND c4 > 5 GROUP by c1"
 
-    val rewrittenQueryAnalysis = analyzeRewrittenQuery("r4", rewrittenQuery)
+    val rewrittenQueryAnalysis = analyzeRewrittenCompoundQuery(rewrittenQuery, rollups("r4")).outputSchema.leaf
 
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
 
@@ -188,7 +199,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
 
     val rewrittenQuery = "SELECT c1 AS ward, coalesce(c3, 0) AS crime_type_count WHERE c1 != 5"
 
-    val rewrittenQueryAnalysis = analyzeRewrittenQuery("r3", rewrittenQuery)
+    val rewrittenQueryAnalysis = analyzeRewrittenCompoundQuery(rewrittenQuery, rollups("r3")).outputSchema.leaf
 
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
 
@@ -205,7 +216,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
 
     val rewrittenQuery = "SELECT c1 AS crime_type, coalesce(c2, 0) AS c"
 
-    val rewrittenQueryAnalysis = analyzeRewrittenQuery("r9", rewrittenQuery)
+    val rewrittenQueryAnalysis = analyzeRewrittenCompoundQuery(rewrittenQuery, rollups("r9")).outputSchema.leaf
 
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
 
@@ -233,7 +244,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val rewrittenQuery =
       "SELECT c2 AS crime_type, c1 as ward, coalesce(sum(c3), 0) AS ward_count GROUP by c2, c1 ORDER BY coalesce(sum(c3), 0) desc, c2"
 
-    val rewrittenQueryAnalysis = analyzeRewrittenQuery("r4", rewrittenQuery)
+    val rewrittenQueryAnalysis = analyzeRewrittenCompoundQuery(rewrittenQuery, rollups("r4")).outputSchema.leaf
 
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
 
@@ -250,7 +261,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
 
     val rewrittenQuery = "SELECT c1 AS crime_type, coalesce(c2, 0) AS c ORDER BY coalesce(c2, 0) DESC"
 
-    val rewrittenQueryAnalysis = analyzeRewrittenQuery("r9", rewrittenQuery)
+    val rewrittenQueryAnalysis = analyzeRewrittenCompoundQuery(rewrittenQuery, rollups("r9")).outputSchema.leaf
 
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
 
@@ -268,7 +279,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
 
     val rewrittenQuery = "SELECT c2 AS ward, c1 AS d, coalesce(c3, 0) AS count"
 
-    val rewrittenQueryAnalysis = analyzeRewrittenQuery("r8", rewrittenQuery)
+    val rewrittenQueryAnalysis = analyzeRewrittenCompoundQuery(rewrittenQuery, rollups("r8")).outputSchema.leaf
 
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
 
@@ -286,11 +297,11 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val rewrittenQueryR4 =
       "SELECT c1 AS ward, date_trunc_ym(c5) as d, coalesce(sum(c3), 0) AS ward_count GROUP by c1, date_trunc_ym(c5)"
 
-    val rewrittenQueryAnalysisR4 = analyzeRewrittenQuery("r4", rewrittenQueryR4)
+    val rewrittenQueryAnalysisR4 = analyzeRewrittenCompoundQuery(rewrittenQueryR4, rollups("r4")).outputSchema.leaf
 
     // in this case, we map the function call directly to the column ref
     val rewrittenQueryR8 = "SELECT c2 as ward, c1 as d, coalesce(c3, 0) as ward_count"
-    val rewrittenQueryAnalysisR8 = analyzeRewrittenQuery("r8", rewrittenQueryR8)
+    val rewrittenQueryAnalysisR8 = analyzeRewrittenCompoundQuery(rewrittenQueryR8, rollups("r8")).outputSchema.leaf
 
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
 
@@ -309,7 +320,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
 
     val rewrittenQuery = "SELECT c1 AS ward, c3 as max_num, c2 as min_num, coalesce(c5, 0) AS ward_count"
 
-    val rewrittenQueryAnalysis = analyzeRewrittenQuery("r7", rewrittenQuery)
+    val rewrittenQueryAnalysis = analyzeRewrittenCompoundQuery(rewrittenQuery, rollups("r7")).outputSchema.leaf
 
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
 
@@ -328,7 +339,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
 
     val rewrittenQuery = "SELECT c1 AS ward, c2/c3 as ward_avg"
 
-    val rewrittenQueryAnalysis = analyzeRewrittenQuery("r10", rewrittenQuery)
+    val rewrittenQueryAnalysis = analyzeRewrittenCompoundQuery(rewrittenQuery, rollups("r10")).outputSchema.leaf
 
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
 
@@ -348,12 +359,12 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
 
     val rewrittenQueryR4 = "SELECT coalesce(sum(c3), 0) as countess WHERE c2 = 'NARCOTICS'"
-    val rewrittenQueryAnalysisR4 = analyzeRewrittenQuery("r4", rewrittenQueryR4)
+    val rewrittenQueryAnalysisR4 = analyzeRewrittenCompoundQuery(rewrittenQueryR4, rollups("r4")).outputSchema.leaf
     rewrites should contain key "r4"
     rewrites.get("r4").get should equal(rewrittenQueryAnalysisR4)
 
     val rewrittenQueryR5 = "SELECT coalesce(sum(c2), 0) as countess WHERE c1 = 'NARCOTICS'"
-    val rewrittenQueryAnalysisR5 = analyzeRewrittenQuery("r5", rewrittenQueryR5)
+    val rewrittenQueryAnalysisR5 = analyzeRewrittenCompoundQuery(rewrittenQueryR5, rollups("r5")).outputSchema.leaf
     rewrites should contain key "r5"
     rewrites.get("r5").get should equal(rewrittenQueryAnalysisR5)
 
@@ -367,7 +378,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
 
     val rewrittenQuery = "SELECT min(c2) as minn, max(c3) as maxn WHERE c1 = 7"
-    val rewrittenQueryAnalysis = analyzeRewrittenQuery("r7", rewrittenQuery)
+    val rewrittenQueryAnalysis = analyzeRewrittenCompoundQuery(rewrittenQuery, rollups("r7")).outputSchema.leaf
     rewrites should contain key "r7"
     rewrites.get("r7").get should equal(rewrittenQueryAnalysis)
 
@@ -380,7 +391,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
 
     val rewrittenQuery = "SELECT c1 AS ward"
 
-    val rewrittenQueryAnalysis = analyzeRewrittenQuery("r6", rewrittenQuery)
+    val rewrittenQueryAnalysis = analyzeRewrittenCompoundQuery(rewrittenQuery, rollups("r6")).outputSchema.leaf
 
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
 
@@ -396,7 +407,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
 
     val rewrittenQuery = "SELECT c1 AS ward, coalesce(sum(c3), 0) AS c WHERE c4 > 100 GROUP BY c1 HAVING c > 5"
 
-    val rewrittenQueryAnalysis = analyzeRewrittenQuery("r4", rewrittenQuery)
+    val rewrittenQueryAnalysis = analyzeRewrittenCompoundQuery(rewrittenQuery, rollups("r4")).outputSchema.leaf
 
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
 
@@ -421,7 +432,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
 
     val rewrittenQuery = "SELECT c2 AS ward, coalesce(c1, 0) AS c WHERE c2 > 100 AND coalesce(c1, 0) > 5"
 
-    val rewrittenQueryAnalysis = analyzeRewrittenQuery("r2", rewrittenQuery)
+    val rewrittenQueryAnalysis = analyzeRewrittenCompoundQuery(rewrittenQuery, rollups("r2")).outputSchema.leaf
 
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
 
@@ -435,7 +446,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val q = "SELECT number1, count(number1) AS cn1 WHERE crime_type = 'traffic' GROUP BY number1"
     val queryAnalysis = analyzeQuery(q)
     val rewrittenQuery = "SELECT c1 AS number1, coalesce(c2, 0) AS cn1"
-    val rewrittenQueryAnalysis = analyzeRewrittenQuery("rw1", rewrittenQuery)
+    val rewrittenQueryAnalysis = analyzeRewrittenCompoundQuery(rewrittenQuery, rollups("rw1")).outputSchema.leaf
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
     rewrites should contain key "rw1"
     rewrites.get("rw1").get should equal(rewrittenQueryAnalysis)
@@ -446,7 +457,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val q = "SELECT number1, count(*) AS ct WHERE ward=1 AND crime_type = 'traffic' GROUP BY number1"
     val queryAnalysis = analyzeQuery(q)
     val rewrittenQuery = "SELECT c4 AS number1, coalesce(sum(c3), 0) AS ct WHERE c1=1 GROUP BY number1"
-    val rewrittenQueryAnalysis = analyzeRewrittenQuery("rw4", rewrittenQuery)
+    val rewrittenQueryAnalysis = analyzeRewrittenCompoundQuery(rewrittenQuery, rollups("rw4")).outputSchema.leaf
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
     rewrites should contain key "rw4"
     rewrites.get("rw4").get should equal(rewrittenQueryAnalysis)
@@ -465,7 +476,7 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     val queryAnalysis = analyzeQuery(q)
     val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
     val rewrittenQueryRJ4 = "SELECT c1 AS crime_type, c2 AS aa, coalesce(c3, 0) as crimes, coalesce(c3, 0) as crimes_potato"
-    val rewrittenQueryAnalysisRJ4 = analyzeRewrittenQuery("rj4", rewrittenQueryRJ4)
+    val rewrittenQueryAnalysisRJ4 = analyzeRewrittenCompoundQuery(rewrittenQueryRJ4, rollups("rj4")).outputSchema.leaf
     rewrites should contain key "rj4"
     rewrites.get("rj4").get should equal(rewrittenQueryAnalysisRJ4)
     rewrites should have size 1
@@ -478,9 +489,38 @@ class TestQueryRewriter extends TestQueryRewriterBase {
     rewrites should have size 0
   }
 
-  private def assertNoRollupMatch(q: String): Unit = {
-    val queryAnalysis = analyzeQuery(q)
-    val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
-    rewrites should have size 0
+  test("rewrite window function exact") {
+    val q = "SELECT crime_type, sum(number1) over (partition by crime_type) as sno, median(number1) over (partition by crime_type) as median"
+    val qNoMatchExtraOrder = "SELECT crime_type, sum(number1) over (partition by crime_type order by crime_type) as sno, median(number1) over (partition by crime_type) as median"
+    val rewrittenQuery = "SELECT c1 as crime_type, c2 as sno, c3 as median"
+    checkQueryRewrite(q, rollups, "rwin1", rewrittenQuery)
+    assertNoRollupMatch(qNoMatchExtraOrder)
+  }
+
+  test("rewrite window function prefix") {
+    val q = """SELECT crime_type, sum(number1) over (partition by crime_type) as sno, median(number1) over (partition by crime_type) as median
+              |> SELECT crime_type, sno+1 as sno1, median+1 as median1
+            """
+    val rewrittenQuery = "SELECT c1 as crime_type, c2 as sno, c3 as median |> SELECT crime_type, sno+1 as sno1, median+1 as median1"
+    checkQueryRewrite(q, rollups, "rwin1", rewrittenQuery)
+  }
+
+  test("rewrite union exact") {
+    val q = """SELECT number1, sum(number1) GROUP BY number1
+                UNION ALL
+               SELECT nn, sum(nn) FROM @tttt-tttt GROUP BY nn
+            """
+    val rewrittenQuery = "SELECT c1 as number1, c2 as sum_number1"
+    checkQueryRewrite(q, rollups, "ru1", rewrittenQuery)
+  }
+
+  test("rewrite union prefix") {
+    val q = """SELECT number1, sum(number1) GROUP BY number1
+                UNION ALL
+               SELECT nn, sum(nn) FROM @tttt-tttt GROUP BY nn
+               |> SELECT number1, number1 + sum_number1 as sum
+            """
+    val rewrittenQuery = "SELECT c1 as number1, c2 as sum_number1 |> SELECT number1, number1 + sum_number1 as sum"
+    checkQueryRewrite(q, rollups, "ru1", rewrittenQuery)
   }
 }
