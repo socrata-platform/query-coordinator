@@ -11,7 +11,9 @@ import com.socrata.soql.{BinaryTree, Compound, Leaf, PipeQuery, SoQLAnalysis, ty
 trait CompoundQueryRewriter { this: QueryRewriter =>
 
   /**
-    * match if the whole tree is equal or prefix is equal
+    * The tree q is successfully rewritten and returned in the first tuple element if
+    * the second tuple element is not empty which can either be an exact tree match or a prefix tree match.
+    * Otherwise, the original q is returned.
     */
   def possibleRewrites(q: BinaryTree[Anal], rollups: Map[RollupName, BinaryTree[Anal]], debug: Boolean): (BinaryTree[Anal], Seq[String]) = {
     if (!debug) {
@@ -19,19 +21,13 @@ trait CompoundQueryRewriter { this: QueryRewriter =>
     }
 
     log.info("try rewrite compound query")
-    val rewritten = rollups.foldLeft(Map.empty[RollupName, Option[BinaryTree[Anal]]]) { (acc, ru) =>
-      if (acc.isEmpty) {
-        val (ruName, ruAnalyses) = ru
-        rewriteIfPrefix(q, ruAnalyses, ruName) match {
-          case rewritten@Some(_) =>
-            acc + (ruName -> rewritten)
-          case _ =>
-            acc
-        }
-      } else {
-        acc
-      }
-    }
+    // lazy view because only the first one rewritten one is taken
+    // Might consider all and pick the one with the best score like simple rollup
+    val rewritten = rollups.view.map {
+      case (ruName, ruAnalyses) =>
+        val rewritten = rewriteIfPrefix(q, ruAnalyses)
+        (ruName, rewritten)
+    }.filter(_._2.isDefined)
 
     rewritten.headOption match {
       case Some((ruName, Some(ruAnalyses))) =>
@@ -62,11 +58,11 @@ trait CompoundQueryRewriter { this: QueryRewriter =>
       hints = Nil)
   }
 
-  private def rewriteIfPrefix(q: BinaryTree[Anal], r: BinaryTree[Anal], ruName: RollupName): Option[BinaryTree[Anal]] = {
-    rewriteIfPrefix(q, r, ruName, rightMost(q))
+  private def rewriteIfPrefix(q: BinaryTree[Anal], r: BinaryTree[Anal]): Option[BinaryTree[Anal]] = {
+    rewriteIfPrefix(q, r, rightMost(q))
   }
 
-  private def rewriteIfPrefix(q: BinaryTree[Anal], r: BinaryTree[Anal], ruName: RollupName, qRightMost: Leaf[Anal]): Option[BinaryTree[Anal]] = {
+  private def rewriteIfPrefix(q: BinaryTree[Anal], r: BinaryTree[Anal], qRightMost: Leaf[Anal]): Option[BinaryTree[Anal]] = {
     q match {
       case c@Compound(_, ql, qr) =>
         if (isEqual(q, r, qRightMost)) {
@@ -76,7 +72,7 @@ trait CompoundQueryRewriter { this: QueryRewriter =>
           val rewritten = rewriteExact(ql.outputSchema.leaf, qRightMost.leaf)
           Some(PipeQuery(Leaf(rewritten), qr))
         } else {
-          rewriteIfPrefix(ql, r, ruName, qRightMost) match {
+          rewriteIfPrefix(ql, r, qRightMost) match {
             case Some(result@Compound(_, _, _)) =>
               Some(Compound(c.op, result, qr))
             case result =>
