@@ -18,9 +18,7 @@ class TestQueryRewriter extends TestBase with TestCompoundQueryRewriterBase {
 
   /** Each rollup here is defined by:
     * - a name
-    * - a soql statement.  Note this must be the mapped statement,
-    * i.e. non-system columns prefixed by an _, and backtick escaped
-    * - a Seq of the soql types for each column in the rollup selection
+    * - a soql statement
     */
   val rollups = Map(
     "r1" -> "SELECT number1, count(number1) GROUP BY number1",
@@ -40,7 +38,7 @@ class TestQueryRewriter extends TestBase with TestCompoundQueryRewriterBase {
     "ru1" -> """SELECT number1, sum(number1) as sum_number1 GROUP BY number1
                  UNION ALL
                 SELECT nn, sum(nn) as sum_nn FROM @tttt-tttt GROUP BY nn
-              """
+             """
   )
 
   override val rollupAnalyses = rollups.map {
@@ -492,9 +490,11 @@ class TestQueryRewriter extends TestBase with TestCompoundQueryRewriterBase {
   test("rewrite window function exact") {
     val q = "SELECT crime_type, sum(number1) over (partition by crime_type) as sno, median(number1) over (partition by crime_type) as median"
     val qNoMatchExtraOrder = "SELECT crime_type, sum(number1) over (partition by crime_type order by crime_type) as sno, median(number1) over (partition by crime_type) as median"
+    val qNoMatchSelectColumnDifferent = "SELECT crime_type, median(number1) over (partition by crime_type) as median, sum(number1) over (partition by crime_type order by crime_type) as sno"
     val rewrittenQuery = "SELECT c1 as crime_type, c2 as sno, c3 as median"
     checkQueryRewrite(q, rollups, "rwin1", rewrittenQuery)
     assertNoRollupMatch(qNoMatchExtraOrder)
+    assertNoRollupMatch(qNoMatchSelectColumnDifferent)
   }
 
   test("rewrite window function prefix") {
@@ -510,8 +510,10 @@ class TestQueryRewriter extends TestBase with TestCompoundQueryRewriterBase {
                 UNION ALL
                SELECT nn, sum(nn) FROM @tttt-tttt GROUP BY nn
             """
+    val qNoMatchOperator = q.replace("UNION ALL", "UNION")
     val rewrittenQuery = "SELECT c1 as number1, c2 as sum_number1"
     checkQueryRewrite(q, rollups, "ru1", rewrittenQuery)
+    assertNoRollupMatch(qNoMatchOperator)
   }
 
   test("rewrite union prefix") {
@@ -521,6 +523,15 @@ class TestQueryRewriter extends TestBase with TestCompoundQueryRewriterBase {
                |> SELECT number1, number1 + sum_number1 as sum
             """
     val rewrittenQuery = "SELECT c1 as number1, c2 as sum_number1 |> SELECT number1, number1 + sum_number1 as sum"
+    checkQueryRewrite(q, rollups, "ru1", rewrittenQuery)
+  }
+
+  test("rewrite union with query limit") {
+    val q = """SELECT number1, sum(number1) GROUP BY number1
+                UNION ALL
+               SELECT nn, sum(nn) FROM @tttt-tttt GROUP BY nn LIMIT 2
+            """
+    val rewrittenQuery = "SELECT c1 as number1, c2 as sum_number1 LIMIT 2"
     checkQueryRewrite(q, rollups, "ru1", rewrittenQuery)
   }
 }

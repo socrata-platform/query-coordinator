@@ -1,7 +1,7 @@
 package com.socrata.querycoordinator
 
 import com.socrata.querycoordinator.QueryRewriter.{Anal, ColumnId, RollupName}
-import com.socrata.soql.{BinaryTree, SoQLAnalysis, SoQLAnalyzer}
+import com.socrata.soql.{BinaryTree, Compound, Leaf, SoQLAnalysis, SoQLAnalyzer}
 import com.socrata.soql.collection.OrderedMap
 import com.socrata.soql.environment.{ColumnName, DatasetContext}
 import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
@@ -131,9 +131,14 @@ trait TestCompoundQueryRewriterBase { this: TestBase =>
   }
 
   def assertNoRollupMatch(q: String): Unit = {
-    val queryAnalysis = analyzeQuery(q)
-    val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
-    rewrites should have size 0
+    analyzeCompoundQuery(q) match {
+      case analyses@Compound(_, _, _) =>
+        val (rewrittens, ruNameApplied) = rewriter.possibleRewrites(analyses, rollupAnalyses, true)
+        ruNameApplied should have size 0
+      case Leaf(analysis) =>
+        val rewrites = rewriter.possibleRewrites(analysis, rollupAnalysis)
+        rewrites should have size 0
+    }
   }
 
   def checkQueryRewrite(query: String, rollups: Map[String, String], expectedRollupName: String, expectedRewrittenQuery: String): Unit = {

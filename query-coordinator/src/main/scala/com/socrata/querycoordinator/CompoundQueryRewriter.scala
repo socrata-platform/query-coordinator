@@ -22,7 +22,7 @@ trait CompoundQueryRewriter { this: QueryRewriter =>
     val rewritten = rollups.foldLeft(Map.empty[RollupName, Option[BinaryTree[Anal]]]) { (acc, ru) =>
       if (acc.isEmpty) {
         val (ruName, ruAnalyses) = ru
-        isPrefix(q, ruAnalyses, ruName, debug) match {
+        rewriteIfPrefix(q, ruAnalyses, ruName) match {
           case rewritten@Some(_) =>
             acc + (ruName -> rewritten)
           case _ =>
@@ -41,7 +41,7 @@ trait CompoundQueryRewriter { this: QueryRewriter =>
     }
   }
 
-  private def rewriteExact(q: Anal): Anal = {
+  private def rewriteExact(q: Anal, qRightMost: Anal): Anal = {
     val columnMap = q.selection.values.zipWithIndex.map {
       case(expr, idx) =>
         (expr, ColumnRef(qualifier = None, column = rollupColumnId(idx), expr.typ.t)(expr.position))
@@ -56,47 +56,50 @@ trait CompoundQueryRewriter { this: QueryRewriter =>
       groupBys = Nil,
       having = None,
       orderBys = Nil,
-      limit = None,
-      offset = None,
+      limit = qRightMost.limit,
+      offset = qRightMost.offset,
       search = None,
       hints = Nil)
   }
 
-  private def isPrefix(q: BinaryTree[Anal], r: BinaryTree[Anal], ruName: RollupName, debug: Boolean): Option[BinaryTree[Anal]] = {
-    isPrefix(q, r, ruName, rightMost(q), debug)
+  private def rewriteIfPrefix(q: BinaryTree[Anal], r: BinaryTree[Anal], ruName: RollupName): Option[BinaryTree[Anal]] = {
+    rewriteIfPrefix(q, r, ruName, rightMost(q))
   }
 
-  private def isPrefix(q: BinaryTree[Anal], r: BinaryTree[Anal], ruName: RollupName, qRightMost: Leaf[Anal], debug: Boolean): Option[BinaryTree[Anal]] = {
+  private def rewriteIfPrefix(q: BinaryTree[Anal], r: BinaryTree[Anal], ruName: RollupName, qRightMost: Leaf[Anal]): Option[BinaryTree[Anal]] = {
     q match {
       case c@Compound(_, ql, qr) =>
-        if (isEq(q, r, qRightMost)) {
-          val rewritten = rewriteExact(q.outputSchema.leaf)
+        if (isEqual(q, r, qRightMost)) {
+          val rewritten = rewriteExact(q.outputSchema.leaf, qRightMost.leaf)
           Some(Leaf(rewritten))
-        } else if (isEq(ql, r, qRightMost)) {
-          val rewritten = rewriteExact(ql.outputSchema.leaf)
+        } else if (isEqual(ql, r, qRightMost)) {
+          val rewritten = rewriteExact(ql.outputSchema.leaf, qRightMost.leaf)
           Some(PipeQuery(Leaf(rewritten), qr))
         } else {
-          isPrefix(ql, r, ruName, qRightMost, debug) match {
+          rewriteIfPrefix(ql, r, ruName, qRightMost) match {
             case Some(result@Compound(_, _, _)) =>
               Some(Compound(c.op, result, qr))
             case result =>
               result
           }
         }
-      case Leaf(_) if isEq(q, r, qRightMost)=>
-        val rewritten = rewriteExact(q.outputSchema.leaf)
+      case Leaf(_) if isEqual(q, r, qRightMost)=>
+        val rewritten = rewriteExact(q.outputSchema.leaf, qRightMost.leaf)
         Some(Leaf(rewritten))
       case _ =>
         None
     }
   }
 
-  private def isEq(q: BinaryTree[Anal], r: BinaryTree[Anal], qRightMost: Leaf[Anal]): Boolean = {
+  /**
+    * q is equal r ignoring limit and offset of the right most of q
+    */
+  private def isEqual(q: BinaryTree[Anal], r: BinaryTree[Anal], qRightMost: Leaf[Anal]): Boolean = {
     (q, r) match {
-      case (Compound(_, ql, qr), Compound(_, rl, rr)) =>
-        isEq(ql, rl, qRightMost) && isEq(qr, rr, qRightMost)
+      case (Compound(qo, ql, qr), Compound(ro, rl, rr)) if qo == ro =>
+        isEqual(ql, rl, qRightMost) && isEqual(qr, rr, qRightMost)
       case (Leaf(qf), Leaf(rf)) =>
-        if (q.eq(qRightMost)) qf.copy(limit = None) == rf
+        if (q.eq(qRightMost)) qf.copy(limit = None, offset = None) == rf
         else qf == rf
       case _ =>
         false
