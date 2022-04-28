@@ -1,26 +1,26 @@
 package com.socrata.querycoordinator
 
 import com.socrata.querycoordinator.QueryRewriter._
-import com.socrata.soql.ast.{JoinFunc, JoinQuery, JoinTable, Select}
+import com.socrata.soql.ast.{JoinFunc, JoinQuery, JoinTable, Select, StarSelection}
 import com.socrata.soql.collection.OrderedMap
 import com.socrata.soql.environment.{ColumnName, TableName}
 import com.socrata.soql.exceptions.SoQLException
 import com.socrata.soql.functions.SoQLFunctions._
 import com.socrata.soql.functions._
 import com.socrata.soql.parsing.StandaloneParser
-import com.socrata.soql.typed.{ColumnRef => _, FunctionCall => _, OrderBy => _, Join => _, _}
+import com.socrata.soql.typed.{ColumnRef => _, FunctionCall => _, Join => _, OrderBy => _, _}
 import com.socrata.soql.types._
-import com.socrata.soql.{BinaryTree, Compound, Leaf, SoQLAnalysis, SoQLAnalyzer, typed}
+import com.socrata.soql.{BinaryTree, Compound, Leaf, PipeQuery, SoQLAnalysis, SoQLAnalyzer, typed}
 import org.joda.time.{DateTimeConstants, LocalDateTime}
 
 import scala.util.parsing.input.NoPosition
 import scala.util.{Failure, Success, Try}
 
-class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
+class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) extends CompoundQueryRewriter {
 
   import com.socrata.querycoordinator.util.Join._
 
-  private val log = org.slf4j.LoggerFactory.getLogger(classOf[QueryRewriter])
+  val log = org.slf4j.LoggerFactory.getLogger(classOf[QueryRewriter])
 
   private def ensure(expr: Boolean, msg: String): Option[String] = if (!expr) Some(msg) else None
 
@@ -511,10 +511,6 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
     possibleRewrites(q, rollups, false)
   }
 
-  def possibleRewrites(schema: Schema, q: Anal, rollups: Seq[RollupInfo], getSchemaByTableName: TableName => SchemaWithFieldName, debug: Boolean): Map[RollupName, Anal] = {
-    possibleRewrites(q, analyzeRollups(schema, rollups, getSchemaByTableName), debug)
-  }
-
   def possibleRewrites(q: Anal, rollups: Map[RollupName, Anal], debug: Boolean): Map[RollupName, Anal] = {
     log.debug("looking for candidates to rewrite for query: {}", q)
 
@@ -643,8 +639,8 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
    */
   private def removeRollupPrefix(cn: ColumnName, qual: Qualifier): ColumnId = { // TODO: Join
     cn.name(0) match {
-      case ':' => cn.name
-      case _ => cn.name.drop(1)
+      case '_' => cn.name.drop(1)
+      case _ => cn.name // leave system columns (prefixed ':') or derived columns unchanged
     }
   }
 
@@ -655,7 +651,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
   }
 
   def analyzeRollups(schema: Schema, rollups: Seq[RollupInfo],
-                     getSchemaByTableName: TableName => SchemaWithFieldName): Map[RollupName, Anal] = {
+                     getSchemaByTableName: TableName => SchemaWithFieldName): Map[RollupName, BinaryTree[Anal]] = {
 
     val dsContext = Map(TableName.PrimaryTable.qualifier -> prefixedDsContext(schema))
     val rollupMap = rollups.map { r => (r.name, r.soql) }.toMap
@@ -670,13 +666,10 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) {
           acc + (tn -> dsctx)
         }
 
-        val analysis = analyzer.analyzeBinary(parsedQueries)(contexts) match {
-          case Leaf(a) =>
-            a.mapColumnIds(removeRollupPrefix)
-          case Compound(_, _, _) =>
-            throw new Exception("Rollup does not support compound query")
+        val analyses = analyzer.analyzeBinary(parsedQueries)(contexts) map { analysis =>
+          analysis.mapColumnIds(removeRollupPrefix)
         }
-        analysis
+        analyses
       }
     }
 
@@ -811,5 +804,15 @@ object QueryRewriter {
           }
         }
     }
+  }
+
+  /**
+    * Filter rollups to non-compound query, i.e. leaf
+    */
+  def simpleRollups(rus: Map[RollupName, BinaryTree[Anal]]): Map[RollupName, Anal] = {
+    rus.filter {
+      case (_, Leaf(_)) => true
+      case _ => false
+    }.mapValues(_.outputSchema.leaf)
   }
 }
