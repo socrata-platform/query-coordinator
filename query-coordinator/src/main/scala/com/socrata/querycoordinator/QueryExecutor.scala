@@ -30,6 +30,7 @@ import com.socrata.soql.types.SoQLType
 import com.socrata.soql.{AnalysisSerializer, BinaryTree, Leaf, SoQLAnalysis}
 import org.apache.commons.io.IOUtils
 import org.joda.time.DateTime
+import org.slf4j.{LoggerFactory, MDC}
 
 import scala.annotation.tailrec
 
@@ -253,15 +254,22 @@ class QueryExecutor(httpClient: HttpClient,
               val cache = new Thread {
                 setDaemon(true)
                 setName("Cache thread")
+                val mdc = MDC.getCopyOfContextMap
 
                 override def run(): Unit = {
-                  using(resourceScopeHandle.duplicate()) { handle =>
-                    ready.release()
-                    val isCached = doCache(dataset, unlimitedAnalyses, relimitedAnalyses, context, schema, rollupName, obfuscateId, rowCount, headers, forCache,
-                            handle.get, cacheSession, startWindow.window, endWindow.window, startTimeMs)
-                    if (isCached) { // only do logging if it is not in cache and we do decide to cache.
-                      log.info("Not in cache!")
+                  try {
+                    MDC.setContextMap(mdc)
+                    using(resourceScopeHandle.duplicate()) { handle =>
+                      ready.release()
+                      val isCached = doCache(dataset, unlimitedAnalyses, relimitedAnalyses, context, schema, rollupName, obfuscateId, rowCount, headers, forCache,
+                                             handle.get, cacheSession, startWindow.window, endWindow.window, startTimeMs)
+                      if (isCached) { // only do logging if it is not in cache and we do decide to cache.
+                        log.info("Not in cache!")
+                      }
                     }
+                  } catch {
+                    case e: Throwable =>
+                      log.error("Exception while caching response", e)
                   }
                 }
               }
@@ -547,7 +555,7 @@ class QueryExecutor(httpClient: HttpClient,
 
 object QueryExecutor {
 
-  private val log = org.slf4j.LoggerFactory.getLogger(classOf[QueryExecutor])
+  private val log = LoggerFactory.getLogger(classOf[QueryExecutor])
 
   sealed abstract class Result
 
