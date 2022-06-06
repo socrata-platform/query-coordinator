@@ -1,6 +1,7 @@
 package com.socrata.querycoordinator.caching.cache
 
 import com.rojoma.simplearm.v2.ResourceScope
+import com.socrata.soql.typed.Indistinct
 import com.socrata.soql.{BinaryTree, SoQLAnalysis}
 import com.socrata.soql.types.SoQLType
 import org.joda.time.DateTime
@@ -34,7 +35,7 @@ trait CacheSessionProvider {
         a.having.isDefined ||
         (a.orderBys.size > 1) ||
         a.search.isDefined ||
-        a.distinct
+        !a.distinct.isInstanceOf[Indistinct[_, _]]
       }
   }
 

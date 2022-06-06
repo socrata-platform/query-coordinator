@@ -1,7 +1,8 @@
 package com.socrata.querycoordinator
 
-import com.socrata.querycoordinator.QueryRewriter.{Anal, ColumnRef, Expr, RollupName}
-import com.socrata.soql.typed.ColumnRef
+import com.socrata.querycoordinator.QueryRewriter.{Anal, ColumnId, ColumnRef, Expr, RollupName}
+import com.socrata.soql.typed.{ColumnRef, Indistinct}
+import com.socrata.soql.types.SoQLType
 import com.socrata.soql.{BinaryTree, Compound, Leaf, PipeQuery, SoQLAnalysis, typed}
 
 /**
@@ -45,7 +46,7 @@ trait CompoundQueryRewriter { this: QueryRewriter =>
     val mappedSelection = q.selection.mapValues { expr => columnMap(expr)}
     q.copy(
       isGrouped = false ,
-      distinct= false,
+      distinct = Indistinct[ColumnId, SoQLType],
       selection = mappedSelection,
       joins = Nil,
       where = None,
