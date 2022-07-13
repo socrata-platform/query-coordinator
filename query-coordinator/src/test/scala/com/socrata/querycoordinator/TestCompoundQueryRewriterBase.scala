@@ -1,13 +1,13 @@
 package com.socrata.querycoordinator
 
 import com.socrata.querycoordinator.QueryRewriter.{Anal, ColumnId, RollupName}
-import com.socrata.soql.{BinaryTree, Compound, Leaf, SoQLAnalysis, SoQLAnalyzer}
+import com.socrata.soql.{AnalysisContext, BinaryTree, Compound, Leaf, ParameterSpec, SoQLAnalysis, SoQLAnalyzer}
 import com.socrata.soql.collection.OrderedMap
 import com.socrata.soql.environment.{ColumnName, DatasetContext}
 import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
 import com.socrata.soql.parsing.{AbstractParser, Parser}
 import com.socrata.soql.typed.CoreExpr
-import com.socrata.soql.types.{SoQLFloatingTimestamp, SoQLNumber, SoQLText, SoQLType}
+import com.socrata.soql.types.{SoQLFloatingTimestamp, SoQLNumber, SoQLText, SoQLType, SoQLValue}
 
 trait TestCompoundQueryRewriterBase { this: TestBase =>
 
@@ -32,16 +32,19 @@ trait TestCompoundQueryRewriterBase { this: TestBase =>
                             "nnnn-nnnn" -> (SoQLNumber.t, "nn"))
       )
 
-  val allDatasetContext: Map[String, DatasetContext[SoQLType]] = allSchemaWithFieldName.mapValues { schemaWithFieldName =>
-    val columnNameToType = schemaWithFieldName.map {
-      case (_iColumnId, (typ, fieldName)) =>
-        (ColumnName(fieldName), typ)
-    }
-    new DatasetContext[SoQLType] {
-      val schema: OrderedMap[ColumnName, SoQLType] =
-        OrderedMap[ColumnName, SoQLType](columnNameToType.toSeq:  _*)
-    }
-  }
+  val allDatasetContext = AnalysisContext[SoQLType, SoQLValue](
+    schemas = allSchemaWithFieldName.mapValues { schemaWithFieldName =>
+      val columnNameToType = schemaWithFieldName.map {
+        case (_iColumnId, (typ, fieldName)) =>
+          (ColumnName(fieldName), typ)
+      }
+      new DatasetContext[SoQLType] {
+        val schema: OrderedMap[ColumnName, SoQLType] =
+          OrderedMap[ColumnName, SoQLType](columnNameToType.toSeq:  _*)
+      }
+    },
+    parameters = ParameterSpec.empty
+  )
 
   //  This is the content of allDatasetContext: Map[String, DatasetContext[SoQLType]] = Map(
   //    "_" -> new DatasetContext[SoQLType] {
@@ -124,7 +127,7 @@ trait TestCompoundQueryRewriterBase { this: TestBase =>
       )
     val parsed = new Parser(parserParams).binaryTreeSelect(q)
     val ruCtx = rollupContext(ruQuery)
-    val ctx = allDatasetContext ++ ruCtx
+    val ctx = allDatasetContext.withUpdatedSchemas(_ ++ ruCtx)
     val result = analyzer.analyzeBinary(parsed)(ctx)
     val columnMap = allQualifiedColumnNameToIColumnId ++ rollupColumnIds(ruQuery)
     QueryParser.remapAnalyses(columnMap, result)
