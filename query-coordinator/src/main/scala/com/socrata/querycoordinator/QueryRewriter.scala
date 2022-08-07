@@ -707,6 +707,20 @@ object QueryRewriter {
   val DivNumber = DivNumNum.monomorphic.get
   val CountNumber = MonomorphicFunction(Count, Map("a" -> SoQLNumber))
 
+  def rollupAtJoin(q: Anal): Boolean = {
+    q.hints.exists {
+      case RollupAtJoin(_) => true
+      case _ => false
+    }
+  }
+
+  def compoundRollup(q: Anal): Boolean = {
+    q.hints.exists {
+      case CompoundRollup(_) => true
+      case _ => false
+    }
+  }
+
   private def noRollup(q: Anal): Boolean = {
     q.hints.exists {
       case NoRollup(_) =>
