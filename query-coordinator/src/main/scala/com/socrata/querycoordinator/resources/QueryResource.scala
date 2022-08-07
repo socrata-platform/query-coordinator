@@ -21,6 +21,7 @@ import com.socrata.soql.exceptions.{DuplicateAlias, NoSuchColumn, TypecheckExcep
 import com.socrata.soql.{BinaryTree, Compound, JoinAnalysis, Leaf, PipeQuery, SoQLAnalysis, SubAnalysis}
 import com.socrata.soql.types.{SoQLID, SoQLNumber, SoQLType}
 import com.socrata.soql.stdlib.Context
+import com.socrata.soql.typed.RollupAtJoin
 import org.apache.http.HttpStatus
 import org.joda.time.format.ISODateTimeFormat
 import org.joda.time.{DateTime, DateTimeZone, Interval}
@@ -331,13 +332,13 @@ class QueryResource(secondary: Secondary,
                 if (ruMapOpt.isEmpty && ruMap.nonEmpty && rollupLeft.isEmpty) {
                   // simple rewrite has higher priority over compound query rewrite
                   // for fear that compound rewrite is not as matured as simple rewrite
-                  queryRewriter.possibleRewrites(analyzedQuery, ruMap, debug)
+                  queryRewriter.possibleRewrites(analyzedQuery, ruMap, true)
                 } else {
                   rewritten
                 }
               case Compound(_, _, _) =>
                 if (ruMapOpt.isEmpty && ruMap.nonEmpty) {
-                  queryRewriter.possibleRewrites(analyzedQuery, ruMap, debug) match {
+                  queryRewriter.possibleRewrites(analyzedQuery, ruMap, true) match {
                     case (unchanged, Nil) =>
                       (possiblyRewriteJoin(unchanged), Nil)
                     case rewritten@(_, _) =>
@@ -388,6 +389,9 @@ class QueryResource(secondary: Secondary,
         }
 
         def possiblyRewriteJoin(analysis: SoQLAnalysis[String, SoQLType]): SoQLAnalysis[String, SoQLType] = {
+          if (!QueryRewriter.rollupAtJoin(analysis)) {
+            return analysis
+          }
           val rwJoins = analysis.joins.map { join =>
             join.from.subAnalysis match {
               case Right(SubAnalysis(analyses, alias)) =>
@@ -399,7 +403,7 @@ class QueryResource(secondary: Secondary,
                   case RollupInfoFetcher.Successful(rollups) =>
                     val joinedSchema = getSchemaByTableName(joinedTable)
                     val analyzedRollupsOfJoinTable = queryRewriter.analyzeRollups(joinedSchema.toSchema(), rollups, getSchemaByTableName)
-                    queryRewriter.possibleRewrites(joinedAnalysesFromRemoved, analyzedRollupsOfJoinTable, true) match {
+                    queryRewriter.possibleRewrites(joinedAnalysesFromRemoved, analyzedRollupsOfJoinTable, false) match {
                       case (rwAnalyses, Seq(ruApplied)) =>
                         val ruTableName = TableName(s"${joinedTable.name}.${ruApplied}")
                         val rwAnalysesRollupTableApplied = rwAnalyses.leftMost.leaf.copy(from = Some(ruTableName))
