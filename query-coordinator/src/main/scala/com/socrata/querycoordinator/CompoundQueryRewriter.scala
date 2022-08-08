@@ -16,8 +16,8 @@ trait CompoundQueryRewriter { this: QueryRewriter =>
     * the second tuple element is not empty which can either be an exact tree match or a prefix tree match.
     * Otherwise, the original q is returned.
     */
-  def possibleRewrites(q: BinaryTree[Anal], rollups: Map[RollupName, BinaryTree[Anal]], debug: Boolean): (BinaryTree[Anal], Seq[String]) = {
-    if (!debug) {
+  def possibleRewrites(q: BinaryTree[Anal], rollups: Map[RollupName, BinaryTree[Anal]], requireCompoundRollupHint: Boolean): (BinaryTree[Anal], Seq[String]) = {
+    if (requireCompoundRollupHint && !QueryRewriter.compoundRollup(q.outputSchema.leaf)) {
       return (q, Seq.empty)
     }
 

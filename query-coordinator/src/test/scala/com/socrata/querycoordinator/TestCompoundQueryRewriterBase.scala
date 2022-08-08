@@ -136,7 +136,7 @@ trait TestCompoundQueryRewriterBase { this: TestBase =>
   def assertNoRollupMatch(q: String): Unit = {
     analyzeCompoundQuery(q) match {
       case analyses@Compound(_, _, _) =>
-        val (rewrittens, ruNameApplied) = rewriter.possibleRewrites(analyses, rollupAnalyses, true)
+        val (rewrittens, ruNameApplied) = rewriter.possibleRewrites(analyses, rollupAnalyses, false)
         ruNameApplied should have size 0
       case Leaf(analysis) =>
         val rewrites = rewriter.possibleRewrites(analysis, rollupAnalysis)
@@ -146,7 +146,7 @@ trait TestCompoundQueryRewriterBase { this: TestBase =>
 
   def checkQueryRewrite(query: String, rollups: Map[String, String], expectedRollupName: String, expectedRewrittenQuery: String): Unit = {
     val queryAnalysis = analyzeCompoundQuery(query)
-    val (rewrittens, Seq(ruNameApplied)) = rewriter.possibleRewrites(queryAnalysis, rollupAnalyses, true)
+    val (rewrittens, Seq(ruNameApplied)) = rewriter.possibleRewrites(queryAnalysis, rollupAnalyses, false)
     val rollupQuery = rollups(expectedRollupName)
     val rewrittenQueryAnalysis = analyzeRewrittenCompoundQuery(expectedRewrittenQuery, rollupQuery)
     ruNameApplied should equal(expectedRollupName)
