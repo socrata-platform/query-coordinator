@@ -107,7 +107,7 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite {
             val nextCtx = new UntypedDatasetContext {
               override val columns: OrderedSet[ColumnName] = OrderedSet(columnNames: _*)
             }
-            val nr = expand(r, toAnalysisContext(nextCtx))
+            val nr = expand(r, toUntypedAnalysisContext(nextCtx))
             PipeQuery(nl, nr)
           case Leaf(select) =>
             val expandedSelection = AliasAnalysis.expandSelection(select.selection)(ctx)
@@ -124,7 +124,7 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite {
         }
       }
 
-      val expandedStatements = expand(parsedStmts, toAnalysisContext(baseCtx))
+      val expandedStatements = expand(parsedStmts, toUntypedAnalysisContext(baseCtx))
       // rewrite only the last statement.
       val outputSchemaLeaf = expandedStatements.outputSchema.leaf
       val rewritten = rewrite(outputSchemaLeaf)

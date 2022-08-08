@@ -63,7 +63,7 @@ abstract class TestQueryRewriterBase extends TestBase with TestCompoundQueryRewr
     q match {
       case None =>
         columnIdMapping(cn)
-      case Some(q) => q == TableName.SodaFountainPrefix + joinTable.qualifier
+      case Some(q) if q == TableName.SodaFountainPrefix + joinTable.qualifier =>
         columnIdMappingJoin(cn)
       case Some(unknown) =>
         throw new Exception(s"Unknown qualifier $unknown")
@@ -95,7 +95,7 @@ abstract class TestQueryRewriterBase extends TestBase with TestCompoundQueryRewr
 
   /** Analyze the query and map to column ids, just like we have in real life. */
   override def analyzeQuery(q: String): SoQLAnalysis[ColumnId, SoQLType] = {
-    val ctx = toAnalysisContext(dsContext) + (joinTable.nameWithSodaFountainPrefix -> dsContextJoin)
+    val ctx = toAnalysisContext(dsContext).withUpdatedSchemas(_ + (joinTable.nameWithSodaFountainPrefix -> dsContextJoin))
     val analysis = analyzer.analyzeUnchainedQuery(q)(ctx)
     analysis.mapColumnIds(multiTablesColumnIdMapping)
   }

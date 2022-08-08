@@ -1,14 +1,23 @@
 package com.socrata.querycoordinator.util
 
-import com.socrata.soql.environment.{ColumnName, TableName}
+import com.socrata.soql.environment.{ColumnName, DatasetContext, TableName, UntypedDatasetContext}
 import com.socrata.soql.typed.Qualifier
+import com.socrata.soql.types.{SoQLType, SoQLValue}
+import com.socrata.soql.{AnalysisContext, ParameterSpec}
 
 object Join {
 
   val NoQualifier: Qualifier = None
 
   // TODO: Join - from one to multiple contexts
-  def toAnalysisContext[ContextType](ctx: ContextType): Map[String, ContextType] = {
+  def toAnalysisContext(ctx: DatasetContext[SoQLType]): AnalysisContext[SoQLType, SoQLValue] = {
+    AnalysisContext(
+      schemas = Map(TableName.PrimaryTable.qualifier -> ctx),
+      parameters = ParameterSpec.empty
+    )
+  }
+
+  def toUntypedAnalysisContext(ctx: UntypedDatasetContext): Map[String, UntypedDatasetContext] = {
     Map(TableName.PrimaryTable.qualifier -> ctx)
   }
 

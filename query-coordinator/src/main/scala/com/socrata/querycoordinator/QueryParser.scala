@@ -12,17 +12,17 @@ import com.socrata.soql.exceptions.SoQLException
 import com.socrata.soql.functions.SoQLFunctions
 import com.socrata.soql.parsing.{AbstractParser, Parser}
 import com.socrata.soql.typed._
-import com.socrata.soql.types.SoQLType
-import com.socrata.soql.{BinaryTree, Compound, Leaf, PipeQuery, SoQLAnalysis, SoQLAnalyzer, ast}
+import com.socrata.soql.types.{SoQLType, SoQLValue}
+import com.socrata.soql.{AnalysisContext, BinaryTree, Compound, Leaf, ParameterSpec, PipeQuery, SoQLAnalysis, SoQLAnalyzer, ast}
 import com.typesafe.scalalogging.Logger
 import org.joda.time.DateTime
 
 
-class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher, maxRows: Option[Int], defaultRowsLimit: Int) {
+class QueryParser(analyzer: SoQLAnalyzer[SoQLType, SoQLValue], schemaFetcher: SchemaFetcher, maxRows: Option[Int], defaultRowsLimit: Int) {
   import QueryParser._ // scalastyle:ignore import.grouping
   import com.socrata.querycoordinator.util.Join._
 
-  type AnalysisContext = Map[String, DatasetContext[SoQLType]]
+  type AnalysisContext = com.socrata.soql.AnalysisContext[SoQLType, SoQLValue]
 
   private def go(columnIdMapping: Map[ColumnName, String], schema: Map[String, SoQLType])
                 (f: AnalysisContext => (BinaryTree[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String], DateTime)): Result = {
@@ -87,8 +87,8 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
 
     val (primaryAlias, ctxWithAlias) = parsed.leftMost.leaf.from match {
       case Some(tn@TableName(TableName.This, a@Some(alias))) =>
-        val primarySchema = ctx(TableName.PrimaryTable.name)
-        (a, (ctx + (alias -> primarySchema)) + (tn.name -> primarySchema))
+        val primarySchema = ctx.schemas(TableName.PrimaryTable.name)
+        (a, ctx.withUpdatedSchemas(_ + (alias -> primarySchema) + (tn.name -> primarySchema)))
       case _ =>
         (None, ctx)
     }
@@ -139,7 +139,7 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType], schemaFetcher: SchemaFetcher
         val schemaResult = schemaFetcher(selectedSecondaryInstanceBase, tableName, None, useResourceName = true)
         schemaResult match {
           case Successful(schema, _, _, lastModified) =>
-            val combinedCtx = accCtx + (tableName -> schemaToDatasetContext(schema))
+            val combinedCtx = accCtx.withUpdatedSchemas(_ + (tableName -> schemaToDatasetContext(schema)))
             val combinedIdMap = accColumnIdMap ++ schema.schema.map {
               case (columnId, (_, fieldName)) =>
                 QualifiedColumnName(Some(tableName), new ColumnName(fieldName)) -> columnId

@@ -10,13 +10,13 @@ import com.socrata.soql.functions._
 import com.socrata.soql.parsing.StandaloneParser
 import com.socrata.soql.typed.{ColumnRef => _, FunctionCall => _, Join => _, OrderBy => _, _}
 import com.socrata.soql.types._
-import com.socrata.soql.{BinaryTree, Compound, Leaf, PipeQuery, SoQLAnalysis, SoQLAnalyzer, typed}
+import com.socrata.soql.{AnalysisContext, BinaryTree, Compound, Leaf, ParameterSpec, PipeQuery, SoQLAnalysis, SoQLAnalyzer, typed}
 import org.joda.time.{DateTimeConstants, LocalDateTime}
 
 import scala.util.parsing.input.NoPosition
 import scala.util.{Failure, Success, Try}
 
-class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) extends CompoundQueryRewriter {
+class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends CompoundQueryRewriter {
 
   import com.socrata.querycoordinator.util.Join._
 
@@ -654,14 +654,18 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType]) extends CompoundQueryRewri
       Try {
         val parsedQueries = new StandaloneParser().binaryTreeSelect(soql)
         val tableNames = collectTableNames(parsedQueries)
-        val contexts = tableNames.foldLeft(dsContext) { (acc, tn) =>
+        val schemas = tableNames.foldLeft(dsContext) { (acc, tn) =>
           val tableName = TableName(tn)
           val sch = getSchemaByTableName(tableName)
           val dsctx = prefixedDsContext(sch.toSchema())
           acc + (tn -> dsctx)
         }
+        val context = AnalysisContext[SoQLType, SoQLValue](
+          schemas,
+          parameters = ParameterSpec.empty
+        )
 
-        val analyses = analyzer.analyzeBinary(parsedQueries)(contexts) map { analysis =>
+        val analyses = analyzer.analyzeBinary(parsedQueries)(context) map { analysis =>
           analysis.mapColumnIds(removeRollupPrefix)
         }
         analyses
