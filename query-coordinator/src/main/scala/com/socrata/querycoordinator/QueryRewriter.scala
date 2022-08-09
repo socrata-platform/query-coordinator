@@ -828,4 +828,8 @@ object QueryRewriter {
       case _ => false
     }.mapValues(_.outputSchema.leaf)
   }
+
+  def primaryRollup(names: Seq[String]): Option[String] = {
+    names.filterNot(_.startsWith(TableName.SoqlPrefix)).headOption
+  }
 }
