@@ -63,6 +63,8 @@ object SoQLAnalysisDepositioner {
       case x@Materialized(_) => x.copy(NoPosition)
       case x@NoRollup(_) => x.copy(NoPosition)
       case x@NoChainMerge(_) => x.copy(NoPosition)
+      case x@RollupAtJoin(_) => x.copy(NoPosition)
+      case x@CompoundRollup(_) => x.copy(NoPosition)
     }
   }
 }
