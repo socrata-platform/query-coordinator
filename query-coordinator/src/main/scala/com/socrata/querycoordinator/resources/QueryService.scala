@@ -178,6 +178,10 @@ trait QueryService {
                              Map(qpLimit -> JNumber(max)))
   }
 
+  def missingLensUid(message: String): HttpResponse = {
+    BadRequest ~> errContent(RequestErrors.missingLensUid, message, Map())
+  }
+
   def joinedTableNotFound(dataset: String, resource: String, secondaries: Set[String]): HttpResponse = {
     NotFound ~> errContent(QueryErrors.isNotCollocated, s"joined dataset $dataset is not collocated in secondaries",
       Map("resource" -> JString(resource),

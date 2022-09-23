@@ -10,10 +10,10 @@ object Join {
   val NoQualifier: Qualifier = None
 
   // TODO: Join - from one to multiple contexts
-  def toAnalysisContext(ctx: DatasetContext[SoQLType]): AnalysisContext[SoQLType, SoQLValue] = {
+  def toAnalysisContext(ctx: DatasetContext[SoQLType], parameters: ParameterSpec[SoQLType, SoQLValue] = ParameterSpec.empty): AnalysisContext[SoQLType, SoQLValue] = {
     AnalysisContext(
       schemas = Map(TableName.PrimaryTable.qualifier -> ctx),
-      parameters = ParameterSpec.empty
+      parameters = parameters
     )
   }
 
