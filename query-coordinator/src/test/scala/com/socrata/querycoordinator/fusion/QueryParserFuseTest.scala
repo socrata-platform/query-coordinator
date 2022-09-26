@@ -10,6 +10,7 @@ import com.socrata.soql.environment.ColumnName
 import com.socrata.soql.functions._
 import com.socrata.soql.typed._
 import com.socrata.soql.types._
+import com.socrata.soql.stdlib.Context
 
 class QueryParserFuseTest extends TestBase {
   import QueryParserFuseTest._ // scalastyle:ignore import.grouping
@@ -27,7 +28,8 @@ class QueryParserFuseTest extends TestBase {
       ColumnName("phone") -> phoneFc
     )
 
-    val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, fuse) match {
+
+    val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, fuseMap = fuse) match {
       case SuccessfulParse(analyses, _) =>
         val actual = SoQLAnalysisDepositioner(analyses.asLeaf.get)
         actual.selection should be(expectedSelection)
@@ -44,7 +46,7 @@ class QueryParserFuseTest extends TestBase {
       ColumnName("phone") -> phoneFc
     )
 
-    val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, fuse) match {
+    val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, fuseMap = fuse) match {
       case SuccessfulParse(analyses, _) =>
         val actual = SoQLAnalysisDepositioner(analyses.seq.head)
         actual.selection should be(expectedSelection)
@@ -62,7 +64,7 @@ class QueryParserFuseTest extends TestBase {
       ColumnName("a") -> ColumnRef(NoQualifier, "ai", SoQLText)(NoPosition)
     )
 
-    val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, fuse) match {
+    val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, fuseMap = fuse) match {
       case SuccessfulParse(analyses, _) =>
         val actual = SoQLAnalysisDepositioner(analyses.seq.head)
         actual.selection should be(expectedSelection)
@@ -82,7 +84,7 @@ class QueryParserFuseTest extends TestBase {
       ColumnName(":id") -> ColumnRef(NoQualifier, ":id", SoQLID)(NoPosition)
     )
 
-    val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, Map.empty) match {
+    val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, fuseMap = Map.empty) match {
       case SuccessfulParse(analyses, _) =>
         val actual = SoQLAnalysisDepositioner(analyses.seq.head)
         actual.selection should be(expectedSelection)
@@ -99,7 +101,7 @@ class QueryParserFuseTest extends TestBase {
       ColumnName("a") -> ColumnRef(NoQualifier, "ai", SoQLText)(NoPosition)
     )
 
-    val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, Map.empty) match {
+    val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, fuseMap = Map.empty) match {
       case SuccessfulParse(analyses, _) =>
         val actual = SoQLAnalysisDepositioner(analyses.seq.head)
       case x: QueryParser.Result =>

@@ -35,12 +35,16 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType, SoQLValue], schemaFetcher: Sc
         .filter { case(name,_) => name.contains(".")}
 
     try {
-      val uid = lensUid match {
-        case Some(uid) => uid
-        case None => throw new ParameterSpecException("lensUid missing from request. It is needed to build the ParamterSpec")
-      }
+      val paramSpec = if (parameters.isEmpty) {
+        ParameterSpec.empty
+      } else {
+        val uid = lensUid match {
+          case Some(uid) => uid
+          case None => throw new ParameterSpecException("lensUid missing from request. It is needed to build the ParamterSpec")
+        }
 
-      val paramSpec = ParameterSpec(namespaceParams(parameters), uid)
+        ParameterSpec(namespaceParams(parameters), uid)
+      }
 
       val ds = toAnalysisContext(dsContext(columnIdMapping, schema), paramSpec)
 
@@ -200,9 +204,9 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType, SoQLValue], schemaFetcher: Sc
             columnIdMapping: Map[ColumnName, String],
             schema: Map[String, SoQLType],
             selectedSecondaryInstanceBase: RequestBuilder,
+            context: Context = Context.empty,
+            lensUid: Option[String] = None,
             fuseMap: Map[String, String] = Map.empty,
-            context: Context,
-            lensUid: Option[String],
             merged: Boolean = true): Result = {
     val compoundTypeFuser = CompoundTypeFuser(fuseMap)
     val postAnalyze = analyzeQuery(query, columnIdMapping, selectedSecondaryInstanceBase, compoundTypeFuser, schema)

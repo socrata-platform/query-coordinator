@@ -146,7 +146,7 @@ class QueryResource(secondary: Secondary,
             })
 
           val columnIdMap = extractColumnIdMap(schemaWithFieldNames.payload)
-          val parsedQuery = queryParser(query, columnIdMap, schema.schema, base, fuseMap, context, lensUid)
+          val parsedQuery = queryParser(query, columnIdMap, schema.schema, base, context, lensUid, fuseMap)
 
           parsedQuery match {
             case QueryParser.SuccessfulParse(analysis, largestLastModifiedOfJoins) =>
