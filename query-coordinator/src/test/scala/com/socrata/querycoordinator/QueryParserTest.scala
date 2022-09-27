@@ -11,6 +11,8 @@ import com.socrata.soql.parsing.SoQLPosition
 import com.socrata.soql.{Leaf, SoQLAnalyzer}
 import com.socrata.soql.typed.{ColumnRef, FunctionCall, StringLiteral}
 import com.socrata.soql.types.{SoQLFixedTimestamp, SoQLFloatingTimestamp, SoQLText, SoQLType}
+import com.socrata.soql.stdlib.Context
+import com.rojoma.json.v3.util.JsonUtil
 
 import scala.util.parsing.input.NoPosition
 
@@ -45,6 +47,28 @@ class QueryParserTest extends TestBase {
       case x: QueryParser.Result => x
     }
     actual should be(expected)
+  }
+
+  test("SELECT param succeeds") {
+    val contextStr = """{"u": {"n":{"height_limit.aaaa-bbbb":72}}}"""
+    val context = JsonUtil.parseJson[Context](contextStr).right.get
+    val query = "select param(@aaaa-bbbb, 'height_limit')"
+    val actual = qp.apply(query, truthColumns, outdatedSchema, fakeRequestBuilder, context, Some("aaaa-bbbb"))
+    actual shouldBe a[SuccessfulParse]
+  }
+
+  test("SELECT param missing from context fails") {
+    val query = "select param(@aaaa-bbbb, 'height_limit')"
+    val actual = qp.apply(query, truthColumns, outdatedSchema, fakeRequestBuilder, Context.empty, Some("aaaa-bbbb"))
+    actual.getClass should be(classOf[AnalysisError])
+  }
+
+  test("SELECT param without a lens uid fails") {
+    val query = "select param(@aaaa-bbbb, 'height_limit')"
+    val contextStr = """{"u": {"n":{"height_limit.aaaa-bbbb":72}}}"""
+    val context = JsonUtil.parseJson[Context](contextStr).right.get
+    val actual = qp.apply(query, truthColumns, outdatedSchema, fakeRequestBuilder, context, None)
+    actual.getClass should be(classOf[QueryParser.ParameterSpecError])
   }
 
   test("SELECT non existing column errs") {

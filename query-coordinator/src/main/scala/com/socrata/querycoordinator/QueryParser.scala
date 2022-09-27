@@ -2,7 +2,7 @@ package com.socrata.querycoordinator
 
 import com.socrata.http.client.RequestBuilder
 import com.socrata.querycoordinator.SchemaFetcher.{NoSuchDatasetInSecondary, Successful}
-import com.socrata.querycoordinator.exceptions.JoinedDatasetNotColocatedException
+import com.socrata.querycoordinator.exceptions.{JoinedDatasetNotColocatedException, ParameterSpecException}
 import com.socrata.querycoordinator.fusion.{CompoundTypeFuser, SoQLRewrite}
 import com.socrata.querycoordinator.util.BinaryTreeHelper
 import com.socrata.soql.ast.{JoinFunc, JoinQuery, JoinTable, Select}
@@ -12,10 +12,11 @@ import com.socrata.soql.exceptions.SoQLException
 import com.socrata.soql.functions.SoQLFunctions
 import com.socrata.soql.parsing.{AbstractParser, Parser}
 import com.socrata.soql.typed._
-import com.socrata.soql.types.{SoQLType, SoQLValue}
-import com.socrata.soql.{AnalysisContext, BinaryTree, Compound, Leaf, ParameterSpec, PipeQuery, SoQLAnalysis, SoQLAnalyzer, ast}
+import com.socrata.soql.types.{SoQLNumber, SoQLType, SoQLValue}
+import com.socrata.soql.{AnalysisContext, BinaryTree, Compound, Leaf, ParameterSpec, ParameterValue, PipeQuery, PresentParameter, SoQLAnalysis, SoQLAnalyzer, ast}
 import com.typesafe.scalalogging.Logger
 import org.joda.time.DateTime
+import com.socrata.soql.stdlib.Context
 
 
 class QueryParser(analyzer: SoQLAnalyzer[SoQLType, SoQLValue], schemaFetcher: SchemaFetcher, maxRows: Option[Int], defaultRowsLimit: Int) {
@@ -24,11 +25,29 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType, SoQLValue], schemaFetcher: Sc
 
   type AnalysisContext = com.socrata.soql.AnalysisContext[SoQLType, SoQLValue]
 
-  private def go(columnIdMapping: Map[ColumnName, String], schema: Map[String, SoQLType])
+  private def go(columnIdMapping: Map[ColumnName, String], schema: Map[String, SoQLType], context: Context, lensUid: Option[String])
                 (f: AnalysisContext => (BinaryTree[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String], DateTime)): Result = {
+      val parameters = (context.user.num.toSeq ++
+        context.user.text.toSeq ++
+        context.user.bool.toSeq ++
+        context.user.fixed.toSeq ++
+        context.user.floating.toSeq)
+        .filter { case(name,_) => name.contains(".")}
 
-    val ds = toAnalysisContext(dsContext(columnIdMapping, schema))
     try {
+      val paramSpec = if (parameters.isEmpty) {
+        ParameterSpec.empty
+      } else {
+        val uid = lensUid match {
+          case Some(uid) => uid
+          case None => throw new ParameterSpecException("lensUid missing from request. It is needed to build the ParamterSpec")
+        }
+
+        ParameterSpec(namespaceParams(parameters), uid)
+      }
+
+      val ds = toAnalysisContext(dsContext(columnIdMapping, schema), paramSpec)
+
       val (analyses, joinColumnIdMapping, dateTime) = f(ds)
       limitRows(analyses) match {
         case Right(analyses) =>
@@ -37,11 +56,21 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType, SoQLValue], schemaFetcher: Sc
         case Left(result) => result
       }
     } catch {
+      case e: ParameterSpecException =>
+        ParameterSpecError(e.message)
       case e: SoQLException =>
         AnalysisError(e)
       case e: JoinedDatasetNotColocatedException =>
         QueryParser.JoinedTableNotFound(e.dataset, e.secondaryHost)
     }
+  }
+  private def namespaceParams(contextParams: Seq[(String, SoQLValue)]): Map[String, Map[HoleName, ParameterValue[SoQLType, SoQLValue]]] = {
+    contextParams.map { case(k,v) => {
+      val (name, namespace) = k.splitAt(k.lastIndexOf("."))
+      (namespace.drop(1), name, v)
+    }}
+      .groupBy(_._1)
+      .mapValues(v => v.map { case (_,b,c) => (HoleName(b),PresentParameter(c)) }.toMap)
   }
 
   private def limitRows(analyses: BinaryTree[SoQLAnalysis[ColumnName, SoQLType]])
@@ -175,12 +204,14 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType, SoQLValue], schemaFetcher: Sc
             columnIdMapping: Map[ColumnName, String],
             schema: Map[String, SoQLType],
             selectedSecondaryInstanceBase: RequestBuilder,
+            context: Context = Context.empty,
+            lensUid: Option[String] = None,
             fuseMap: Map[String, String] = Map.empty,
             merged: Boolean = true): Result = {
     val compoundTypeFuser = CompoundTypeFuser(fuseMap)
     val postAnalyze = analyzeQuery(query, columnIdMapping, selectedSecondaryInstanceBase, compoundTypeFuser, schema)
     val analyzeMaybeMerge = if (merged) { postAnalyze andThen soqlMerge } else { postAnalyze }
-    go(columnIdMapping, schema)(analyzeMaybeMerge)
+    go(columnIdMapping, schema, context, lensUid)(analyzeMaybeMerge)
   }
 
   private def soqlMerge(analysesAndColumnIdMap: (BinaryTree[SoQLAnalysis[ColumnName, SoQLType]], Map[QualifiedColumnName, String], DateTime))
@@ -204,6 +235,8 @@ object QueryParser {
   case class RowLimitExceeded(max: BigInt) extends Result
 
   case class JoinedTableNotFound(joinedTable: String, secondaryHost: String) extends Result
+
+  case class ParameterSpecError(message: String) extends Result
 
   /**
    * Make schema which is a mapping of column name to datatype

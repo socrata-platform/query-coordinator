@@ -89,6 +89,7 @@ class QueryResource(secondary: Secondary,
         JsonUtil.parseJson[Context](cStr).right.get
       }
 
+      val lensUid = Option(servReq.getParameter("lensUid"))
       val rowCount = Option(servReq.getParameter("rowCount"))
       val copy = Option(servReq.getParameter("copy"))
       val queryTimeoutSeconds = Option(servReq.getParameter(qpQueryTimeoutSeconds))
@@ -145,7 +146,7 @@ class QueryResource(secondary: Secondary,
             })
 
           val columnIdMap = extractColumnIdMap(schemaWithFieldNames.payload)
-          val parsedQuery = queryParser(query, columnIdMap, schema.schema, base, fuseMap)
+          val parsedQuery = queryParser(query, columnIdMap, schema.schema, base, context, lensUid, fuseMap)
 
           parsedQuery match {
             case QueryParser.SuccessfulParse(analysis, largestLastModifiedOfJoins) =>
@@ -172,6 +173,8 @@ class QueryResource(secondary: Secondary,
               } else {
                 Left(nextRetry)
               }
+            case QueryParser.ParameterSpecError(message) =>
+              finishRequest(missingLensUid(message))
           }
         }
 
