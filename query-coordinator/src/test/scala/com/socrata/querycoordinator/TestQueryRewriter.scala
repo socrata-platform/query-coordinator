@@ -534,4 +534,13 @@ class TestQueryRewriter extends TestBase with TestCompoundQueryRewriterBase {
     val rewrittenQuery = "SELECT c1 as number1, c2 as sum_number1 LIMIT 2"
     checkQueryRewrite(q, rollups, "ru1", rewrittenQuery)
   }
+
+  test("non aggregate function call expression that is not present as a groupby should not be mapped (continue deeper rewriting)") {
+    val q = "SELECT crime_type, count(ward)*100 as count_alias group by crime_type order by count_alias desc"
+    val queryAnalysis = analyzeQuery(q)
+    val rollupAnalysis = QueryRewriter.simpleRollups(Map(
+      new RollupName("one")->analyzeCompoundQuery("SELECT crime_type, count(ward)*100 as count_alias group by crime_type order by count_alias desc")
+    ))
+    val rewrites = rewriter.possibleRewrites(queryAnalysis, rollupAnalysis)
+  }
 }

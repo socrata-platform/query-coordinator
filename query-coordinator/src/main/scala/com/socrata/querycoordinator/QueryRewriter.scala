@@ -425,22 +425,28 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends Compoun
   }
 
   // remaining non-aggregate functions
+  // If the treewalk finds a rollup column that matches the current expr which is not a group definition and whose top-level is a non-aggregate, ignore that rollup-column and recurse into the arguments
   private def rewriteNonagg(r: Anal, rollupColIdx: Map[Expr, Int],
                             fc: FunctionCall): Option[typed.CoreExpr[ColumnId, SoQLType] with Serializable] = {
-    // if we have the exact same function in rollup and query, just turn it into a column ref in the rollup
-    val functionMatch = for {
-      idx <- rollupColIdx.get(fc)
-    } yield typed.ColumnRef(NoQualifier, rollupColumnId(idx), fc.typ)(fc.position)
-    // otherwise, see if we can recursively rewrite
-    functionMatch.orElse {
-      val mapped = fc.parameters.map(fe => rewriteExpr(fe, r, rollupColIdx))
-      log.trace("mapped expr params {} {} -> {}", "", fc.parameters, mapped)
-      if (mapped.forall(fe => fe.isDefined)) {
-        log.trace("expr params all defined")
-        Some(fc.copy(parameters = mapped.flatten))
-      } else {
-        None
+    // Check if this functionCall is used in the rollup groupbys
+    if (r.groupBys.contains(fc)){
+      // Try to map
+      val functionMatch = for {
+        idx <- rollupColIdx.get(fc)
+      } yield typed.ColumnRef(NoQualifier, rollupColumnId(idx), fc.typ)(fc.position)
+      // If mapped lets return the mapping
+      if(functionMatch.isDefined){
+        return functionMatch
       }
+    }
+    // FunctionCall is NOT in a groupby, or no mapping available, lets continue to recurse and rewrite
+    val mapped = fc.parameters.map(fe => rewriteExpr(fe, r, rollupColIdx))
+    log.trace("mapped expr params {} {} -> {}", "", fc.parameters, mapped)
+    if (mapped.forall(fe => fe.isDefined)) {
+      log.trace("expr params all defined")
+      Some(fc.copy(parameters = mapped.flatten))
+    } else {
+      None
     }
   }
 
