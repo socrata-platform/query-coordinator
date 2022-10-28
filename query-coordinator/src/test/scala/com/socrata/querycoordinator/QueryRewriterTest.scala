@@ -1,6 +1,6 @@
 package com.socrata.querycoordinator
 
-import com.socrata.querycoordinator.QueryRewritingTestUtility.{Analyze, AnalyzeRewrittenFromRollup, AssertRewrite, AssertRewriteDefault, ReMap}
+import com.socrata.querycoordinator.QueryRewritingTestUtility._
 import com.socrata.soql.SoQLAnalyzer
 import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
 import com.socrata.soql.parsing.{AbstractParser, Parser}
@@ -88,10 +88,8 @@ class QueryRewriterTest extends FunSuite {
         "one" -> "select count(ward)"
       ),
       "select count(ward) as count_ward",
-      AnalyzeRewrittenFromRollup(
-        "select c1 as count_ward",
-        "one"
-      )
+      "select c1 as count_ward",
+      "one"
     )
   }
 }

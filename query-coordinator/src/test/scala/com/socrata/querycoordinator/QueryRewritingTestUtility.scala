@@ -32,7 +32,8 @@ object QueryRewritingTestUtility {
   type BuildRewrittenContextFunction = (RollupsDefinition, SoqlParseFunction, AnalyzedDatasetContext, SoqlAnalysisFunction, ColumnMappings, RemapAnalyzedSoqlFunction) => (RemappedAnalyzedSoql, Seq[String])
 
   // Wrapping method for AssertRewrite that handles defaulting the first argument group
-  def AssertRewriteDefault(datasetDefinitions: DatasetDefinitions, rollupsDefinition: RollupsDefinition, queryDefinition: QueryDefinition, expected: BuildRewrittenContextFunction): Unit = {
+  // Also removed needed call to AnalyzeRewrittenFromRollup, instead making the caller simply provide the strings
+  def AssertRewriteDefault(datasetDefinitions: DatasetDefinitions, rollupsDefinition: RollupsDefinition, queryDefinition: QueryDefinition, expectedRewritten: String, expectedRollupName: String): Unit = {
     val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
     val parserParams = AbstractParser.Parameters(allowJoins = true)
     val parser = new Parser(parserParams)
@@ -48,7 +49,7 @@ object QueryRewritingTestUtility {
       datasetDefinitions,
       rollupsDefinition,
       queryDefinition,
-      expected
+      AnalyzeRewrittenFromRollup(expectedRewritten,expectedRollupName)
     )
   }
 
