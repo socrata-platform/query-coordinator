@@ -1,6 +1,6 @@
 package com.socrata.querycoordinator
 
-import com.socrata.querycoordinator.QueryRewritingTestUtility.{Analyze, AnalyzeRewrittenFromRollup, AssertRewrite, ReMap}
+import com.socrata.querycoordinator.QueryRewritingTestUtility.{Analyze, AnalyzeRewrittenFromRollup, AssertRewrite, AssertRewriteDefault, ReMap}
 import com.socrata.soql.SoQLAnalyzer
 import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
 import com.socrata.soql.parsing.{AbstractParser, Parser}
@@ -13,7 +13,7 @@ class QueryRewriterTest extends FunSuite {
   // This lays out what I believe to be a self-contained and easier way of testing rewrites
   // There is no shared global state
   // There is a lot of functional stuff going on, but hopefully you wont need to care
-  test("testPossibleRewrites") {
+  test("testPossibleRewritesRaw") {
     // Some objects that are used throughout, could probably be shared and put into a beforeall
     val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
     val parserParams = AbstractParser.Parameters(allowJoins = true)
@@ -63,6 +63,33 @@ class QueryRewriterTest extends FunSuite {
         // The expected rewritten query
         "select c1 as count_ward",
         // The rollup we expect to be used
+        "one"
+      )
+    )
+  }
+
+  test("testPossibleRewritesDefault") {
+    // Assumes a default setup, ie.. SoQLAnalyzer/AbstractParser.Parameters/Parser/QueryRewriter
+    AssertRewriteDefault(
+      Map("_" -> Map("dxyz-num1" -> (SoQLNumber.t, "number1"),
+        ":wido-ward" -> (SoQLNumber.t, "ward"),
+        "crim-typ3" -> (SoQLText.t, "crime_type"),
+        "dont-roll" -> (SoQLText.t, "dont_create_rollups"),
+        "crim-date" -> (SoQLFloatingTimestamp.t, "crime_date"),
+        "some-date" -> (SoQLFloatingTimestamp.t, "some_date")
+      ),
+        "_tttt-tttt" -> Map("crim-typ3" -> (SoQLText.t, "crime_type"),
+          "aaaa-aaaa" -> (SoQLText.t, "aa"),
+          "bbbb-bbbb" -> (SoQLText.t, "bb"),
+          "dddd-dddd" -> (SoQLFloatingTimestamp.t, "floating"),
+          "nnnn-nnnn" -> (SoQLNumber.t, "nn"))
+      ),
+      Map(
+        "one" -> "select count(ward)"
+      ),
+      "select count(ward) as count_ward",
+      AnalyzeRewrittenFromRollup(
+        "select c1 as count_ward",
         "one"
       )
     )

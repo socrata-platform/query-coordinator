@@ -5,6 +5,8 @@ import com.socrata.soql._
 import com.socrata.soql.ast.Select
 import com.socrata.soql.collection.OrderedMap
 import com.socrata.soql.environment.{ColumnName, DatasetContext}
+import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
+import com.socrata.soql.parsing.{AbstractParser, Parser}
 import com.socrata.soql.typed.CoreExpr
 import com.socrata.soql.types.{SoQLType, SoQLValue}
 import org.scalatest.Matchers.{convertToAnyShouldWrapper, equal}
@@ -29,6 +31,26 @@ object QueryRewritingTestUtility {
   // Crazy function that helps build what the rewritten query should be
   type BuildRewrittenContextFunction = (RollupsDefinition, SoqlParseFunction, AnalyzedDatasetContext, SoqlAnalysisFunction, ColumnMappings, RemapAnalyzedSoqlFunction) => (RemappedAnalyzedSoql, Seq[String])
 
+  // Wrapping method for AssertRewrite that handles defaulting the first argument group
+  def AssertRewriteDefault(datasetDefinitions: DatasetDefinitions, rollupsDefinition: RollupsDefinition, queryDefinition: QueryDefinition, expected: BuildRewrittenContextFunction): Unit = {
+    val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
+    val parserParams = AbstractParser.Parameters(allowJoins = true)
+    val parser = new Parser(parserParams)
+    val rewriter = new QueryRewriter(analyzer)
+    AssertRewrite(
+      parser.binaryTreeSelect,
+      // aka Analyze(analyzer)
+      (a: AnalyzedDatasetContext) => (b: ParsedSoql) => analyzer.analyzeBinary(b)(a),
+      // aka ReMap
+      (a: ColumnMappings) => (b: AnalyzedSoql) => QueryParser.remapAnalyses(a, b),
+      (a, b) => rewriter.possibleRewrites(a, b, false)
+    )(
+      datasetDefinitions,
+      rollupsDefinition,
+      queryDefinition,
+      expected
+    )
+  }
 
   // This is the test method to use to assert query rewriting functionality
   def AssertRewrite(soqlParseFunction: SoqlParseFunction, analysisFunction: SoqlAnalysisFunction, analysisMappingFunction: RemapAnalyzedSoqlFunction, rewriteFunction: RewriteFunction)(datasetDefinitions: DatasetDefinitions, rollupsDefinition: RollupsDefinition, queryDefinition: QueryDefinition, expected: BuildRewrittenContextFunction): Unit = {
@@ -40,16 +62,16 @@ object QueryRewritingTestUtility {
 
   }
 
-  def buildRollups(anal: AnalyzeSoqlAndRemapFunction, parser: SoqlParseFunction)(rollups: RollupsDefinition): RemappedRollupAnalysis = {
+  private def buildRollups(anal: AnalyzeSoqlAndRemapFunction, parser: SoqlParseFunction)(rollups: RollupsDefinition): RemappedRollupAnalysis = {
     rollups.map { case (name, soql) => (new RollupName(name), anal(parser(soql))) }
   }
 
-  def buildDatasetContextAndMapping(m: DatasetDefinitions): (AnalyzedDatasetContext, ColumnMappings) = {
+  private def buildDatasetContextAndMapping(m: DatasetDefinitions): (AnalyzedDatasetContext, ColumnMappings) = {
     (buildDatasetContext(m), buildColumnMapping(m))
   }
 
   // We need to be aware of the dataset column identifier to column name mappings
-  def buildColumnMapping(m: DatasetDefinitions): ColumnMappings = {
+  private def buildColumnMapping(m: DatasetDefinitions): ColumnMappings = {
     m.foldLeft(Map.empty[QualifiedColumnName, String]) { (acc, entry) =>
       val (tableName, schemaWithFieldName) = entry
       val map = schemaWithFieldName.map {
@@ -61,7 +83,7 @@ object QueryRewritingTestUtility {
     }
   }
 
-  def buildDatasetContext(m: DatasetDefinitions): AnalyzedDatasetContext = {
+  private def buildDatasetContext(m: DatasetDefinitions): AnalyzedDatasetContext = {
     AnalysisContext[SoQLType, SoQLValue](
       schemas = m.mapValues { schemaWithFieldName =>
         val columnNameToType = schemaWithFieldName.map {
@@ -88,14 +110,14 @@ object QueryRewritingTestUtility {
     (analysisMappingFunction(columnMap)(result), Seq(expectedRollupName))
   }
 
-  def rollupContext(soqlParseFunction: SoqlParseFunction, analysisFunction: SoqlAnalysisFunction, analyzedDatasetContext: AnalyzedDatasetContext)(ruQuery: String): Map[String, DatasetContext[SoQLType]] = {
+  private def rollupContext(soqlParseFunction: SoqlParseFunction, analysisFunction: SoqlAnalysisFunction, analyzedDatasetContext: AnalyzedDatasetContext)(ruQuery: String): Map[String, DatasetContext[SoQLType]] = {
     val map = rollupSchema(soqlParseFunction, analysisFunction, analyzedDatasetContext)(ruQuery)
     Map("_" -> new DatasetContext[SoQLType] {
       val schema = OrderedMap[ColumnName, SoQLType](map.toSeq: _*)
     })
   }
 
-  def rollupSchema(soqlParseFunction: SoqlParseFunction, analysisFunction: SoqlAnalysisFunction, analyzedDatasetContext: AnalyzedDatasetContext)(ruQuery: String): Map[ColumnName, SoQLType] = {
+  private def rollupSchema(soqlParseFunction: SoqlParseFunction, analysisFunction: SoqlAnalysisFunction, analyzedDatasetContext: AnalyzedDatasetContext)(ruQuery: String): Map[ColumnName, SoQLType] = {
     val ruAnalyses = analysisFunction(analyzedDatasetContext)(soqlParseFunction(ruQuery)).outputSchema.leaf
     ruAnalyses.selection.values.zipWithIndex.map {
       case (expr: CoreExpr[_, _], idx) =>
@@ -103,7 +125,7 @@ object QueryRewritingTestUtility {
     }.toMap
   }
 
-  def rollupColumnIds(soqlParseFunction: SoqlParseFunction, analysisFunction: SoqlAnalysisFunction, analyzedDatasetContext: AnalyzedDatasetContext)(ruQuery: String): Map[QualifiedColumnName, String] = {
+  private def rollupColumnIds(soqlParseFunction: SoqlParseFunction, analysisFunction: SoqlAnalysisFunction, analyzedDatasetContext: AnalyzedDatasetContext)(ruQuery: String): Map[QualifiedColumnName, String] = {
     rollupSchema(soqlParseFunction, analysisFunction, analyzedDatasetContext)(ruQuery).map {
       case (cn, _typ) =>
         QualifiedColumnName(None, cn) -> cn.name
