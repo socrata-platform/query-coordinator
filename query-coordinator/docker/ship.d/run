@@ -26,4 +26,6 @@ exec su socrata -c '/usr/bin/java \
     -Dcom.sun.management.jmxremote.authenticate=false \
     -Djava.rmi.server.hostname=${ARK_HOST:-localhost} \
     -XX:MaxMetaspaceSize=${JAVA_MAX_METASPACE} \
+    -XX:+HeapDumpOnOutOfMemoryError \
+    -XX:HeapDumpPath=/mnt/mesos/sandbox/query-coordinator-oom.hprof \
     -jar $SERVER_ARTIFACT'
