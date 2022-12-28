@@ -48,7 +48,7 @@ class TestQueryRewriter extends TestBase with TestCompoundQueryRewriterBase {
   }
 
   /** Pull in the rollupAnalysis for easier debugging */
-  override val rollupAnalysis = QueryRewriter.simpleRollups(rollupAnalyses)
+  override val rollupAnalysis = QueryRewriter.mergeRollupsAnalysis(rollupAnalyses)
 
   val rollupRawSchemas = rollupAnalysis.mapValues { case analysis: Anal =>
     analysis.selection.values.toSeq.zipWithIndex.map { case (expr, idx) =>

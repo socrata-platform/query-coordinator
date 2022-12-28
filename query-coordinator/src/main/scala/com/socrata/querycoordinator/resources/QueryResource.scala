@@ -369,7 +369,7 @@ class QueryResource(secondary: Secondary,
 
                 datasetOrResourceName match {
                   case Left(dataset) =>
-                    val rus = QueryRewriter.simpleRollups(ruMap)
+                    val rus = QueryRewriter.mergeRollupsAnalysis(ruMap)
                     // Only the leftmost soql in a chain can use rollups.
                     possiblyRewriteQuery(analysis, rus) match {
                       case (rewrittenAnal, ru@Some(_)) =>
