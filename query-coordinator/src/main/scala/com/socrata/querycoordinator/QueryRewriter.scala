@@ -412,6 +412,9 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends Compoun
       case fc: FunctionCall if isSelfAggregatableAggregate(fc.function.function) =>
         val fcMinusFilter = stripFilter(fc)
         val filterAndRollupWhere = andRollupWhereToFilter(fc.filter, r: Anal)
+
+        val _idx = rollupColIdx.get(fcMinusFilter)
+        val _filter = rewriteWhere(filterAndRollupWhere, r, rollupColIdx)
         for {
           idx <- rollupColIdx.get(fcMinusFilter)
           rwFilter <- rewriteWhere(filterAndRollupWhere, r, rollupColIdx)

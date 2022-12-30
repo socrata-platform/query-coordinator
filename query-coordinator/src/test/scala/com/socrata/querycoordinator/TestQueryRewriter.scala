@@ -38,7 +38,8 @@ class TestQueryRewriter extends TestBase with TestCompoundQueryRewriterBase {
     "ru1" -> """SELECT number1, sum(number1) as sum_number1 GROUP BY number1
                  UNION ALL
                 SELECT nn, sum(nn) as sum_nn FROM @tttt-tttt GROUP BY nn
-             """
+             """,
+    "rp1" -> "SELECT ward, crime_type, number1 WHERE number1='0' |> SELECT ward, crime_type WHERE crime_type='traffic'"
   )
 
   override val rollupAnalyses = rollups.map {
@@ -533,5 +534,11 @@ class TestQueryRewriter extends TestBase with TestCompoundQueryRewriterBase {
             """
     val rewrittenQuery = "SELECT c1 as number1, c2 as sum_number1 LIMIT 2"
     checkQueryRewrite(q, rollups, "ru1", rewrittenQuery)
+  }
+
+  test("rewrite with piped rollup query") {
+    val q = "SELECT ward, crime_type, number1 WHERE number1='0' |> SELECT ward, crime_type WHERE crime_type='traffic'"
+    val rewrittenQuery = "SELECT c1 as ward, c2 as crime_type"
+    checkQueryRewrite(q, rollups, "rp1", rewrittenQuery)
   }
 }
