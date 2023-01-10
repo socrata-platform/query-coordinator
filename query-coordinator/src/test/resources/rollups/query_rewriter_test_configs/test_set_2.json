@@ -1,0 +1,36 @@
+{
+  "schemas": {
+    "_": {
+      "dxyz-num1": ["number", "number1"],
+      ":wido-ward": ["number", "ward"],
+      "crim-typ3": ["text", "crime_type"],
+      "dont-roll": ["text", "dont_create_rollups"],
+      "crim-date": ["floating_timestamp", "crime_date"],
+      "some-date": ["floating_timestamp", "some_date"]
+    }
+  },
+  "rollups": {
+    "r1": "SELECT number1, count(number1) GROUP BY number1",
+    "r2": "SELECT count(ward), ward GROUP BY ward",
+    "r3": "SELECT ward, count(*), count(crime_type) GROUP BY ward",
+    "r4": "SELECT ward, crime_type, count(*), number1, crime_date GROUP BY ward, crime_type, number1, crime_date",
+    "r5": "SELECT crime_type, count(1) group by crime_type",
+    "r6": "SELECT ward, crime_type",
+    "r7": "SELECT ward, min(number1), max(number1), sum(number1), count(*) GROUP BY ward",
+    "r8": "SELECT date_trunc_ym(crime_date), ward, count(*) GROUP BY date_trunc_ym(crime_date), ward",
+    "r9": "SELECT crime_type, count(case(crime_date IS NOT NULL, crime_date, true, some_date)) group by crime_type",
+    "r10": "SELECT ward, sum(number1), count(number1) GROUP BY ward"
+  },
+  "tests": [
+    {
+      "query": "SELECT ward, count(*) AS ward_count GROUP BY ward",
+      "rewrites": {
+        "r4": "SELECT c1 AS ward, coalesce(sum(c3), 0) AS ward_count GROUP by c1",
+        "r8": "SELECT c2 AS ward, coalesce(sum(c3), 0) AS ward_count GROUP by c2",
+        "r3": "SELECT c1 AS ward, coalesce(sum(c3), 0) AS ward_count",
+        "r7": "SELECT c1 AS ward, coalesce(sum(c3), 0) AS ward_count"
+      }
+    }
+  ]
+}
+
