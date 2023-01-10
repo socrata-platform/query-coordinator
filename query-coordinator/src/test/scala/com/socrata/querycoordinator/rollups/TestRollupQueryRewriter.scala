@@ -6,7 +6,7 @@ import com.socrata.querycoordinator._
 import com.socrata.soql._
 import com.socrata.soql.collection.OrderedMap
 import com.socrata.soql.environment.{ColumnName, DatasetContext}
-import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
+import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo, SoQLFunctions}
 import com.socrata.soql.parsing.{AbstractParser, Parser}
 import com.socrata.soql.typed.CoreExpr
 import com.socrata.soql.types.{SoQLType, SoQLValue}
@@ -44,7 +44,8 @@ class TestRollupQueryRewriter extends TestBase {
     val parserParams = AbstractParser.Parameters(allowJoins = true)
     val parsed = new Parser(parserParams).binaryTreeSelect(q)
     val analyses = analyzer.analyzeBinary(parsed)(context)
-    QueryParser.remapAnalyses(columnMapping, analyses)
+    val merged = SoQLAnalysis.merge(SoQLFunctions.And.monomorphic.get, analyses)
+    QueryParser.remapAnalyses(columnMapping, merged)
   }
 
   private def analyzeRewrittenQuery(q: String,
@@ -61,8 +62,9 @@ class TestRollupQueryRewriter extends TestBase {
     val ruCtx = rollupContext(ruQuery, context, columnMapping)
     val ctx = context.withUpdatedSchemas(_ ++ ruCtx)
     val result = analyzer.analyzeBinary(parsed)(ctx)
+    val merged = SoQLAnalysis.merge(SoQLFunctions.And.monomorphic.get, result)
     val columnMap = columnMapping ++ rollupColumnIds(ruQuery, context, columnMapping)
-    QueryParser.remapAnalyses(columnMap, result)
+    QueryParser.remapAnalyses(columnMap, merged)
   }
 
   private def rollupColumnIds(ruQuery: String,
@@ -160,6 +162,14 @@ class TestRollupQueryRewriter extends TestBase {
 
   test("rollup rewriter dates tests") {
     loadAndRunTests("rollups/query_rewriter_test_configs/test_dates_1.json")
+  }
+
+  test("piped rollup queries") {
+    loadAndRunTests("rollups/query_rewriter_test_configs/test_pipes_1.json")
+  }
+
+  test("piped rollup queries 2") {
+    loadAndRunTests("rollups/query_rewriter_test_configs/test_pipes_2.json")
   }
 
   //

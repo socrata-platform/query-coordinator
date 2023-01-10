@@ -1,0 +1,20 @@
+{
+  "schemas": {
+    "_": {
+      ":abcd-0000": ["number", "incident_id"],
+      "abcd-0001": ["text", "incident"],
+      "abcd-0002": ["text", "case_status"]
+    }
+  },
+  "rollups": {
+    "p1": "SELECT `incident_id` AS `incident_id`, `incident` AS `incident` WHERE `case_status` = 'Open' |> SELECT `incident_id`, `incident` WHERE (contains(lower(`incident`), 'robbery')) |> SELECT `incident_id` GROUP BY `incident_id`"
+  },
+  "tests": [
+    {
+      "query": "SELECT `incident_id` AS `incident_id`, `incident` AS `incident` WHERE `case_status` = 'Open' |> SELECT `incident_id`, `incident` WHERE (contains(lower(`incident`), 'robbery')) |> SELECT `incident_id` GROUP BY `incident_id`",
+      "rewrites": {
+        "p1": "SELECT c1 AS incident_id"
+      }
+    }
+  ]
+}
