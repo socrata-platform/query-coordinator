@@ -412,6 +412,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends Compoun
       case fc: FunctionCall if isSelfAggregatableAggregate(fc.function.function) =>
         val fcMinusFilter = stripFilter(fc)
         val filterAndRollupWhere = andRollupWhereToFilter(fc.filter, r: Anal)
+
         for {
           idx <- rollupColIdx.get(fcMinusFilter)
           rwFilter <- rewriteWhere(filterAndRollupWhere, r, rollupColIdx)
@@ -820,13 +821,16 @@ object QueryRewriter {
   }
 
   /**
-    * Filter rollups to non-compound query, i.e. leaf
+    * Merge rollups analysis
     */
-  def simpleRollups(rus: Map[RollupName, BinaryTree[Anal]]): Map[RollupName, Anal] = {
-    rus.filter {
-      case (_, Leaf(_)) => true
-      case _ => false
-    }.mapValues(_.outputSchema.leaf)
+  def mergeRollupsAnalysis(rus: Map[RollupName, BinaryTree[Anal]]): Map[RollupName, Anal] = {
+    rus.mapValues(bt =>
+      SoQLAnalysis.merge(
+        SoQLFunctions.And.monomorphic.get,
+        bt.map(a => a.mapColumnIds((columnId, _) => ColumnName(columnId))
+        )
+      ).outputSchema.leaf.mapColumnIds((columnName, _) => columnName.name)
+    )
   }
 
   def primaryRollup(names: Seq[String]): Option[String] = {

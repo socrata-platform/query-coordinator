@@ -26,7 +26,7 @@ class TestRollupScorer extends TestQueryRewriterBase {
   val rollupInfos = rollups.map { x => new RollupInfo(x._1, x._2) }
 
   /** Pull in the rollupAnalysis for easier debugging */
-  val rollupAnalysis = QueryRewriter.simpleRollups(rewriter.analyzeRollups(schema, rollupInfos, getSchemaWithFieldName))
+  val rollupAnalysis = QueryRewriter.mergeRollupsAnalysis(rewriter.analyzeRollups(schema, rollupInfos, getSchemaWithFieldName))
 
   test("rollup scoring") {
     // validate we don't have any ties, which could confuse things due to having no clear ordering.
