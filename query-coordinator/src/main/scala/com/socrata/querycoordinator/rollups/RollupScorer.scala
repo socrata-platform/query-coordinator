@@ -26,6 +26,8 @@ import com.typesafe.scalalogging.Logger
  *
  */
 import com.socrata.querycoordinator.rollups.QueryRewriter._
+import com.socrata.querycoordinator.rollups.QueryRewriterImplementation._
+
 
 private final abstract class RollupScorer
 
