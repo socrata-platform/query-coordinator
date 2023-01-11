@@ -1,6 +1,6 @@
 package com.socrata.querycoordinator
 
-import com.socrata.querycoordinator.rollups.QueryRewriter
+import com.socrata.querycoordinator.rollups.{QueryRewriter, QueryRewriterImplementation}
 import com.socrata.querycoordinator.rollups.QueryRewriter.{Anal, ColumnId, Expr, RollupName}
 import com.socrata.querycoordinator.util.Join
 import com.socrata.soql.SoQLAnalysis
@@ -116,7 +116,7 @@ abstract class TestQueryRewriterBase extends TestBase with TestCompoundQueryRewr
   /**
     * A handy function to test QueryRewriter.rewriteExpr
     */
-  def rewriteExpr(rewriter: QueryRewriter, e: Expr, q: Anal, rollups: Map[RollupName, Anal]): Map[RollupName, Option[Expr]] = {
+  def rewriteExpr(rewriter: QueryRewriterImplementation, e: Expr, q: Anal, rollups: Map[RollupName, Anal]): Map[RollupName, Option[Expr]] = {
     rollups.mapValues { case r =>
       val rollupColIdx = r.selection.values.zipWithIndex.toMap
       rewriter.rewriteExpr(e, r, rollupColIdx)

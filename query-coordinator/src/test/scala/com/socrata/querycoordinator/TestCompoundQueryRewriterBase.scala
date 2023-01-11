@@ -13,7 +13,7 @@ import com.socrata.soql.types.{SoQLFloatingTimestamp, SoQLNumber, SoQLText, SoQL
 trait TestCompoundQueryRewriterBase { this: TestBase =>
 
   val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
-  val rewriter: QueryRewriter = new QueryRewriterWithJoinEnabled(analyzer)
+  val rewriter = new QueryRewriterWithJoinEnabled(analyzer)
   val rollupAnalysis: Map[RollupName, Anal]
   val rollupAnalyses: Map[RollupName, BinaryTree[Anal]] = Map.empty
   val rollups: Iterable[_]

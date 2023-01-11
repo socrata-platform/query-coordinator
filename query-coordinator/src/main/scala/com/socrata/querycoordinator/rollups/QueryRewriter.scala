@@ -2,12 +2,10 @@ package com.socrata.querycoordinator.rollups
 
 import com.socrata.querycoordinator.rollups.QueryRewriter.{Anal, Expr, RollupName}
 import com.socrata.querycoordinator.{Schema, SchemaWithFieldName}
-import com.socrata.soql.collection.OrderedMap
 import com.socrata.soql.environment.{ColumnName, TableName}
-import com.socrata.soql.functions.{Function, MonomorphicFunction, SoQLFunctions}
-import com.socrata.soql.functions.SoQLFunctions.{And, Coalesce, Count, DivNumNum, Sum}
-import com.socrata.soql.{BinaryTree, Compound, Leaf, SoQLAnalysis, typed}
-import com.socrata.soql.types.{SoQLBoolean, SoQLFloatingTimestamp, SoQLNumber, SoQLType}
+import com.socrata.soql.functions.{Function, SoQLFunctions}
+import com.socrata.soql.{BinaryTree, SoQLAnalysis}
+import com.socrata.soql.types.{SoQLFloatingTimestamp, SoQLType}
 import org.slf4j.Logger
 
 /**
@@ -40,19 +38,7 @@ abstract class QueryRewriter {
     *
     */
   def bestRollup(rollups: Seq[(RollupName, Anal)]): Option[(RollupName, Anal)]
-
-  /**
-    * Auxiliary functions used in tests
-    *
-    * ToDo: should this be private / package private ?
-    *
-    */
-  val log: Logger
-  def rollupColumnId(idx: Int): String
-  def rewriteExpr(e: Expr, r: Anal, rollupColIdx: Map[Expr, Int]): Option[Expr]
-
-  def truncatedTo(soqlTs: SoQLFloatingTimestamp): Option[Function[SoQLType]]
-
+  
 }
 
 object QueryRewriter {
