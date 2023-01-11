@@ -7,7 +7,7 @@
     <option name="WORKING_DIRECTORY" value="$ProjectFileDir$" />
     <extension name="coverage">
       <pattern>
-        <option name="PATTERN" value="com.socrata.querycoordinator.*" />
+        <option name="PATTERN" value="com.socrata.querycoordinator.rollups.*" />
         <option name="ENABLED" value="true" />
       </pattern>
     </extension>

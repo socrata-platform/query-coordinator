@@ -1,6 +1,7 @@
 package com.socrata.querycoordinator
 
-import com.socrata.querycoordinator.QueryRewriter.{Anal, ColumnId, RollupName}
+import com.socrata.querycoordinator.rollups.{QueryRewriter}
+import com.socrata.querycoordinator.rollups.QueryRewriter.{Anal, ColumnId, RollupName}
 import com.socrata.soql.{AnalysisContext, BinaryTree, Compound, Leaf, ParameterSpec, SoQLAnalysis, SoQLAnalyzer}
 import com.socrata.soql.collection.OrderedMap
 import com.socrata.soql.environment.{ColumnName, DatasetContext}
@@ -12,7 +13,7 @@ import com.socrata.soql.types.{SoQLFloatingTimestamp, SoQLNumber, SoQLText, SoQL
 trait TestCompoundQueryRewriterBase { this: TestBase =>
 
   val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
-  val rewriter = new QueryRewriterWithJoinEnabled(analyzer)
+  val rewriter: QueryRewriter = new QueryRewriterWithJoinEnabled(analyzer)
   val rollupAnalysis: Map[RollupName, Anal]
   val rollupAnalyses: Map[RollupName, BinaryTree[Anal]] = Map.empty
   val rollups: Iterable[_]

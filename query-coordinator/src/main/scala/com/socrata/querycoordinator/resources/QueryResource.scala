@@ -9,12 +9,13 @@ import com.socrata.http.server._
 import com.socrata.http.server.implicits._
 import com.socrata.http.server.responses._
 import com.socrata.http.server.util.RequestId
-import com.socrata.querycoordinator.QueryRewriter.{Anal, ColumnId, RollupName}
+import com.socrata.querycoordinator.rollups.QueryRewriter.{Anal, ColumnId, RollupName}
 import com.socrata.querycoordinator.SchemaFetcher.{BadResponseFromSecondary, NoSuchDatasetInSecondary, NonSchemaResponse, Result, SecondaryConnectFailed, Successful, TimeoutFromSecondary}
 import com.socrata.querycoordinator._
 import com.socrata.querycoordinator.caching.SharedHandle
 import com.socrata.querycoordinator.datetime.NowAnalyzer
 import com.socrata.querycoordinator.exceptions.JoinedDatasetNotColocatedException
+import com.socrata.querycoordinator.rollups.{QueryRewriter, RollupInfoFetcher, RollupScorer}
 import com.socrata.querycoordinator.util.BinaryTreeHelper
 import com.socrata.soql.environment.{ColumnName, TableName}
 import com.socrata.soql.exceptions.{DuplicateAlias, NoSuchColumn, TypecheckException}
@@ -442,7 +443,7 @@ class QueryResource(secondary: Secondary,
 
         def possiblyRewriteQuery(analyzedQuery: SoQLAnalysis[String, SoQLType], rollups: Map[RollupName, Anal]):
           (SoQLAnalysis[String, SoQLType], Option[String]) = {
-          val rewritten = RollupScorer.bestRollup(
+          val rewritten = queryRewriter.bestRollup(
             queryRewriter.possibleRewrites(analyzedQuery, rollups, debug).toSeq)
           val (rollupName, analysis) = rewritten map { x => (Option(x._1), x._2) } getOrElse ((None, analyzedQuery))
           rollupName.foreach(ru => log.info(s"Rewrote query on dataset $dataset to rollup $ru")) // only log rollup name if it is defined.

@@ -1,4 +1,4 @@
-package com.socrata.querycoordinator
+package com.socrata.querycoordinator.rollups
 
 import com.socrata.soql.functions.SoQLFunctions
 import com.typesafe.scalalogging.Logger
@@ -25,11 +25,11 @@ import com.typesafe.scalalogging.Logger
  * - For each value in the selection, give a minor penalty of 1
  *
  */
-import QueryRewriter._
+import com.socrata.querycoordinator.rollups.QueryRewriter._
 
 private final abstract class RollupScorer
 
-private object RollupScorer {
+object RollupScorer {
   private val logger = Logger[RollupScorer]
 
   private val SELECTION_SCORE_PENALTY = -10L

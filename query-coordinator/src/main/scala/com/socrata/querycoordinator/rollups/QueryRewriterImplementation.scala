@@ -1,7 +1,10 @@
-package com.socrata.querycoordinator
+package com.socrata.querycoordinator.rollups
 
-import com.socrata.querycoordinator.QueryRewriter._
-import com.socrata.soql.ast.{JoinFunc, JoinQuery, JoinTable, Select, StarSelection}
+import com.socrata.querycoordinator._
+import com.socrata.querycoordinator.rollups.QueryRewriter._
+import com.socrata.querycoordinator.rollups.QueryRewriterImplementation._
+import com.socrata.soql._
+import com.socrata.soql.ast.{JoinFunc, JoinQuery, JoinTable, Select}
 import com.socrata.soql.collection.OrderedMap
 import com.socrata.soql.environment.{ColumnName, TableName}
 import com.socrata.soql.exceptions.SoQLException
@@ -10,23 +13,22 @@ import com.socrata.soql.functions._
 import com.socrata.soql.parsing.StandaloneParser
 import com.socrata.soql.typed.{ColumnRef => _, FunctionCall => _, Join => _, OrderBy => _, _}
 import com.socrata.soql.types._
-import com.socrata.soql.{AnalysisContext, BinaryTree, Compound, Leaf, ParameterSpec, PipeQuery, SoQLAnalysis, SoQLAnalyzer, typed}
 import org.joda.time.{DateTimeConstants, LocalDateTime}
 
 import scala.util.parsing.input.NoPosition
 import scala.util.{Failure, Success, Try}
 
-class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends CompoundQueryRewriter {
+class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends QueryRewriter with CompoundQueryRewriter {
 
   import com.socrata.querycoordinator.util.Join._
 
-  val log = org.slf4j.LoggerFactory.getLogger(classOf[QueryRewriter])
+  val log = org.slf4j.LoggerFactory.getLogger(classOf[QueryRewriterImplementation])
 
   private def ensure(expr: Boolean, msg: String): Option[String] = if (!expr) Some(msg) else None
 
   // TODO the secondary should probably just give us the names of the columns when we ask about the rollups
   // instead of assuming.
-  private[querycoordinator] def rollupColumnId(idx: Int): String = "c" + (idx + 1)
+  def rollupColumnId(idx: Int): String = "c" + (idx + 1)
 
   /** Maps the rollup column expression to the 0 based index in the rollup table.  If we have
     * multiple columns with the same definition, that is fine but we will only use one.
@@ -73,7 +75,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends Compoun
   }
 
   def rewriteGroupBy(qOpt: GroupBy, r: Anal, qSelection: Selection,
-      rollupColIdx: Map[Expr, Int]): Option[GroupBy] = {
+                     rollupColIdx: Map[Expr, Int]): Option[GroupBy] = {
     val rOpt: GroupBy = r.groupBys
     (qOpt, rOpt) match {
       // If the query has no group by and the rollup has no group by then all is well
@@ -110,7 +112,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends Compoun
     }.map(_._2)
   }
 
-  /** Is the given function call a count(*) or count(literal), excluding NULL because it is special.  */
+  /** Is the given function call a count(*) or count(literal), excluding NULL because it is special. */
   private def isCountStarOrLiteral(fc: FunctionCall): Boolean = {
     fc.function.function == CountStar ||
       (fc.function.function == Count &&
@@ -128,10 +130,10 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends Compoun
   }
 
   /**
-   * Looks at the rollup columns supplied and tries to find one of the supplied functions whose first parameter
-   * operates on the given ColumnRef.  If there are multiple matches, returns the first matching function.
-   * Every function supplied must take at least one parameter.
-   */
+    * Looks at the rollup columns supplied and tries to find one of the supplied functions whose first parameter
+    * operates on the given ColumnRef.  If there are multiple matches, returns the first matching function.
+    * Every function supplied must take at least one parameter.
+    */
   private def findFunctionOnColumn(rollupColIdx: Map[Expr, Int],
                                    functions: Seq[Function[_]],
                                    colRef: ColumnRef): Option[Int] = {
@@ -144,24 +146,24 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends Compoun
     possibleColIdxs.flatten.headOption
   }
 
-  /** An in order hierarchy of floating timestamp date truncation functions, from least granular to most granular.  */
+  /** An in order hierarchy of floating timestamp date truncation functions, from least granular to most granular. */
   private val dateTruncHierarchy = Seq(
     FloatingTimeStampTruncY,
     FloatingTimeStampTruncYm,
     FloatingTimeStampTruncYmd)
 
   /**
-   * This tries to rewrite a between expression on floating timestamps to use an aggregated rollup column.
-   * These functions have a hierarchy, so a query for a given level of truncation can be served by any other
-   * truncation that is at least as long, eg. ymd can answer ym queries.
-   *
-   * This is slightly different than the more general expression rewrites because BETWEEN returns a boolean, so
-   * there is no need to apply the date aggregation function on the ColumnRef.  In fact, we do not want to
-   * apply the aggregation function on the ColumnRef because that will end up being bad for query execution
-   * performance in most cases.
-   *
-   * @param fc A NOT BETWEEN or BETWEEN function call.
-   */
+    * This tries to rewrite a between expression on floating timestamps to use an aggregated rollup column.
+    * These functions have a hierarchy, so a query for a given level of truncation can be served by any other
+    * truncation that is at least as long, eg. ymd can answer ym queries.
+    *
+    * This is slightly different than the more general expression rewrites because BETWEEN returns a boolean, so
+    * there is no need to apply the date aggregation function on the ColumnRef.  In fact, we do not want to
+    * apply the aggregation function on the ColumnRef because that will end up being bad for query execution
+    * performance in most cases.
+    *
+    * @param fc A NOT BETWEEN or BETWEEN function call.
+    */
   private def rewriteDateTruncBetweenExpr(r: Anal, rollupColIdx: Map[Expr, Int], fc: FunctionCall): Option[Expr] = {
     assert(fc.function.function == Between || fc.function.function == NotBetween)
     val maybeColRef +: lower +: upper +: _ = fc.parameters
@@ -172,7 +174,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends Compoun
     val colIdx = maybeColRef match {
       case colRef: ColumnRef if colRef.typ == SoQLFloatingTimestamp =>
         for {
-        // we can rewrite to any date_trunc_xx that is the same or after the desired one in the hierarchy
+          // we can rewrite to any date_trunc_xx that is the same or after the desired one in the hierarchy
           possibleTruncFunctions <- commonTruncFunction.map { tf => dateTruncHierarchy.dropWhile { f => f != tf } }
           idx <- findFunctionOnColumn(rollupColIdx, possibleTruncFunctions, colRef)
         } yield idx
@@ -212,11 +214,11 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends Compoun
   }
 
   /**
-   * Returns the least granular date truncation function that can be applied to the timestamp
-   * without changing its value.
-   */
-  private[querycoordinator] def truncatedTo(soqlTs: SoQLFloatingTimestamp)
-    : Option[Function[SoQLType]] = {
+    * Returns the least granular date truncation function that can be applied to the timestamp
+    * without changing its value.
+    */
+  def truncatedTo(soqlTs: SoQLFloatingTimestamp)
+  : Option[Function[SoQLType]] = {
     val ts: LocalDateTime = soqlTs.value
     if (ts.getMillisOfDay != 0) {
       None
@@ -230,19 +232,19 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends Compoun
   }
 
   /**
-   * Rewrite "less than" and "greater to or equal" to use rollup columns.  Note that date_trunc_xxx functions
-   * are a form of a floor function.  This means that date_trunc_xxx(column) >= value will always be
-   * the same as column >= value iff value could have been output by date_trunc_xxx.  Similar holds
-   * for Lt, only it has to be strictly less since floor rounds down.
-   *
-   * For example, column >= '2014-03-01' AND column < '2015-05-01' can be rewritten as
-   * date_trunc_ym(column) >= '2014-03-01' AND date_trunc_ym(column) < '2015-05-01' without changing
-   * the results.
-   *
-   * Note that while we wouldn't need any of the logic here if queries explicitly came in as filtering
-   * on date_trunc_xxx(column), we do not want to encourage that form of querying since is typically
-   * much more expensive when you can't hit a rollup table.
-   */
+    * Rewrite "less than" and "greater to or equal" to use rollup columns.  Note that date_trunc_xxx functions
+    * are a form of a floor function.  This means that date_trunc_xxx(column) >= value will always be
+    * the same as column >= value iff value could have been output by date_trunc_xxx.  Similar holds
+    * for Lt, only it has to be strictly less since floor rounds down.
+    *
+    * For example, column >= '2014-03-01' AND column < '2015-05-01' can be rewritten as
+    * date_trunc_ym(column) >= '2014-03-01' AND date_trunc_ym(column) < '2015-05-01' without changing
+    * the results.
+    *
+    * Note that while we wouldn't need any of the logic here if queries explicitly came in as filtering
+    * on date_trunc_xxx(column), we do not want to encourage that form of querying since is typically
+    * much more expensive when you can't hit a rollup table.
+    */
   private def rewriteDateTruncGteLt(r: Anal, rollupColIdx: Map[Expr, Int], fc: FunctionCall): Option[Expr] = {
     fc.function.function match {
       case Lt | Gte =>
@@ -346,7 +348,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends Compoun
           val simplifiedRwFilter = simplifyAndTrue(rwFilter)
           val newSumCol = typed.ColumnRef(NoQualifier, rollupColumnId(idx), SoQLNumber.t)(fc.position)
           typed.FunctionCall(CoalesceNumber, Seq(typed.FunctionCall(SumNumber, Seq(newSumCol), simplifiedRwFilter, fc.window)(fc.position, fc.position),
-                                                 typed.NumberLiteral(0, SoQLNumber.t)(fc.position)), None, fc.window)(fc.position, fc.position)
+            typed.NumberLiteral(0, SoQLNumber.t)(fc.position)), None, fc.window)(fc.position, fc.position)
         }
       // A count(...) on q gets mapped to a sum(...) on a matching column in the rollup.  We still need the count(*)
       // case above to ensure we can do things like map count(1) and count(*) which aren't exact matches.
@@ -360,7 +362,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends Compoun
           val simplifiedRwFilter = simplifyAndTrue(rwFilter)
           val newSumCol = typed.ColumnRef(NoQualifier, rollupColumnId(idx), SoQLNumber.t)(fc.position)
           typed.FunctionCall(CoalesceNumber, Seq(typed.FunctionCall(SumNumber, Seq(newSumCol), simplifiedRwFilter, window)(fc.position, fc.position),
-                                                 typed.NumberLiteral(0, SoQLNumber.t)(fc.position)), None, window)(fc.position, fc.position)
+            typed.NumberLiteral(0, SoQLNumber.t)(fc.position)), None, window)(fc.position, fc.position)
         }
       // An avg(...) on q gets mapped to a sum(...)/count(...) on a matching column in the rollup
       case fc@typed.FunctionCall(MonomorphicFunction(Avg, _), _, filter, window) =>
@@ -376,9 +378,9 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends Compoun
           val newSumCol = typed.ColumnRef(NoQualifier, rollupColumnId(sumIdx), SoQLNumber.t)(fc.position)
           val newCountCol = typed.ColumnRef(NoQualifier, rollupColumnId(countIdx), SoQLNumber.t)(fc.position)
           typed.FunctionCall(DivNumber,
-                             Seq(typed.FunctionCall(SumNumber, Seq(newSumCol), simplifiedRwFilter, window)(fc.position, fc.position),
-                                 typed.FunctionCall(CountNumber, Seq(newCountCol), simplifiedRwFilter, window)(fc.position, fc.position)),
-                             None, window)(fc.position, fc.position)
+            Seq(typed.FunctionCall(SumNumber, Seq(newSumCol), simplifiedRwFilter, window)(fc.position, fc.position),
+              typed.FunctionCall(CountNumber, Seq(newCountCol), simplifiedRwFilter, window)(fc.position, fc.position)),
+            None, window)(fc.position, fc.position)
         }
       // If this is a between function operating on floating timestamps, and arguments b and c are both date aggregates,
       // then try to rewrite argument a to use a rollup.
@@ -419,7 +421,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends Compoun
         } yield {
           val simplifiedRwFilter = simplifyAndTrue(rwFilter)
           fc.copy(parameters = Seq(typed.ColumnRef(NoQualifier, rollupColumnId(idx), fc.typ)(fc.position)),
-                  filter = simplifiedRwFilter)
+            filter = simplifiedRwFilter)
         }
       case _ => None
     }
@@ -465,8 +467,8 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends Compoun
 
   /**
     * @param qeOpt query having expression option
-    * @param qbs group by sequence
-    * @param r rollup analysis
+    * @param qbs   group by sequence
+    * @param r     rollup analysis
     */
   def rewriteHaving(qeOpt: Option[Expr], qbs: Seq[Expr], r: Anal, rollupColIdx: Map[Expr, Int]): Option[Having] = {
     log.debug(s"Attempting to map query having expression '${qeOpt}' to rollup ${r}")
@@ -569,7 +571,7 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends Compoun
           ensure(groupBy.nonEmpty, "mismatch on groupBy") orElse
           ensure(having.isDefined, "mismatch on having") orElse
           ensure(orderBy.nonEmpty, "mismatch on orderBy") orElse
-          ensure(joins.nonEmpty,"mismatch on join") orElse
+          ensure(joins.nonEmpty, "mismatch on join") orElse
           // For limit and offset, we can always apply them from the query  as long as the rollup
           // doesn't have any.  For certain cases it would be possible to rewrite even if the rollup
           // has a limit or offset, but we currently don't.
@@ -620,19 +622,19 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends Compoun
 
 
   /**
-   * For analyzing the rollup query, we need to map the dataset schema column ids to the "_" prefixed
-   * version of the name that we get, designed to ensure the column name is valid soql
-   * and doesn't start with a number.
-   */
+    * For analyzing the rollup query, we need to map the dataset schema column ids to the "_" prefixed
+    * version of the name that we get, designed to ensure the column name is valid soql
+    * and doesn't start with a number.
+    */
   private def addRollupPrefix(name: ColumnId): ColumnName = {
     new ColumnName(if (name(0) == ':') name else "_" + name)
   }
 
 
   /**
-   * Once we have the analyzed rollup query with column names, we need to remove the leading "_" on non-system
-   * columns to make the names match up with the underlying dataset schema.
-   */
+    * Once we have the analyzed rollup query with column names, we need to remove the leading "_" on non-system
+    * columns to make the names match up with the underlying dataset schema.
+    */
   private def removeRollupPrefix(cn: ColumnName, qual: Qualifier): ColumnId = { // TODO: Join
     cn.name(0) match {
       case '_' => cn.name.drop(1)
@@ -684,20 +686,19 @@ class QueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends Compoun
         k -> ruAnalysis
     }
   }
+
+  def bestRollup(rollups: Seq[(RollupName, Anal)]): Option[(RollupName, Anal)] = RollupScorer.bestRollup(rollups)
 }
 
 
-object QueryRewriter {
+object QueryRewriterImplementation {
+
   import com.socrata.soql.typed._ // scalastyle:ignore import.grouping
 
-  type Anal = SoQLAnalysis[ColumnId, SoQLType]
-  type ColumnId = String
   type ColumnRef = typed.ColumnRef[ColumnId, SoQLType]
-  type Expr = CoreExpr[ColumnId, SoQLType]
   type FunctionCall = typed.FunctionCall[ColumnId, SoQLType]
   type GroupBy = Seq[Expr]
   type OrderBy = typed.OrderBy[ColumnId, SoQLType]
-  type RollupName = String
   type Selection = OrderedMap[ColumnName, Expr]
   type Where = Option[Expr]
   type Having = Option[Expr]
@@ -707,6 +708,7 @@ object QueryRewriter {
   val CoalesceNumber = MonomorphicFunction(Coalesce, Map("a" -> SoQLNumber))
   val DivNumber = DivNumNum.monomorphic.get
   val CountNumber = MonomorphicFunction(Count, Map("a" -> SoQLNumber))
+
 
   def rollupAtJoin(q: Anal): Boolean = {
     q.hints.exists {
@@ -818,19 +820,6 @@ object QueryRewriter {
           }
         }
     }
-  }
-
-  /**
-    * Merge rollups analysis
-    */
-  def mergeRollupsAnalysis(rus: Map[RollupName, BinaryTree[Anal]]): Map[RollupName, Anal] = {
-    rus.mapValues(bt =>
-      SoQLAnalysis.merge(
-        SoQLFunctions.And.monomorphic.get,
-        bt.map(a => a.mapColumnIds((columnId, _) => ColumnName(columnId))
-        )
-      ).outputSchema.leaf.mapColumnIds((columnName, _) => columnName.name)
-    )
   }
 
   def primaryRollup(names: Seq[String]): Option[String] = {
