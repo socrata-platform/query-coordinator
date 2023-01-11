@@ -3,10 +3,9 @@ package com.socrata.querycoordinator.rollups
 import com.socrata.querycoordinator.rollups.QueryRewriter.{Anal, Expr, RollupName}
 import com.socrata.querycoordinator.{Schema, SchemaWithFieldName}
 import com.socrata.soql.environment.{ColumnName, TableName}
-import com.socrata.soql.functions.{Function, SoQLFunctions}
+import com.socrata.soql.functions.{SoQLFunctions}
 import com.socrata.soql.{BinaryTree, SoQLAnalysis}
-import com.socrata.soql.types.{SoQLFloatingTimestamp, SoQLType}
-import org.slf4j.Logger
+import com.socrata.soql.types.{SoQLType}
 
 /**
   *
@@ -38,7 +37,7 @@ abstract class QueryRewriter {
     *
     */
   def bestRollup(rollups: Seq[(RollupName, Anal)]): Option[(RollupName, Anal)]
-  
+
 }
 
 object QueryRewriter {

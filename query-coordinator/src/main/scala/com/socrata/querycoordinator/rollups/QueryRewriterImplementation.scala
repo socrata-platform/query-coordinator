@@ -28,7 +28,7 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
 
   // TODO the secondary should probably just give us the names of the columns when we ask about the rollups
   // instead of assuming.
-  def rollupColumnId(idx: Int): String = "c" + (idx + 1)
+  private[querycoordinator] def rollupColumnId(idx: Int): String = "c" + (idx + 1)
 
   /** Maps the rollup column expression to the 0 based index in the rollup table.  If we have
     * multiple columns with the same definition, that is fine but we will only use one.
