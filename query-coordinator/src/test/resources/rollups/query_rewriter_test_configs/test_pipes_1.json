@@ -1,9 +1,14 @@
 {
   "schemas": {
     "_": {
-      ":abcd-0000": ["number", "incident_id"],
-      "abcd-0001": ["text", "incident"],
-      "abcd-0002": ["text", "case_status"]
+      "a115-2115": ["number", "incident_id"],
+      "a116-2116": ["text", "incident"],
+      "a117-2117": ["number", "case_id"],
+      "a118-2118": ["text", "case_status"],
+      "a119-2119": ["text", "case_description"],
+      "a120-2120": ["date", "case_date"],
+      "a121-2121": ["point", "location"],
+      "a122-2122": ["date", "incident_date"]
     }
   },
   "rollups": {
