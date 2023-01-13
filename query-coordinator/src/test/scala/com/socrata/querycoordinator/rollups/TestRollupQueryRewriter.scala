@@ -14,6 +14,39 @@ import com.socrata.soql.types.{SoQLType, SoQLValue}
 import scala.io.Source
 
 
+/*
+ * Test configuration file format:
+ *
+ * {
+ *    "schemas": {
+ *      "<dataset id>": {
+ *        "<column fxf>": ["<column type>", "<column name>"]
+ *      },
+ *    "rollups": {
+ *      "<rollup name>": "<soql query>"
+ *    },
+ *    "tests": [
+ *      {
+ *        "query": "<soql query>",
+ *        "rewrites": [
+ *          "<rollup name>": "<rewritten soql query>"
+ *        ]
+ *      }
+ *    ]
+ * }
+ *
+ *    <dataset id> is "_" for the "root" dataset, and the fxf for the secondary (joined) datasets
+ *    multiple rollups could be included, each must have a different name
+ *    multiple tests could be included
+ *    multiple rewrites could be produced by the rewriter for each relevant rollup
+ *
+ * To get the schema of the "real" dataset (fake column fxf will be generated as they are not returned by this API):
+ *
+ * curl /api/views/<fxf>.json | \
+ * jq '{(.id):.columns|map({("a"+((100+.id%97)|tostring)+"-"+((1000+.id%997)|tostring)):[.dataTypeName,.name]})|add}'
+ */
+
+
 case class TestCase(query: String, rewrites: Map[String, String])
 object TestCase {
   implicit val jCodec = AutomaticJsonCodecBuilder[TestCase]
