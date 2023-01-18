@@ -1,11 +1,11 @@
 package com.socrata.querycoordinator.rollups
 
-import com.socrata.querycoordinator.rollups.QueryRewriter.{Anal, Expr, RollupName}
+import com.socrata.querycoordinator.rollups.QueryRewriter.{Analysis, AnalysisTree, Expr, RollupName}
 import com.socrata.querycoordinator.{Schema, SchemaWithFieldName}
 import com.socrata.soql.environment.{ColumnName, TableName}
-import com.socrata.soql.functions.{SoQLFunctions}
+import com.socrata.soql.functions.SoQLFunctions
 import com.socrata.soql.{BinaryTree, SoQLAnalysis}
-import com.socrata.soql.types.{SoQLType}
+import com.socrata.soql.types.SoQLType
 
 /**
   *
@@ -22,33 +22,34 @@ abstract class QueryRewriter {
     *
     */
   def analyzeRollups(schema: Schema, rollups: Seq[RollupInfo],
-                     getSchemaByTableName: TableName => SchemaWithFieldName): Map[RollupName, BinaryTree[Anal]]
+                     getSchemaByTableName: TableName => SchemaWithFieldName): Map[RollupName, AnalysisTree]
 
   /**
     * Creates possible rewrites for the query given the rollups
     *
     */
-  def possibleRewrites(q: Anal, rollups: Map[RollupName, Anal]): Map[RollupName, Anal]
-  def possibleRewrites(q: BinaryTree[Anal], rollups: Map[RollupName, BinaryTree[Anal]], requireCompoundRollupHint: Boolean): (BinaryTree[Anal], Seq[String])
-  def possibleRewrites(q: Anal, rollups: Map[RollupName, Anal], debug: Boolean): Map[RollupName, Anal]
+  def possibleRewrites(q: Analysis, rollups: Map[RollupName, Analysis]): Map[RollupName, Analysis]
+  def possibleRewrites(q: AnalysisTree, rollups: Map[RollupName, AnalysisTree], requireCompoundRollupHint: Boolean): (AnalysisTree, Seq[String])
+  def possibleRewrites(q: Analysis, rollups: Map[RollupName, Analysis], debug: Boolean): Map[RollupName, Analysis]
 
   /**
     * Returns best scored rollup
     *
     */
-  def bestRollup(rollups: Seq[(RollupName, Anal)]): Option[(RollupName, Anal)]
+  def bestRollup(rollups: Seq[(RollupName, Analysis)]): Option[(RollupName, Analysis)]
 
 }
 
 object QueryRewriter {
   import com.socrata.soql.typed._ // scalastyle:ignore import.grouping
 
-  type Anal = SoQLAnalysis[ColumnId, SoQLType]
+  type Analysis = SoQLAnalysis[ColumnId, SoQLType]
+  type AnalysisTree = BinaryTree[Analysis]
   type ColumnId = String
   type RollupName = String
   type Expr = CoreExpr[ColumnId, SoQLType]
 
-  def rollupAtJoin(q: Anal): Boolean = {
+  def rollupAtJoin(q: Analysis): Boolean = {
     q.hints.exists {
       case RollupAtJoin(_) => true
       case _ => false
@@ -58,7 +59,7 @@ object QueryRewriter {
   /**
     * Merge rollups analysis
     */
-  def mergeRollupsAnalysis(rus: Map[RollupName, BinaryTree[Anal]]): Map[RollupName, Anal] = {
+  def mergeRollupsAnalysis(rus: Map[RollupName, AnalysisTree]): Map[RollupName, Analysis] = {
     rus.mapValues(bt =>
       SoQLAnalysis.merge(
         SoQLFunctions.And.monomorphic.get,

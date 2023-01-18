@@ -1,7 +1,7 @@
 package com.socrata.querycoordinator
 
 import com.socrata.querycoordinator.rollups.QueryRewriter
-import com.socrata.querycoordinator.rollups.QueryRewriter.{Anal, RollupName}
+import com.socrata.querycoordinator.rollups.QueryRewriter.{Analysis, RollupName}
 import com.socrata.querycoordinator.util.Join
 import com.socrata.soql.SoQLAnalysis
 import com.socrata.soql.environment.ColumnName
@@ -52,7 +52,7 @@ class TestQueryRewriter extends TestBase with TestCompoundQueryRewriterBase {
   /** Pull in the rollupAnalysis for easier debugging */
   override val rollupAnalysis = QueryRewriter.mergeRollupsAnalysis(rollupAnalyses)
 
-  val rollupRawSchemas = rollupAnalysis.mapValues { case analysis: Anal =>
+  val rollupRawSchemas = rollupAnalysis.mapValues { case analysis: Analysis =>
     analysis.selection.values.toSeq.zipWithIndex.map { case (expr, idx) =>
       rewriter.rollupColumnId(idx) -> expr.typ
     }.toMap
