@@ -1,6 +1,7 @@
 package com.socrata.querycoordinator
 
-import com.socrata.querycoordinator.QueryRewriter.{ColumnId, RollupName}
+import com.socrata.querycoordinator.rollups.{QueryRewriter, QueryRewriterImplementation}
+import com.socrata.querycoordinator.rollups.QueryRewriter.{ColumnId, RollupName}
 import com.socrata.soql._
 import com.socrata.soql.ast.Select
 import com.socrata.soql.collection.OrderedMap
@@ -37,7 +38,7 @@ object QueryRewritingTestUtility {
     val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
     val parserParams = AbstractParser.Parameters(allowJoins = true)
     val parser = new Parser(parserParams)
-    val rewriter = new QueryRewriter(analyzer)
+    val rewriter: QueryRewriter = new QueryRewriterImplementation(analyzer)
     AssertRewrite(
       parser.binaryTreeSelect,
       // aka Analyze(analyzer)

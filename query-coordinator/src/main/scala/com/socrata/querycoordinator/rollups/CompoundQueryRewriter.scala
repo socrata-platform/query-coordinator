@@ -1,15 +1,15 @@
-package com.socrata.querycoordinator
+package com.socrata.querycoordinator.rollups
 
-import com.socrata.querycoordinator.QueryRewriter.{Anal, ColumnId, ColumnRef, Expr, RollupName}
-import com.socrata.soql.typed.{ColumnRef, Indistinct}
+import com.socrata.querycoordinator.rollups.QueryRewriter.{Anal, ColumnId, RollupName}
+import com.socrata.soql.typed.{ColumnRef, CompoundRollup, Indistinct}
 import com.socrata.soql.types.SoQLType
-import com.socrata.soql.{BinaryTree, Compound, Leaf, PipeQuery, SoQLAnalysis, typed}
+import com.socrata.soql.{BinaryTree, Compound, Leaf, PipeQuery}
 
 /**
   * Rewrite compound query with either exact tree match or prefix tree match
   * TODO: Make matching more flexible.  e.g. "SELECT a, b" does not match "SELECT b, a" or "SELECT a"
   */
-trait CompoundQueryRewriter { this: QueryRewriter =>
+trait CompoundQueryRewriter { this: QueryRewriterImplementation =>
 
   /**
     * The tree q is successfully rewritten and returned in the first tuple element if
@@ -17,7 +17,7 @@ trait CompoundQueryRewriter { this: QueryRewriter =>
     * Otherwise, the original q is returned.
     */
   def possibleRewrites(q: BinaryTree[Anal], rollups: Map[RollupName, BinaryTree[Anal]], requireCompoundRollupHint: Boolean): (BinaryTree[Anal], Seq[String]) = {
-    if (requireCompoundRollupHint && !QueryRewriter.compoundRollup(q.outputSchema.leaf)) {
+    if (requireCompoundRollupHint && !compoundRollup(q.outputSchema.leaf)) {
       return (q, Seq.empty)
     }
 
@@ -109,4 +109,12 @@ trait CompoundQueryRewriter { this: QueryRewriter =>
       case l@Leaf(_) => l
     }
   }
+
+  private def compoundRollup(q: Anal): Boolean = {
+    q.hints.exists {
+      case CompoundRollup(_) => true
+      case _ => false
+    }
+  }
+
 }

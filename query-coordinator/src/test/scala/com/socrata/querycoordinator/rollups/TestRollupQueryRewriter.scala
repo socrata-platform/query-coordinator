@@ -1,7 +1,7 @@
 package com.socrata.querycoordinator.rollups
 
 import com.rojoma.json.v3.util.{AutomaticJsonCodecBuilder, JsonUtil}
-import com.socrata.querycoordinator.QueryRewriter.{ColumnId, RollupName}
+import QueryRewriter.{ColumnId, RollupName}
 import com.socrata.querycoordinator._
 import com.socrata.soql._
 import com.socrata.soql.collection.OrderedMap
@@ -64,7 +64,7 @@ class TestRollupQueryRewriter extends TestBase {
   // System Under Test
   //
   val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
-  val rewriter = new QueryRewriterWithJoinEnabled(analyzer)
+  val rewriter: QueryRewriter = new QueryRewriterWithJoinEnabled(analyzer)
 
   //
   //  Helper methods

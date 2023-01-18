@@ -1,5 +1,7 @@
 package com.socrata.querycoordinator
 
+import com.socrata.querycoordinator.rollups.{QueryRewriter, RollupInfo, RollupScorer}
+
 class TestRollupScorer extends TestQueryRewriterBase {
   /** Each rollup here is defined by:
     * - a name

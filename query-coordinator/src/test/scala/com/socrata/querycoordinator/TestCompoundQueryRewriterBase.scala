@@ -1,6 +1,7 @@
 package com.socrata.querycoordinator
 
-import com.socrata.querycoordinator.QueryRewriter.{Anal, ColumnId, RollupName}
+import com.socrata.querycoordinator.rollups.{QueryRewriter}
+import com.socrata.querycoordinator.rollups.QueryRewriter.{Anal, ColumnId, RollupName}
 import com.socrata.soql.{AnalysisContext, BinaryTree, Compound, Leaf, ParameterSpec, SoQLAnalysis, SoQLAnalyzer}
 import com.socrata.soql.collection.OrderedMap
 import com.socrata.soql.environment.{ColumnName, DatasetContext}

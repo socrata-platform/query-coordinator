@@ -1,4 +1,4 @@
-package com.socrata.querycoordinator
+package com.socrata.querycoordinator.rollups
 
 import com.rojoma.json.v3.util.AutomaticJsonCodecBuilder
 import com.socrata.querycoordinator.util.SoQLTypeCodec
