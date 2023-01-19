@@ -36,7 +36,7 @@ object RollupScorer {
 
   private val SELECTION_SCORE_PENALTY = -10L
 
-  def scoreRollup(r: Anal): Long = {
+  def scoreRollup(r: Analysis): Long = {
       val whereScore = r.where match {
         case Some(w) => SELECTION_SCORE_PENALTY /* for a single filter */ +
           scoreExpr(w) /* recursively look for ANDs */
@@ -50,7 +50,7 @@ object RollupScorer {
     score
   }
 
-  def scoreGroup(r: Anal): Long = {
+  def scoreGroup(r: Analysis): Long = {
     r.groupBys match {
       case Nil =>
         r.selection.forall {
@@ -79,11 +79,11 @@ object RollupScorer {
   }
 
   /** Returns a sorted Seq of rollups, from best to worst. */
-  def sortByScore(rollups: Seq[(RollupName, Anal)]): Seq[(RollupName, Anal)] = {
+  def sortByScore(rollups: Seq[(RollupName, Analysis)]): Seq[(RollupName, Analysis)] = {
     rollups.sortBy(r => RollupScorer.scoreRollup(r._2))
   }
 
-  def bestRollup(rollups: Seq[(RollupName, Anal)]): Option[(RollupName, Anal)] = {
+  def bestRollup(rollups: Seq[(RollupName, Analysis)]): Option[(RollupName, Analysis)] = {
     sortByScore(rollups).headOption
   }
 }

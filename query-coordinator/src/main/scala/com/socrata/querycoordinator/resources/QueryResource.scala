@@ -9,7 +9,7 @@ import com.socrata.http.server._
 import com.socrata.http.server.implicits._
 import com.socrata.http.server.responses._
 import com.socrata.http.server.util.RequestId
-import com.socrata.querycoordinator.rollups.QueryRewriter.{Anal, ColumnId, RollupName}
+import com.socrata.querycoordinator.rollups.QueryRewriter.{Analysis, AnalysisTree, ColumnId, RollupName}
 import com.socrata.querycoordinator.SchemaFetcher.{BadResponseFromSecondary, NoSuchDatasetInSecondary, NonSchemaResponse, Result, SecondaryConnectFailed, Successful, TimeoutFromSecondary}
 import com.socrata.querycoordinator._
 import com.socrata.querycoordinator.caching.SharedHandle
@@ -308,13 +308,13 @@ class QueryResource(secondary: Secondary,
          * TODO: Find a better way to apply rollup?
          */
         def possiblyRewriteOneAnalysisInQuery(schema: Schema, analyzedQuery: BinaryTree[SoQLAnalysis[String, SoQLType]],
-                                              ruMapOpt: Option[Map[RollupName, BinaryTree[Anal]]] = None):
+                                              ruMapOpt: Option[Map[RollupName, AnalysisTree]] = None):
             (BinaryTree[SoQLAnalysis[String, SoQLType]], Seq[String]) = {
 
           if (noRollup) {
             (analyzedQuery, Seq.empty)
           } else {
-            val ruMap: Map[RollupName, BinaryTree[Anal]] = ruMapOpt.getOrElse(
+            val ruMap: Map[RollupName, AnalysisTree] = ruMapOpt.getOrElse(
               rollupInfoFetcher(base.receiveTimeoutMS(schemaTimeout.toMillis.toInt), Left(dataset), copy) match {
                 case RollupInfoFetcher.Successful(rollups) =>
                   queryRewriter.analyzeRollups(schema, rollups, getSchemaByTableName)
@@ -441,7 +441,7 @@ class QueryResource(secondary: Secondary,
           (analysis.copy(joins = rwJoins), rus)
         }
 
-        def possiblyRewriteQuery(analyzedQuery: SoQLAnalysis[String, SoQLType], rollups: Map[RollupName, Anal]):
+        def possiblyRewriteQuery(analyzedQuery: SoQLAnalysis[String, SoQLType], rollups: Map[RollupName, Analysis]):
           (SoQLAnalysis[String, SoQLType], Option[String]) = {
           val rewritten = queryRewriter.bestRollup(
             queryRewriter.possibleRewrites(analyzedQuery, rollups, debug).toSeq)
