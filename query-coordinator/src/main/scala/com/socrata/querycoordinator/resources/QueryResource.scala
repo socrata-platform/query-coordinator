@@ -236,7 +236,7 @@ class QueryResource(secondary: Secondary,
               Left(nextRetry)
             case QueryExecutor.NotFound =>
               chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
-              finishRequest(notFoundResponse(dataset))
+              Left(nextRetry)
             case QueryExecutor.Timeout =>
               // don't flag an error in this case because the timeout may be based on the particular query.
               finishRequest(upstreamTimeoutResponse)
