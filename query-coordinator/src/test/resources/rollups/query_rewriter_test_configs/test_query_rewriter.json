@@ -68,6 +68,15 @@
       "rewrites": {
         "r3": "SELECT c1 AS ward, coalesce(c3, 0) AS crime_type_count WHERE c1 != 5"
       }
+    },
+    {
+      "query": "SELECT ward, count(*) AS ward_count GROUP BY ward",
+      "rewrites": {
+        "r4": "SELECT c1 AS ward, coalesce(sum(c3), 0) AS ward_count GROUP by ward",
+        "r8": "SELECT c2 AS ward, coalesce(sum(c3), 0) AS ward_count GROUP by ward",
+        "r3": "SELECT c1 AS ward, coalesce(c2, 0) AS ward_count",
+        "r7": "SELECT c1 AS ward, coalesce(c5, 0) AS ward_count"
+      }
     }
   ]
 }

@@ -34,7 +34,9 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
     * multiple columns with the same definition, that is fine but we will only use one.
     */
   def rewriteSelection(q: Selection, r: Analysis, rollupColIdx: Map[Expr, Int]): Option[Selection] = {
-    val mapped: OrderedMap[ColumnName, Option[Expr]] = q.mapValues(e => rewriteExpr(e, r, rollupColIdx))
+    val mapped: OrderedMap[ColumnName, Option[Expr]] = q.mapValues(e =>
+      rewriteExpr(e, r, rollupColIdx)
+    )
 
     if (mapped.values.forall(c => c.isDefined)) {
       Some(mapped.mapValues { v => v.get })
@@ -121,6 +123,14 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
           case e: typed.TypedLiteral[_] => true
           case _ => false
         })
+  }
+
+
+  private def isAggregateExpression(e: Expr): Boolean = {
+    e match {
+      case fc: FunctionCall => fc.function.isAggregate || fc.parameters.map(isAggregateExpression(_)).reduce(_ || _)
+      case _ => false
+    }
   }
 
   /** Can this function be applied to its own output in a further aggregation */
@@ -407,7 +417,10 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
           window = window)
       case fc: FunctionCall if dateTruncHierarchy.exists(dtf => dtf == fc.function.function) =>
         rewriteDateTrunc(r, rollupColIdx, fc)
-      case fc: FunctionCall if !fc.function.isAggregate => rewriteNonagg(r, rollupColIdx, fc)
+      // If the function is not aggregate expression, and we have an exact rollup column
+      // then just replace the function with column
+      case fc: FunctionCall if !isAggregateExpression(fc) && rollupColIdx.contains(fc) =>
+        Some(typed.ColumnRef(NoQualifier, rollupColumnId(rollupColIdx(fc)), fc.typ)(fc.position))
       // If the function is "self aggregatable" we can apply it on top of an already aggregated rollup
       // column, eg. select foo, bar, max(x) max_x group by foo, bar --> select foo, max(max_x) group by foo
       // If we have a matching column, we just need to update its argument to reference the rollup column.
@@ -423,27 +436,21 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
           fc.copy(parameters = Seq(typed.ColumnRef(NoQualifier, rollupColumnId(idx), fc.typ)(fc.position)),
             filter = simplifiedRwFilter)
         }
+      // At the end, just try to rewrite the function
+      case fc: FunctionCall => rewriteFunction(r, rollupColIdx, fc)
       case _ => None
     }
   }
 
-  // remaining non-aggregate functions
-  private def rewriteNonagg(r: Analysis, rollupColIdx: Map[Expr, Int],
-                            fc: FunctionCall): Option[typed.CoreExpr[ColumnId, SoQLType] with Serializable] = {
-    // if we have the exact same function in rollup and query, just turn it into a column ref in the rollup
-    val functionMatch = for {
-      idx <- rollupColIdx.get(fc)
-    } yield typed.ColumnRef(NoQualifier, rollupColumnId(idx), fc.typ)(fc.position)
-    // otherwise, see if we can recursively rewrite
-    functionMatch.orElse {
-      val mapped = fc.parameters.map(fe => rewriteExpr(fe, r, rollupColIdx))
-      log.trace("mapped expr params {} {} -> {}", "", fc.parameters, mapped)
-      if (mapped.forall(fe => fe.isDefined)) {
-        log.trace("expr params all defined")
-        Some(fc.copy(parameters = mapped.flatten))
-      } else {
-        None
-      }
+  private def rewriteFunction(r: Analysis, rollupColIdx: Map[Expr, Int],
+                              fc: FunctionCall): Option[typed.CoreExpr[ColumnId, SoQLType] with Serializable] = {
+    val mapped = fc.parameters.map(fe => rewriteExpr(fe, r, rollupColIdx))
+    log.trace("mapped expr params {} {} -> {}", "", fc.parameters, mapped)
+    if (mapped.forall(fe => fe.isDefined)) {
+      log.trace("expr params all defined")
+      Some(fc.copy(parameters = mapped.flatten))
+    } else {
+      None
     }
   }
 
@@ -553,7 +560,7 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
         else s
       }
 
-      val orderBy = rewriteOrderBy(q.orderBys, r, rollupColIdx) map { o =>
+       val orderBy = rewriteOrderBy(q.orderBys, r, rollupColIdx) map { o =>
         if (shouldRemoveAggregates) o.map(removeAggregates)
         else o
       }

@@ -1,0 +1,31 @@
+{
+  "schemas": {
+    "_": {
+      "dxyz-num1": ["number", "number1"],
+      ":wido-ward": ["number", "ward"],
+      "crim-typ3": ["text", "crime_type"],
+      "dont-roll": ["text", "dont_create_rollups"],
+      "crim-date": ["floating_timestamp", "crime_date"],
+      "some-date": ["floating_timestamp", "some_date"]
+    },
+    "_tttt-tttt": {
+      "crim-typ3": ["text", "crime_type"],
+      "aaaa-aaaa": ["text", "aa"],
+      "bbbb-bbbb": ["text", "bb"],
+      "dddd-dddd": ["floating_timestamp", "floating"],
+      "nnnn-nnnn": ["number", "nn"]
+    }
+  },
+  "rollups": {
+    "r1": "SELECT number1, sum(number1) as sum_number1 GROUP BY number1 UNION ALL SELECT nn, sum(nn) as sum_nn FROM @tttt-tttt GROUP BY nn"
+  },
+  "tests": [
+    {
+      "description": "rewrite union exact",
+      "query": "SELECT number1, sum(number1) GROUP BY number1 UNION ALL SELECT nn, sum(nn) FROM @tttt-tttt GROUP BY nn",
+      "rewrites": {
+        "r1": "SELECT c1 as number1, c2 as sum_number1"
+      }
+    }
+  ]
+}
