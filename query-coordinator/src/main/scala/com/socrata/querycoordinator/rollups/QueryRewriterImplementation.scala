@@ -433,14 +433,14 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
           fc.copy(parameters = Seq(typed.ColumnRef(NoQualifier, rollupColumnId(idx), fc.typ)(fc.position)),
             filter = simplifiedRwFilter)
         }
-      // At the end, just try to rewrite the function
-      case fc: FunctionCall => rewriteFunction(r, rollupColIdx, fc)
+      // At the end, just try to rewrite the function parameters
+      case fc: FunctionCall => rewriteParameters(r, rollupColIdx, fc)
       case _ => None
     }
   }
 
-  private def rewriteFunction(r: Analysis, rollupColIdx: Map[Expr, Int],
-                              fc: FunctionCall): Option[typed.CoreExpr[ColumnId, SoQLType] with Serializable] = {
+  private def rewriteParameters(r: Analysis, rollupColIdx: Map[Expr, Int],
+                                fc: FunctionCall): Option[typed.CoreExpr[ColumnId, SoQLType] with Serializable] = {
     val mapped = fc.parameters.map(fe => rewriteExpr(fe, r, rollupColIdx))
     log.trace("mapped expr params {} {} -> {}", "", fc.parameters, mapped)
     if (mapped.forall(fe => fe.isDefined)) {
