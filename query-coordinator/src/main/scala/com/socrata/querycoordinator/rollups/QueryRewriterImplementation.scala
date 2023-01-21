@@ -34,9 +34,7 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
     * multiple columns with the same definition, that is fine but we will only use one.
     */
   def rewriteSelection(q: Selection, r: Analysis, rollupColIdx: Map[Expr, Int]): Option[Selection] = {
-    val mapped: OrderedMap[ColumnName, Option[Expr]] = q.mapValues(e =>
-      rewriteExpr(e, r, rollupColIdx)
-    )
+    val mapped: OrderedMap[ColumnName, Option[Expr]] = q.mapValues(e => rewriteExpr(e, r, rollupColIdx))
 
     if (mapped.values.forall(c => c.isDefined)) {
       Some(mapped.mapValues { v => v.get })
@@ -124,7 +122,6 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
           case _ => false
         })
   }
-
 
   private def isAggregateExpression(e: Expr): Boolean = {
     e match {
@@ -560,7 +557,7 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
         else s
       }
 
-       val orderBy = rewriteOrderBy(q.orderBys, r, rollupColIdx) map { o =>
+      val orderBy = rewriteOrderBy(q.orderBys, r, rollupColIdx) map { o =>
         if (shouldRemoveAggregates) o.map(removeAggregates)
         else o
       }

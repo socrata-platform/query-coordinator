@@ -8,11 +8,11 @@ trait TestQueryRewriterDateTruncLtGteNegative { this: TestQueryRewriterDateTrunc
 
 //  ToDo: CONFIRM REMOVAL OF THIS TEST
 //
-//  This test is confirming that QueryRewriter incorrectly re-writes a query, and demonstrate
+//  This test is confirming that QueryRewriter incorrectly re-writes a query, and demonstrates
 //  that it is a pre-existing condition, not a regression.
 //  The root cause of this error is shallow check if function is aggregate or not.
 //  Shallow isAggregate check is replaced with recursive check, and re-writer now
-//  is not re-writing this query (which is is CORRECT), therefore this test is failing
+//  is not re-writing this query (which is CORRECT behaviour), therefore this test is failing
 //  and should be removed
 
 //  test("demonstrate rewritten query is wrong when SELECT contains arithmetic outside aggregate function, not a regression") {
