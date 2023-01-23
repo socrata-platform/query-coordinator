@@ -125,7 +125,9 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
 
   private def isAggregateExpression(e: Expr): Boolean = {
     e match {
-      case fc: FunctionCall => fc.function.isAggregate || fc.parameters.map(isAggregateExpression(_)).reduce(_ || _)
+      case fc: FunctionCall => fc.function.isAggregate || fc.parameters.foldLeft(false) {
+        case (agg, next) => agg || isAggregateExpression(next)
+      }
       case _ => false
     }
   }
