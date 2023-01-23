@@ -469,7 +469,7 @@ class QueryResource(secondary: Secondary,
               Right(Versioned(s, c, d, l))
             case SchemaFetcher.NoSuchDatasetInSecondary =>
               chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
-              finishRequest(notFoundResponse(dataset))
+              Left(nextRetry)
             case SchemaFetcher.TimeoutFromSecondary =>
               chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
               finishRequest(upstreamTimeoutResponse)
