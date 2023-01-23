@@ -189,14 +189,31 @@ class TestRollupQueryRewriter extends TestBase {
   //  Tests
   //
 
+  /*
+   *  Tests from TestQueryRewriter
+   */
   test("rollup rewriter tests") {
-    loadAndRunTests("rollups/query_rewriter_test_configs/test_set_1.json")
+    loadAndRunTests("rollups/query_rewriter_test_configs/test_query_rewriter.json")
   }
 
-  test("rollup rewriter dates tests") {
-    loadAndRunTests("rollups/query_rewriter_test_configs/test_dates_1.json")
+  test("rollup rewriter union rollup") {
+    loadAndRunTests("rollups/query_rewriter_test_configs/test_union.json")
   }
 
+
+  /*
+   * Tests from TestQueryRewriterDateTrunc, TestQueryRewriterDateTruncLtGte
+   */
+  test("rollup rewriter dates tests date trunc") {
+    loadAndRunTests("rollups/query_rewriter_test_configs/test_date_trunc.json")
+  }
+
+  test("rollup rewriter dates tests date trunc ltgte") {
+    loadAndRunTests("rollups/query_rewriter_test_configs/test_date_trunc_ltgte.json")
+  }
+  /*
+   * Piped rollups and queries tests
+   */
   test("piped rollup queries") {
     loadAndRunTests("rollups/query_rewriter_test_configs/test_pipes_1.json")
   }
@@ -205,11 +222,18 @@ class TestRollupQueryRewriter extends TestBase {
     loadAndRunTests("rollups/query_rewriter_test_configs/test_pipes_2.json")
   }
 
-  //
-  // ToDo: rollup rewriter works, but rewrited query analyzer don't
-  //
-  //  test("rollup rewriter tests 2") {
-  //    loadAndRunTests("rollups/query_rewriter_test_configs/test_set_2.json")
-  //  }
+  /*
+   * Grouped rollups and queries tests
+   */
+  test("group by in rollup") {
+    loadAndRunTests("rollups/query_rewriter_test_configs/test_group_by.json")
+  }
+
+  /*
+   * Partitions
+   */
+  test("partitions in rollups") {
+    loadAndRunTests("rollups/query_rewriter_test_configs/test_partitions.json")
+  }
 
 }
