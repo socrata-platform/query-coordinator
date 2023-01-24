@@ -82,18 +82,6 @@ class TestQueryRewriterDateTruncLtGte extends TestQueryRewriterDateTruncBase
     rewritesFor("SELECT ward WHERE crime_date >= '2012-01-01T01:00:00' AND crime_date < '2013-01-01'") should have size 0
   }
 
-//  test("truncatedTo") {
-//    def ts(s: String): SoQLFloatingTimestamp =
-//      SoQLFloatingTimestamp.apply(SoQLFloatingTimestamp.StringRep.unapply(s).get)
-//    rewriter.truncatedTo(ts("2012-01-01")) should be(Some(FloatingTimeStampTruncY))
-//    rewriter.truncatedTo(ts("2012-05-01")) should be(Some(FloatingTimeStampTruncYm))
-//    rewriter.truncatedTo(ts("2012-05-09")) should be(Some(FloatingTimeStampTruncYmd))
-//    rewriter.truncatedTo(ts("2012-05-09T01:00:00")) should be(None)
-//    rewriter.truncatedTo(ts("2012-05-09T00:10:00")) should be(None)
-//    rewriter.truncatedTo(ts("2012-05-09T00:00:02")) should be(None)
-//    rewriter.truncatedTo(ts("2012-05-09T00:00:00.001")) should be(None)
-//  }
-
   test("rewrite sum / count with implicit group by in query") {
     val q = "SELECT sum(number1)/count(number1) as avg WHERE crime_date >= '2011-01-01' AND crime_date < '2019-01-01'"
     val rq = "SELECT sum(c2) /  coalesce(sum(c3), 0) as avg WHERE c1 >= '2011-01-01' AND c1 < '2019-01-01'"
