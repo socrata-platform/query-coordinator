@@ -236,4 +236,8 @@ class TestRollupQueryRewriter extends TestBase {
     loadAndRunTests("rollups/query_rewriter_test_configs/test_partitions.json")
   }
 
+  test("self aggregatable aggregate") {
+    loadAndRunTests("rollups/query_rewriter_test_configs/test_self_aggregatable_aggregate.json")
+  }
+
 }

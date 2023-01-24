@@ -1,0 +1,60 @@
+{
+  "schemas": {
+    "_": {
+      "a193-1190": ["number", "ftrans_id"],
+      "a173-1170": ["number", "order_id"],
+      "a183-1180": ["floating_timestamp", "TIMESTAMP"],
+      "a167-1164": ["text", "implement_type"],
+      "a171-1168": ["text", "implement_name"],
+      "a184-1181": ["text", "transaction_type"],
+      "a170-1167": ["text", "account_number"],
+      "a166-1163": ["text", "merchant"],
+      "a178-1175": ["text", "service"],
+      "a179-1176": ["number", "transaction_amount"],
+      "a174-1171": ["text", "failure_message"],
+      "a187-1184": ["text", "Processor"],
+      "a194-1191": ["text", "order_url"],
+      "a180-1177": ["number", "processing_cost"],
+      "a190-1187": ["text", "customer_state"],
+      "a161-1158": ["text", "billing_state"],
+      "a181-1178": ["text", "customer_country"],
+      "a164-1161": ["text", "billing_country"],
+      "a175-1172": ["text", "email_address"],
+      "a163-1160": ["number", "bin_number"],
+      "a192-1189": ["text", "local_ref"],
+      "a165-1162": ["floating_timestamp", "settle_date"],
+      "a182-1179": ["text", "customer_address1"],
+      "a185-1182": ["text", "customer_address2"],
+      "a176-1173": ["text", "customer_city"],
+      "a169-1166": ["text", "customer_zip"],
+      "a162-1159": ["text", "billing_address1"],
+      "a168-1165": ["text", "billing_address2"],
+      "a172-1169": ["text", "billing_city"],
+      "a177-1174": ["text", "billing_zip"],
+      "a188-1185": ["text", "government_level"],
+      "a186-1183": ["text", "agency_category"],
+      "a189-1186": ["text", "account_code"],
+      "a191-1188": ["number", "service_code"],
+      "a195-1192": ["text", "ip_address"]
+    }
+  },
+  "rollups": {
+    "r1": "SELECT `merchant` AS `merchant`, `service` AS `service`, `implement_type` AS `implement_type`, `implement_name` AS `implement_name`, `failure_message` AS `failure_message`, `transaction_type` AS `transaction_type`, date_trunc_ymd(`timestamp`), date_trunc_ym(`timestamp`), date_trunc_y(`timestamp`), date_extract_woy(`timestamp`), min(`timestamp`), max(`timestamp`), count(*), count(`transaction_type`), sum(`transaction_amount`), ((sum(case(`transaction_type` = 'REVERSE RETURN', 1)) / sum(case(`transaction_type` IN ('REFUND', 'REFUND_RETURN'), 1))) * 100) GROUP BY `merchant`, `service`, `implement_type`, `implement_name`, `failure_message`, `transaction_type`, date_trunc_ymd(`timestamp`), date_trunc_ym(`timestamp`), date_trunc_y(`timestamp`), date_extract_woy(`timestamp`)"
+  },
+  "tests": [
+    {
+      "description": "self aggregatable aggregate",
+      "query": "SELECT merchant as dimension__alias,(sum(case(transaction_type ='REVERSE RETURN', 1))/sum(case(transaction_type IN ('REFUND', 'REFUND_RETURN'), 1)))*100 as value__alias WHERE (timestamp >= '2022-01-01') AND (timestamp < '2022-10-08') GROUP BY merchant, service, implement_type, implement_name, failure_message, transaction_type, date_trunc_ymd(timestamp), date_trunc_ym(timestamp), date_trunc_y(timestamp), date_extract_woy(timestamp)",
+      "rewrites": {
+        "r1": "SELECT c1 as dimension__alias, (case(c6 ='REVERSE RETURN', 1))/(case(c6 IN ('REFUND', 'REFUND_RETURN'), 1))*100 as value__alias WHERE (c9 >= '2022-01-01') AND (c7 < '2022-10-08')"
+      }
+    },
+    {
+      "description": "self aggregatable aggregate",
+      "query": "SELECT merchant as dimension__alias,(sum(case(transaction_type ='REVERSE RETURN', 1))/sum(case(transaction_type IN ('REFUND', 'REFUND_RETURN'), 1)))*100 as value__alias WHERE (timestamp >= '2022-01-01') AND (timestamp < '2022-10-08') GROUP BY merchant, service, implement_type, implement_name, failure_message, transaction_type, date_trunc_ymd(timestamp), date_trunc_ym(timestamp), date_trunc_y(timestamp)",
+      "rewrites": {
+        "r1": "SELECT c1 as dimension__alias, (sum(case(c6 ='REVERSE RETURN', 1)))/(sum(case(c6 IN ('REFUND', 'REFUND_RETURN'), 1)))*100 as value__alias WHERE (c9 >= '2022-01-01') AND (c7 < '2022-10-08') GROUP BY c1, c2, c3, c4, c5, c6, c7, c8, c9"
+      }
+    }
+  ]
+}

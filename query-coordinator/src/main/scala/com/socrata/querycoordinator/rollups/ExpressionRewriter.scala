@@ -81,7 +81,7 @@ class ExpressionRewriter(val rollupColumnId: (Int) => String,
       // If the function is "self aggregatable" we can apply it on top of an already aggregated rollup
       // column, eg. select foo, bar, max(x) max_x group by foo, bar --> select foo, max(max_x) group by foo
       // If we have a matching column, we just need to update its argument to reference the rollup column.
-      case fc: FunctionCall if isSelfAggregatableAggregate(fc.function.function) =>
+      case fc: FunctionCall if isSelfAggregatableAggregate(fc, r, rollupColIdx) =>
         rewriteSelfAggregatableAggregate(r, rollupColIdx, fc)
       // At the end, just try to rewrite the function parameters
       case fc: FunctionCall =>
@@ -191,9 +191,15 @@ class ExpressionRewriter(val rollupColumnId: (Int) => String,
   }
 
   /** Can this function be applied to its own output in a further aggregation */
-  private def isSelfAggregatableAggregate(f: Function[_]): Boolean = f match {
-    case Max | Min | Sum => true
-    case _ => false
+  private def isSelfAggregatableAggregate(fc: FunctionCall, r: Analysis, rollupColIdx: Map[Expr, Int]): Boolean = {
+    fc.function.function match {
+      case Max | Min | Sum
+        if rollupColIdx.contains(stripFilter(fc)) &&
+          rewriteWhere(andRollupWhereToFilter(fc.filter, r: Analysis), r, rollupColIdx) != None =>
+        true
+      case _ =>
+        false
+    }
   }
 
   private def stripFilter(fc: FunctionCall): FunctionCall = {
@@ -240,8 +246,6 @@ class ExpressionRewriter(val rollupColumnId: (Int) => String,
         false
     }
   }
-
-
 
   /** The common date truncation function shared between the lower and upper bounds of the between */
   private def commonDateTrunc[T, U](lower: Expr,
