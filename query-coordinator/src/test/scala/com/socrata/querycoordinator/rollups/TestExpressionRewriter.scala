@@ -39,7 +39,6 @@ class TestExpressionRewriter extends BaseConfigurableRollupTest {
     val analyses = analyzer.analyzeBinary(parsed)(context)
     val merged = SoQLAnalysis.merge(SoQLFunctions.And.monomorphic.get, analyses)
     merged
-//    QueryParser.remapAnalyses(columnMapping, merged).outputSchema.leaf
   }
 
   private def analyzeExpression(e: String,
