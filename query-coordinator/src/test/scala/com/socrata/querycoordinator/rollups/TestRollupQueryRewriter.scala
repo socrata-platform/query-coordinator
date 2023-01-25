@@ -1,6 +1,6 @@
 package com.socrata.querycoordinator.rollups
 
-import com.rojoma.json.v3.util.{AutomaticJsonCodecBuilder, JsonUtil}
+import com.rojoma.json.v3.util.AutomaticJsonCodecBuilder
 import QueryRewriter.{ColumnId, RollupName}
 import com.socrata.querycoordinator._
 import com.socrata.soql._
@@ -10,8 +10,6 @@ import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo, SoQLFunctions
 import com.socrata.soql.parsing.{AbstractParser, Parser}
 import com.socrata.soql.typed.CoreExpr
 import com.socrata.soql.types.{SoQLType, SoQLValue}
-
-import scala.io.Source
 
 
 /*
@@ -47,18 +45,17 @@ import scala.io.Source
  */
 
 
-case class TestCase(query: String, rewrites: Map[String, String])
-object TestCase {
-  implicit val jCodec = AutomaticJsonCodecBuilder[TestCase]
-}
+class TestRollupQueryRewriter extends BaseConfigurableRollupTest {
 
-case class TestConfig(schemas: Map[String, Map[String, (SoQLType, String)]], rollups: Map[String, String], tests: Seq[TestCase])
-object TestConfig {
-  implicit val jCodec = AutomaticJsonCodecBuilder[TestConfig]
-}
+  case class TestCase(query: String, rewrites: Map[String, String])
+  object TestCase {
+    implicit val jCodec = AutomaticJsonCodecBuilder[TestCase]
+  }
 
-
-class TestRollupQueryRewriter extends TestBase {
+  case class TestConfig(schemas: Map[String, SchemaConfig], rollups: Map[String, String], tests: Seq[TestCase])
+  object TestConfig {
+    implicit val jCodec = AutomaticJsonCodecBuilder[TestConfig]
+  }
 
   //
   // System Under Test
@@ -132,32 +129,9 @@ class TestRollupQueryRewriter extends TestBase {
   //  Main test method
   //
   private def loadAndRunTests(configFile: String) {
-    val resource = Source.fromResource(configFile)
-    val config = JsonUtil.readJson[TestConfig](resource.reader()).right.get
-
-    val allDatasetContext = AnalysisContext[SoQLType, SoQLValue](
-      schemas = config.schemas.mapValues { schemaWithFieldName =>
-        val columnNameToType = schemaWithFieldName.map {
-          case (_iColumnId, (typ, fieldName)) =>
-            (ColumnName(fieldName), typ)
-        }
-        new DatasetContext[SoQLType] {
-          val schema: OrderedMap[ColumnName, SoQLType] =
-            OrderedMap[ColumnName, SoQLType](columnNameToType.toSeq: _*)
-        }
-      },
-      parameters = ParameterSpec.empty
-    )
-
-    val allQualifiedColumnNameToIColumnId: Map[QualifiedColumnName, String] = config.schemas.foldLeft(Map.empty[QualifiedColumnName, String]) { (acc, entry) =>
-      val (tableName, schemaWithFieldName) = entry
-      val map = schemaWithFieldName.map {
-        case (iColumnId, (_typ, fieldName)) =>
-          val qual = if (tableName == "_") None else Some(tableName)
-          QualifiedColumnName(qual, ColumnName(fieldName)) -> iColumnId
-      }
-      acc ++ map
-    }
+    val config = getConfig[TestConfig](configFile)
+    val allDatasetContext = getContext(config.schemas)
+    val allQualifiedColumnNameToIColumnId = getColumnMapping(config.schemas)
 
     val rollupAnalysis = QueryRewriter.mergeRollupsAnalysis(
       config.rollups.map {
