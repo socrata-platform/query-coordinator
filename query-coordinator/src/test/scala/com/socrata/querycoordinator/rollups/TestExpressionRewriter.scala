@@ -1,16 +1,15 @@
 package com.socrata.querycoordinator.rollups
 
 import com.rojoma.json.v3.util.AutomaticJsonCodecBuilder
-import QueryRewriter.{ColumnId, RollupName, Expr}
+import QueryRewriter.{Expr}
 import com.socrata.querycoordinator._
 import com.socrata.soql._
-import com.socrata.soql.collection.OrderedMap
-import com.socrata.soql.environment.{ColumnName, DatasetContext}
-import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo, SoQLFunctions}
+import com.socrata.soql.environment.{ColumnName}
+import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLFunctions, SoQLTypeInfo}
 import com.socrata.soql.parsing.{AbstractParser, Parser}
 import com.socrata.soql.typed.CoreExpr
 import com.socrata.soql.types.{SoQLType, SoQLValue}
-
+import com.socrata.soql.typechecker.Typechecker
 
 class TestExpressionRewriter extends BaseConfigurableRollupTest {
 
@@ -27,25 +26,33 @@ class TestExpressionRewriter extends BaseConfigurableRollupTest {
   private val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
   private val queryRewriter = new QueryRewriterWithJoinEnabled(analyzer)
 
-  val rewriter = queryRewriter.rewriteExpr
+  val expressionRewriter = queryRewriter.rewriteExpr
 
 
-  private def analyzeQuery(q: String,
+  private def analyzeRollup(q: String,
                            context: AnalysisContext[SoQLType, SoQLValue],
                            columnMapping: Map[QualifiedColumnName, String]):
-  SoQLAnalysis[ColumnId, SoQLType] = {
+  BinaryTree[SoQLAnalysis[ColumnName, SoQLType]] = {
 
     val parserParams = AbstractParser.Parameters(allowJoins = true)
     val parsed = new Parser(parserParams).binaryTreeSelect(q)
     val analyses = analyzer.analyzeBinary(parsed)(context)
     val merged = SoQLAnalysis.merge(SoQLFunctions.And.monomorphic.get, analyses)
-    QueryParser.remapAnalyses(columnMapping, merged).outputSchema.leaf
+    merged
+//    QueryParser.remapAnalyses(columnMapping, merged).outputSchema.leaf
   }
 
-  private def parseExpression(e: String): Expr = {
-    val parserParams = AbstractParser.Parameters(allowJoins = true)
-    val parsed = new Parser(parserParams).binaryTreeSelect(q)
+  private def analyzeExpression(e: String,
+                                context: AnalysisContext[SoQLType, SoQLValue],
+                                aliases: Map[ColumnName, CoreExpr[ColumnName, SoQLType]],
+                                columnMapping: Map[QualifiedColumnName, String]): Expr = {
 
+    val typechecker = new Typechecker(SoQLTypeInfo, SoQLFunctionInfo)(context)
+
+    val parserParams = AbstractParser.Parameters(allowJoins = true)
+    val expression = new Parser(parserParams).expression(e)
+    val analysis = typechecker(expression, aliases, None)
+    analysis.mapColumnIds((n, t) => columnMapping(QualifiedColumnName(t, n)))
   }
 
   private def loadAndRunTests(configFile: String) {
@@ -53,15 +60,29 @@ class TestExpressionRewriter extends BaseConfigurableRollupTest {
     val allDatasetContext = getContext(config.schemas)
     val allQualifiedColumnNameToIColumnId = getColumnMapping(config.schemas)
 
-    val rollupAnalysis = analyzeQuery(config.rollup, allDatasetContext, allQualifiedColumnNameToIColumnId)
-    val rollupColIdx = rollupAnalysis.selection.values.zipWithIndex.toMap
+    val rollupAnalysisTree = analyzeRollup(config.rollup, allDatasetContext, allQualifiedColumnNameToIColumnId)
+    val rollupAnalysis = rollupAnalysisTree.outputSchema.leaf
+    val remappedAnalysis = QueryParser.remapAnalyses(allQualifiedColumnNameToIColumnId, rollupAnalysisTree).outputSchema.leaf
+    val rollupColIdx = remappedAnalysis.selection.values.zipWithIndex.toMap
 
     config.tests.foreach(test => {
-      val expression = parseExpression(test.expression)
-      val rewrite = rewriter(expression, rollupAnalysis, rollupColIdx)
+      val expression = analyzeExpression(test.expression,
+        allDatasetContext,
+        rollupAnalysis.selection,
+        allQualifiedColumnNameToIColumnId
+      )
 
-      val x = rewrite
+      val rewrite = expressionRewriter(expression, remappedAnalysis, rollupColIdx)
+
+      rewrite match {
+        case Some(expr) => test.rewrite should equal(Some(expr.toString()))
+        case None => test.rewrite should equal(None)
+      }
     })
+  }
+
+  test("rewrite expression") {
+    loadAndRunTests("rollups/expression_rewriter_test_configs/test_dates.json")
   }
 
 }

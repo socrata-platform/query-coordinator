@@ -1,6 +1,5 @@
 package com.socrata.querycoordinator.rollups
 
-import com.rojoma.json.v3.util.{AutomaticJsonCodecBuilder, JsonUtil}
 import com.socrata.querycoordinator.TestBase
 import com.socrata.querycoordinator._
 import com.socrata.soql._
