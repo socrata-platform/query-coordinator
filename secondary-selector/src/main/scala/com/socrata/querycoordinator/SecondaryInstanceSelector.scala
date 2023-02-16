@@ -107,6 +107,8 @@ class SecondaryInstanceSelector(config: SecondarySelectorConfig) extends Metrics
     }
   }
 
+  def arbitraryInstance(): String = allServers(Random.nextInt(allServers.length)).name
+
   def getInstanceName(dataset: String, isInSecondary: (String => Option[Boolean]), excludedSecondaryNames: Set[String]): Option[String] = {
     // datasetMap is a synchronized map, then  lock on dss for any access inside dss
     val dss = Await.result(datasetMap(dataset)(new DatasetServers), waitTime)

@@ -16,6 +16,7 @@ libraryDependencies ++= Seq(
   socrataHttpJetty,
   socrataCuratorUtils,
   socrataThirdpartyUtils,
+  "com.socrata" %% "socrata-http-ext" % "0.1.0-SNAPSHOT",
   socrataUtils,
   soqlStdlib,
   protobuf, // these are optional dependencies of

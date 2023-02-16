@@ -1,7 +1,7 @@
 package com.socrata.querycoordinator.rollups
 
-import com.rojoma.json.io.JsonReaderException
-import com.rojoma.json.util.JsonArrayIterator.ElementDecodeException
+import com.rojoma.json.v3.io.JsonReaderException
+import com.rojoma.json.v3.util.JsonArrayIterator.ElementDecodeException
 import com.socrata.http.client.exceptions.{HttpClientException, HttpClientTimeoutException, LivenessCheckFailed}
 import com.socrata.http.client.{HttpClient, RequestBuilder, Response}
 import com.socrata.querycoordinator.rollups.RollupInfoFetcher._
