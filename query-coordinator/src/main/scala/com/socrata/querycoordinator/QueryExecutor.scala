@@ -3,7 +3,6 @@ package com.socrata.querycoordinator
 import java.io._
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.Semaphore
-
 import javax.servlet.http.HttpServletResponse
 import com.socrata.http.common.util.HttpUtils
 import com.socrata.querycoordinator.caching.cache.noop.NoopCacheSessionProvider
@@ -19,6 +18,7 @@ import com.socrata.http.client.exceptions.{ConnectFailed, ConnectTimeout, HttpCl
 import com.socrata.http.client.{HttpClient, RequestBuilder, Response}
 import com.socrata.http.server.implicits._
 import com.socrata.http.server.util._
+import com.socrata.metrics.{Metric, QueryHit}
 import com.socrata.querycoordinator.QueryExecutor.{SchemaHashMismatch, ToForward, _}
 import com.socrata.querycoordinator.util.{BinaryTreeHelper, TeeToTempInputStream}
 import com.socrata.querycoordinator.caching.cache.{CacheSession, CacheSessionProvider, ValueRef}
@@ -28,11 +28,14 @@ import com.socrata.soql.typed.FunctionCall
 import com.socrata.util.io.SplitStream
 import com.socrata.soql.types.SoQLType
 import com.socrata.soql.{AnalysisSerializer, BinaryTree, Leaf, SoQLAnalysis}
+import com.socrata.util.Timing
 import org.apache.commons.io.IOUtils
 import org.joda.time.DateTime
 import org.slf4j.{LoggerFactory, MDC}
 
+import java.time.{LocalDateTime, ZoneOffset}
 import scala.annotation.tailrec
+import scala.concurrent.duration.{Duration, MILLISECONDS}
 
 class QueryExecutor(httpClient: HttpClient,
                     analysisSerializer: AnalysisSerializer[String, SoQLType],
@@ -474,31 +477,36 @@ class QueryExecutor(httpClient: HttpClient,
     val route = if(explain) "info" else "query"
 
     try {
-      val result = using(IOUtils.toInputStream(serializedAnalyses, StandardCharsets.UTF_8.name)) { queryInputStream =>
-        val request = base.p(route).
-          addHeaders(PreconditionRenderer(precondition) ++ ifModifiedSince.map("If-Modified-Since" -> _.toHttpDate)).
-          addHeaders(extraHeaders).
-          addParameters(params).
-          blob(queryInputStream, "application/octet-stream") // blob implies POST
-        httpClient.execute(request, resourceScope)
-      }
-      result.resultCode match {
-        case HttpServletResponse.SC_NOT_FOUND =>
-          resourceScope.close(result)
-          NotFound
-        case HttpServletResponse.SC_CONFLICT =>
-          readSchemaHashMismatch(result, resourceScope) match {
-            case Right(newSchema) =>
-              resourceScope.close(result)
-              SchemaHashMismatch(newSchema)
-            case Left(newStream) => try {
-              forward(result, newStream)
-            } finally {
-              newStream.close()
+      Timing.TimedResultReturningTransformed{
+        using(IOUtils.toInputStream(serializedAnalyses, StandardCharsets.UTF_8.name)) { queryInputStream =>
+          val request = base.p(route).
+            addHeaders(PreconditionRenderer(precondition) ++ ifModifiedSince.map("If-Modified-Since" -> _.toHttpDate)).
+            addHeaders(extraHeaders).
+            addParameters(params).
+            blob(queryInputStream, "application/octet-stream") // blob implies POST
+          httpClient.execute(request, resourceScope)
+        }
+      }{(result,duration)=>
+        result.resultCode match {
+          case HttpServletResponse.SC_NOT_FOUND =>
+            resourceScope.close(result)
+            NotFound
+          case HttpServletResponse.SC_CONFLICT =>
+            readSchemaHashMismatch(result, resourceScope) match {
+              case Right(newSchema) =>
+                resourceScope.close(result)
+                SchemaHashMismatch(newSchema)
+              case Left(newStream) => try {
+                Metric.digest(QueryHit(dataset,analyses.toString,duration,LocalDateTime.now(ZoneOffset.UTC)))
+                forward(result, newStream)
+              } finally {
+                newStream.close()
+              }
             }
-          }
-        case _ =>
-          forward(result, resourceScope.openUnmanaged(result.inputStream(), transitiveClose = List(result)))
+          case _ =>
+            Metric.digest(QueryHit(dataset,analyses.toString,duration,LocalDateTime.now(ZoneOffset.UTC)))
+            forward(result, resourceScope.openUnmanaged(result.inputStream(), transitiveClose = List(result)))
+        }
       }
     } catch {
       case e: ConnectTimeout => Retry
