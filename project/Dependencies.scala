@@ -22,6 +22,7 @@ object Dependencies {
     val scalaTest = "3.0.8"
     val scalaCheck = "1.14.0"
     val simpleArm = "2.3.1"
+    val rollupMetrics = "3.3"
   }
 
   val postgresql = "org.postgresql" % "postgresql" % versions.postgresql
@@ -53,4 +54,6 @@ object Dependencies {
 
   val scalaTest = "org.scalatest" %% "scalatest" % versions.scalaTest % "test"
   val scalaCheck = "org.scalacheck" %% "scalacheck" % versions.scalaCheck % "test"
+
+  val rollupMetrics = "com.socrata" %% "rollup-metrics" % versions.rollupMetrics
 }
