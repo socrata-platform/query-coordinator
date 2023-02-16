@@ -1,4 +1,4 @@
-package com.socrata.querycoordinator
+package com.socrata.querycoordinator.rollups
 
 import com.socrata.soql.functions.SoQLFunctions
 import com.typesafe.scalalogging.Logger
@@ -25,16 +25,18 @@ import com.typesafe.scalalogging.Logger
  * - For each value in the selection, give a minor penalty of 1
  *
  */
-import QueryRewriter._
+import com.socrata.querycoordinator.rollups.QueryRewriter._
+import com.socrata.querycoordinator.rollups.QueryRewriterImplementation._
+
 
 private final abstract class RollupScorer
 
-private object RollupScorer {
+object RollupScorer {
   private val logger = Logger[RollupScorer]
 
   private val SELECTION_SCORE_PENALTY = -10L
 
-  def scoreRollup(r: Anal): Long = {
+  def scoreRollup(r: Analysis): Long = {
       val whereScore = r.where match {
         case Some(w) => SELECTION_SCORE_PENALTY /* for a single filter */ +
           scoreExpr(w) /* recursively look for ANDs */
@@ -48,7 +50,7 @@ private object RollupScorer {
     score
   }
 
-  def scoreGroup(r: Anal): Long = {
+  def scoreGroup(r: Analysis): Long = {
     r.groupBys match {
       case Nil =>
         r.selection.forall {
@@ -77,11 +79,11 @@ private object RollupScorer {
   }
 
   /** Returns a sorted Seq of rollups, from best to worst. */
-  def sortByScore(rollups: Seq[(RollupName, Anal)]): Seq[(RollupName, Anal)] = {
+  def sortByScore(rollups: Seq[(RollupName, Analysis)]): Seq[(RollupName, Analysis)] = {
     rollups.sortBy(r => RollupScorer.scoreRollup(r._2))
   }
 
-  def bestRollup(rollups: Seq[(RollupName, Anal)]): Option[(RollupName, Anal)] = {
+  def bestRollup(rollups: Seq[(RollupName, Analysis)]): Option[(RollupName, Analysis)] = {
     sortByScore(rollups).headOption
   }
 }

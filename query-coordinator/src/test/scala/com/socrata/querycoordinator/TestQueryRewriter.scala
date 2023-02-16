@@ -1,6 +1,7 @@
 package com.socrata.querycoordinator
 
-import com.socrata.querycoordinator.QueryRewriter.{Anal, RollupName}
+import com.socrata.querycoordinator.rollups.QueryRewriter
+import com.socrata.querycoordinator.rollups.QueryRewriter.{Analysis, RollupName}
 import com.socrata.querycoordinator.util.Join
 import com.socrata.soql.SoQLAnalysis
 import com.socrata.soql.environment.ColumnName
@@ -38,7 +39,8 @@ class TestQueryRewriter extends TestBase with TestCompoundQueryRewriterBase {
     "ru1" -> """SELECT number1, sum(number1) as sum_number1 GROUP BY number1
                  UNION ALL
                 SELECT nn, sum(nn) as sum_nn FROM @tttt-tttt GROUP BY nn
-             """
+             """,
+    "rp1" -> "SELECT ward, crime_type, number1 WHERE number1='0' |> SELECT ward, crime_type WHERE crime_type='traffic'"
   )
 
   override val rollupAnalyses = rollups.map {
@@ -48,9 +50,9 @@ class TestQueryRewriter extends TestBase with TestCompoundQueryRewriterBase {
   }
 
   /** Pull in the rollupAnalysis for easier debugging */
-  override val rollupAnalysis = QueryRewriter.simpleRollups(rollupAnalyses)
+  override val rollupAnalysis = QueryRewriter.mergeRollupsAnalysis(rollupAnalyses)
 
-  val rollupRawSchemas = rollupAnalysis.mapValues { case analysis: Anal =>
+  val rollupRawSchemas = rollupAnalysis.mapValues { case analysis: Analysis =>
     analysis.selection.values.toSeq.zipWithIndex.map { case (expr, idx) =>
       rewriter.rollupColumnId(idx) -> expr.typ
     }.toMap
@@ -325,10 +327,9 @@ class TestQueryRewriter extends TestBase with TestCompoundQueryRewriterBase {
     rewrites should contain key "r7"
     rewrites.get("r7").get should equal(rewrittenQueryAnalysis)
 
-    // TODO should be 2 eventually... should also rewrite from table w/o group by
-    //    rewrites should contain key("r4")
+    rewrites should contain key("r4")
 
-    rewrites should have size 1
+    rewrites should have size 2
   }
 
   test("map query ward, avg(number1)") {
@@ -380,7 +381,13 @@ class TestQueryRewriter extends TestBase with TestCompoundQueryRewriterBase {
     rewrites should contain key "r7"
     rewrites.get("r7").get should equal(rewrittenQueryAnalysis)
 
-    rewrites should have size 1
+    // ToDo: confirm matching r4
+    val rewrittenQuery4 = "SELECT min(c4) as minn, max(c4) as maxn WHERE c1 = 7"
+    val rewrittenQueryAnalysis4 = analyzeRewrittenCompoundQuery(rewrittenQuery4, rollups("r4")).outputSchema.leaf
+    rewrites should contain key "r4"
+    rewrites.get("r4").get should equal(rewrittenQueryAnalysis4)
+
+    rewrites should have size 2
   }
 
   test("don't map query 'select ward' to grouped rollups") {
@@ -533,5 +540,11 @@ class TestQueryRewriter extends TestBase with TestCompoundQueryRewriterBase {
             """
     val rewrittenQuery = "SELECT c1 as number1, c2 as sum_number1 LIMIT 2"
     checkQueryRewrite(q, rollups, "ru1", rewrittenQuery)
+  }
+
+  test("rewrite with piped rollup query") {
+    val q = "SELECT ward, crime_type, number1 WHERE number1='0' |> SELECT ward, crime_type WHERE crime_type='traffic'"
+    val rewrittenQuery = "SELECT c1 as ward, c2 as crime_type"
+    checkQueryRewrite(q, rollups, "rp1", rewrittenQuery)
   }
 }

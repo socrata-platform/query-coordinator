@@ -1,8 +1,9 @@
 FROM socrata/java8-bionic
 
-EXPOSE 6030 6031
+EXPOSE 6030
+EXPOSE 6031/udp
 ENV JMX_PORT 6039
-EXPOSE 6039
+# EXPOSE 6039
 
 ENV SERVER_ROOT /srv/query-coordinator/
 # TODO sbt task to copy latest jar into docker/

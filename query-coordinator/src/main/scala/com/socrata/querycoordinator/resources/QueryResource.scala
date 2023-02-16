@@ -9,12 +9,13 @@ import com.socrata.http.server._
 import com.socrata.http.server.implicits._
 import com.socrata.http.server.responses._
 import com.socrata.http.server.util.RequestId
-import com.socrata.querycoordinator.QueryRewriter.{Anal, ColumnId, RollupName}
+import com.socrata.querycoordinator.rollups.QueryRewriter.{Analysis, AnalysisTree, ColumnId, RollupName}
 import com.socrata.querycoordinator.SchemaFetcher.{BadResponseFromSecondary, NoSuchDatasetInSecondary, NonSchemaResponse, Result, SecondaryConnectFailed, Successful, TimeoutFromSecondary}
 import com.socrata.querycoordinator._
 import com.socrata.querycoordinator.caching.SharedHandle
 import com.socrata.querycoordinator.datetime.NowAnalyzer
 import com.socrata.querycoordinator.exceptions.JoinedDatasetNotColocatedException
+import com.socrata.querycoordinator.rollups.{QueryRewriter, RollupInfoFetcher, RollupScorer}
 import com.socrata.querycoordinator.util.BinaryTreeHelper
 import com.socrata.soql.environment.{ColumnName, TableName}
 import com.socrata.soql.exceptions.{DuplicateAlias, NoSuchColumn, TypecheckException}
@@ -235,7 +236,7 @@ class QueryResource(secondary: Secondary,
               Left(nextRetry)
             case QueryExecutor.NotFound =>
               chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
-              finishRequest(notFoundResponse(dataset))
+              Left(nextRetry)
             case QueryExecutor.Timeout =>
               // don't flag an error in this case because the timeout may be based on the particular query.
               finishRequest(upstreamTimeoutResponse)
@@ -307,13 +308,13 @@ class QueryResource(secondary: Secondary,
          * TODO: Find a better way to apply rollup?
          */
         def possiblyRewriteOneAnalysisInQuery(schema: Schema, analyzedQuery: BinaryTree[SoQLAnalysis[String, SoQLType]],
-                                              ruMapOpt: Option[Map[RollupName, BinaryTree[Anal]]] = None):
+                                              ruMapOpt: Option[Map[RollupName, AnalysisTree]] = None):
             (BinaryTree[SoQLAnalysis[String, SoQLType]], Seq[String]) = {
 
           if (noRollup) {
             (analyzedQuery, Seq.empty)
           } else {
-            val ruMap: Map[RollupName, BinaryTree[Anal]] = ruMapOpt.getOrElse(
+            val ruMap: Map[RollupName, AnalysisTree] = ruMapOpt.getOrElse(
               rollupInfoFetcher(base.receiveTimeoutMS(schemaTimeout.toMillis.toInt), Left(dataset), copy) match {
                 case RollupInfoFetcher.Successful(rollups) =>
                   queryRewriter.analyzeRollups(schema, rollups, getSchemaByTableName)
@@ -369,7 +370,7 @@ class QueryResource(secondary: Secondary,
 
                 datasetOrResourceName match {
                   case Left(dataset) =>
-                    val rus = QueryRewriter.simpleRollups(ruMap)
+                    val rus = QueryRewriter.mergeRollupsAnalysis(ruMap)
                     // Only the leftmost soql in a chain can use rollups.
                     possiblyRewriteQuery(analysis, rus) match {
                       case (rewrittenAnal, ru@Some(_)) =>
@@ -440,9 +441,9 @@ class QueryResource(secondary: Secondary,
           (analysis.copy(joins = rwJoins), rus)
         }
 
-        def possiblyRewriteQuery(analyzedQuery: SoQLAnalysis[String, SoQLType], rollups: Map[RollupName, Anal]):
+        def possiblyRewriteQuery(analyzedQuery: SoQLAnalysis[String, SoQLType], rollups: Map[RollupName, Analysis]):
           (SoQLAnalysis[String, SoQLType], Option[String]) = {
-          val rewritten = RollupScorer.bestRollup(
+          val rewritten = queryRewriter.bestRollup(
             queryRewriter.possibleRewrites(analyzedQuery, rollups, debug).toSeq)
           val (rollupName, analysis) = rewritten map { x => (Option(x._1), x._2) } getOrElse ((None, analyzedQuery))
           rollupName.foreach(ru => log.info(s"Rewrote query on dataset $dataset to rollup $ru")) // only log rollup name if it is defined.
@@ -468,7 +469,7 @@ class QueryResource(secondary: Secondary,
               Right(Versioned(s, c, d, l))
             case SchemaFetcher.NoSuchDatasetInSecondary =>
               chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
-              finishRequest(notFoundResponse(dataset))
+              Left(nextRetry)
             case SchemaFetcher.TimeoutFromSecondary =>
               chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
               finishRequest(upstreamTimeoutResponse)

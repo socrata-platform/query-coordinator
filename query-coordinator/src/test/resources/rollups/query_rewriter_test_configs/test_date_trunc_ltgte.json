@@ -1,0 +1,116 @@
+{
+  "schemas": {
+    "_": {
+      "dxyz-num1": [
+        "number",
+        "number1"
+      ],
+      ":wido-ward": [
+        "number",
+        "ward"
+      ],
+      "crim-typ3": [
+        "text",
+        "crime_type"
+      ],
+      "dont-roll": [
+        "text",
+        "dont_create_rollups"
+      ],
+      "crim-date": [
+        "floating_timestamp",
+        "crime_date"
+      ],
+      "some-date": [
+        "floating_timestamp",
+        "some_date"
+      ]
+    }
+  },
+  "rollups": {
+    "r_ymd": "SELECT date_trunc_ymd(crime_date), ward, count(*) GROUP BY date_trunc_ymd(crime_date), ward",
+    "r_ym": "SELECT date_trunc_ym(crime_date), ward, count(*) GROUP BY date_trunc_ym(crime_date), ward",
+    "r_y": "SELECT date_trunc_y(crime_date), ward, count(*) GROUP BY date_trunc_y(crime_date), ward",
+    "r_sca_ymd": "SELECT date_trunc_ymd(crime_date), sum(number1), count(number1), avg(number1) GROUP BY date_trunc_ymd(crime_date)",
+    "r_arithmetic_outside_aggregate_ymd": "SELECT date_trunc_ymd(crime_date), sum(number1)*60, count(number1), avg(number1), ward GROUP BY date_trunc_ymd(crime_date), ward"
+  },
+  "tests": [
+    {
+      "description": "year",
+      "query": "SELECT ward, count(*) AS count WHERE crime_date >= '2011-01-01' AND crime_date < '2019-01-01' GROUP BY ward",
+      "rewrites": {
+        "r_ymd": "SELECT c2 as ward, coalesce(sum(c3), 0) as count WHERE c1 >= '2011-01-01' AND c1 < '2019-01-01' GROUP BY c2",
+        "r_ym": "SELECT c2 as ward, coalesce(sum(c3), 0) as count WHERE c1 >= '2011-01-01' AND c1 < '2019-01-01' GROUP BY c2",
+        "r_y": "SELECT c2 as ward, coalesce(sum(c3), 0) as count WHERE c1 >= '2011-01-01' AND c1 < '2019-01-01' GROUP BY c2"
+      }
+    },
+    {
+      "description": "month",
+      "query": "SELECT ward, count(*) AS count WHERE crime_date >= '2011-03-01' AND crime_date < '2019-08-01' GROUP BY ward",
+      "rewrites": {
+        "r_ymd": "SELECT c2 as ward, coalesce(sum(c3), 0) as count WHERE c1 >= '2011-03-01' AND c1 < '2019-08-01' GROUP BY c2",
+        "r_ym": "SELECT c2 as ward, coalesce(sum(c3), 0) as count WHERE c1 >= '2011-03-01' AND c1 < '2019-08-01' GROUP BY c2"
+      }
+    },
+    {
+      "description": "day",
+      "query": "SELECT ward, count(*) AS count WHERE crime_date >= '2011-03-08' AND crime_date < '2019-08-02' GROUP BY ward",
+      "rewrites": {
+        "r_ymd": "SELECT c2 as ward, coalesce(sum(c3), 0) as count WHERE c1 >= '2011-03-08' AND c1 < '2019-08-02' GROUP BY c2"
+      }
+    },
+    {
+      "description": "9999 filter",
+      "query": "SELECT ward, count(*) AS count WHERE crime_date >= '2011-03-08' AND crime_date < '2019-08-02' AND crime_date < '9999-01-01' GROUP BY ward",
+      "rewrites": {
+        "r_ymd": "SELECT c2 as ward, coalesce(sum(c3), 0) as count WHERE c1 >= '2011-03-08' AND c1 < '2019-08-02' AND c1 < '9999-01-01' GROUP BY c2"
+      }
+    },
+    {
+      "description":  "IS NOT NULL filter",
+      "query": "SELECT ward, count(*) AS count WHERE crime_date >= '2011-03-08' AND crime_date < '2019-08-02' AND crime_date IS NOT NULL GROUP BY ward",
+      "rewrites": {
+        "r_ymd": "SELECT c2 as ward, coalesce(sum(c3), 0) as count WHERE c1 >= '2011-03-08' AND c1 < '2019-08-02' AND c1 IS NOT NULL GROUP BY c2"
+      }
+    },
+    {
+      "description": "shouldn't rewrite",
+      "query": "SELECT ward WHERE crime_date < '2012-01-01T00:00:01'",
+      "rewrites": {}
+    },
+    {
+      "description": "shouldn't rewrite",
+      "query": "SELECT ward WHERE crime_date <= '2012-01-01T00:00:00'",
+      "rewrites": {}
+    },
+    {
+      "description": "shouldn't rewrite",
+      "query": "SELECT ward WHERE crime_date > '2012-01-01T00:00:00'",
+      "rewrites": {}
+    },
+    {
+      "description": "shouldn't rewrite",
+      "query": "SELECT ward WHERE crime_date > '2012-01-01T01:00:00'",
+      "rewrites": {}
+    },
+    {
+      "description": "shouldn't rewrite",
+      "query": "SELECT ward WHERE crime_date >= '2012-01-01T01:00:00' AND crime_date < '2013-01-01'",
+      "rewrites": {}
+    },
+    {
+      "description": "rewrite sum / count with implicit group by in query",
+      "query": "SELECT sum(number1)/count(number1) as avg WHERE crime_date >= '2011-01-01' AND crime_date < '2019-01-01'",
+      "rewrites": {
+        "r_sca_ymd": "SELECT sum(c2) /  coalesce(sum(c3), 0) as avg WHERE c1 >= '2011-01-01' AND c1 < '2019-01-01'"
+      }
+    },
+    {
+      "description": "supports avg rewrite",
+      "query": "SELECT avg(number1) WHERE crime_date >= '2011-01-01' AND crime_date < '2019-01-01'",
+      "rewrites": {
+        "r_sca_ymd": "SELECT sum(c2) /  count(c3) as avg_number1 WHERE c1 >= '2011-01-01' AND c1 < '2019-01-01'"
+      }
+    }
+  ]
+}

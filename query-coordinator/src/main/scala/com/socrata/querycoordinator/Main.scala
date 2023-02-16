@@ -2,18 +2,18 @@ package com.socrata.querycoordinator
 
 import java.io.InputStream
 import java.util.concurrent.Executors
-
 import com.socrata.querycoordinator.caching.cache.CacheCleanerThread
 import com.socrata.querycoordinator.caching.cache.config.CacheSessionProviderFromConfig
 import com.rojoma.json.v3.ast.JString
 import com.rojoma.simplearm.v2._
 import com.socrata.http.client.HttpClientHttpClient
 import com.socrata.http.common.AuxiliaryData
+import com.socrata.http.common.livenesscheck.LivenessCheckInfo
 import com.socrata.http.server.SocrataServerJetty
 import com.socrata.http.server.curator.CuratorBroker
 import com.socrata.http.server.livenesscheck.LivenessCheckResponder
 import com.socrata.http.server.util.RequestId.ReqIdHeader
-import com.socrata.http.server.util.handlers.{LoggingOptions, ErrorCatcher, NewLoggingHandler, ThreadRenamingHandler}
+import com.socrata.http.server.util.handlers.{ErrorCatcher, LoggingOptions, NewLoggingHandler, ThreadRenamingHandler}
 import com.socrata.querycoordinator.caching.Windower
 import com.socrata.querycoordinator.resources.{QueryResource, VersionResource}
 import com.socrata.querycoordinator.util.TeeToTempInputStream
@@ -21,6 +21,7 @@ import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
 import com.socrata.soql.types.SoQLType
 import com.socrata.soql.{AnalysisSerializer, SoQLAnalyzer}
 import com.socrata.curator.{ConfigWatch, CuratorFromConfig, DiscoveryFromConfig}
+import com.socrata.querycoordinator.rollups.{QueryRewriter, QueryRewriterImplementation, RollupInfoFetcher}
 import com.socrata.thirdparty.metrics.{MetricsReporter, SocrataHttpSupport}
 import com.socrata.thirdparty.typesafeconfig.Propertizer
 import com.typesafe.config.{Config, ConfigFactory}
@@ -31,7 +32,7 @@ import org.slf4j.LoggerFactory
 
 final abstract class Main
 
-object Main extends App {
+object Main extends App with DynamicPortMap {
 
   def withDefaultAddress(config: Config): Config = {
     val ifaces = ServiceInstanceBuilder.getAllLocalIPs
@@ -107,19 +108,26 @@ object Main extends App {
       schemaCache = (_, _, _) => (),
       schemaDecache = (_, _) => None,
       secondaryInstance = secondaryInstanceSelector,
-      queryRewriter = new QueryRewriter(analyzer),
+      queryRewriter = new QueryRewriterImplementation(analyzer),
       rollupInfoFetcher = new RollupInfoFetcher(httpClient)
     )
 
     val handler = Service(queryResource, VersionResource())
 
-    val auxData = new AuxiliaryData(Some(pongProvider.livenessCheckInfo))
+    def remapLivenessCheckInfo(lci: LivenessCheckInfo): LivenessCheckInfo =
+      new LivenessCheckInfo(hostPort(lci.port), lci.response)
+
+    val auxData = new AuxiliaryData(Some(remapLivenessCheckInfo(pongProvider.livenessCheckInfo)))
 
     val logOptions = LoggingOptions(LoggerFactory.getLogger(""),
                                     logRequestHeaders = Set(ReqIdHeader, "X-Socrata-Resource"))
 
     val broker = new CuratorBroker(discovery, config.discovery.address, config.discovery.name,
-                                   Some(auxData))
+                                   Some(auxData)) {
+      override def register(port: Int): Cookie = {
+        super.register(hostPort(port))
+      }
+    }
 
     val serv = new SocrataServerJetty(
       ThreadRenamingHandler(NewLoggingHandler(logOptions)(ErrorCatcher(handler))),

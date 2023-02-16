@@ -1,13 +1,13 @@
-package com.socrata.querycoordinator
-
-import java.io.IOException
-import javax.servlet.http.HttpServletResponse
+package com.socrata.querycoordinator.rollups
 
 import com.rojoma.json.io.JsonReaderException
 import com.rojoma.json.util.JsonArrayIterator.ElementDecodeException
 import com.socrata.http.client.exceptions.{HttpClientException, HttpClientTimeoutException, LivenessCheckFailed}
 import com.socrata.http.client.{HttpClient, RequestBuilder, Response}
-import com.socrata.querycoordinator.RollupInfoFetcher._
+import com.socrata.querycoordinator.rollups.RollupInfoFetcher._
+
+import java.io.IOException
+import javax.servlet.http.HttpServletResponse
 
 /**
  * Fetches the rollup info from the secondary server.  Modelled after the SchemaFetcher, it would be nice

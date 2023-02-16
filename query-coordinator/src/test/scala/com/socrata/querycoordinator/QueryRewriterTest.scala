@@ -1,6 +1,7 @@
 package com.socrata.querycoordinator
 
 import com.socrata.querycoordinator.QueryRewritingTestUtility._
+import com.socrata.querycoordinator.rollups.{QueryRewriter, QueryRewriterImplementation}
 import com.socrata.soql.SoQLAnalyzer
 import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
 import com.socrata.soql.parsing.{AbstractParser, Parser}
@@ -18,7 +19,7 @@ class QueryRewriterTest extends FunSuite {
     val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
     val parserParams = AbstractParser.Parameters(allowJoins = true)
     val parser = new Parser(parserParams)
-    val rewriter = new QueryRewriter(analyzer)
+    val rewriter: QueryRewriter = new QueryRewriterImplementation(analyzer)
 
 
     // Given dataset definitions (multiple datasets)

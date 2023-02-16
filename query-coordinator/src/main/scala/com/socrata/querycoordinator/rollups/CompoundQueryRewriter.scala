@@ -1,23 +1,23 @@
-package com.socrata.querycoordinator
+package com.socrata.querycoordinator.rollups
 
-import com.socrata.querycoordinator.QueryRewriter.{Anal, ColumnId, ColumnRef, Expr, RollupName}
-import com.socrata.soql.typed.{ColumnRef, Indistinct}
+import com.socrata.querycoordinator.rollups.QueryRewriter.{Analysis, AnalysisTree, ColumnId, RollupName}
+import com.socrata.soql.typed.{ColumnRef, CompoundRollup, Indistinct}
 import com.socrata.soql.types.SoQLType
-import com.socrata.soql.{BinaryTree, Compound, Leaf, PipeQuery, SoQLAnalysis, typed}
+import com.socrata.soql.{BinaryTree, Compound, Leaf, PipeQuery}
 
 /**
   * Rewrite compound query with either exact tree match or prefix tree match
   * TODO: Make matching more flexible.  e.g. "SELECT a, b" does not match "SELECT b, a" or "SELECT a"
   */
-trait CompoundQueryRewriter { this: QueryRewriter =>
+trait CompoundQueryRewriter { this: QueryRewriterImplementation =>
 
   /**
     * The tree q is successfully rewritten and returned in the first tuple element if
     * the second tuple element is not empty which can either be an exact tree match or a prefix tree match.
     * Otherwise, the original q is returned.
     */
-  def possibleRewrites(q: BinaryTree[Anal], rollups: Map[RollupName, BinaryTree[Anal]], requireCompoundRollupHint: Boolean): (BinaryTree[Anal], Seq[String]) = {
-    if (requireCompoundRollupHint && !QueryRewriter.compoundRollup(q.outputSchema.leaf)) {
+  def possibleRewrites(q: AnalysisTree, rollups: Map[RollupName, AnalysisTree], requireCompoundRollupHint: Boolean): (AnalysisTree, Seq[String]) = {
+    if (requireCompoundRollupHint && !compoundRollup(q.outputSchema.leaf)) {
       return (q, Seq.empty)
     }
 
@@ -38,7 +38,7 @@ trait CompoundQueryRewriter { this: QueryRewriter =>
     }
   }
 
-  private def rewriteExact(q: Anal, qRightMost: Anal): Anal = {
+  private def rewriteExact(q: Analysis, qRightMost: Analysis): Analysis = {
     val columnMap = q.selection.values.zipWithIndex.map {
       case(expr, idx) =>
         (expr, ColumnRef(qualifier = None, column = rollupColumnId(idx), expr.typ.t)(expr.position))
@@ -59,11 +59,11 @@ trait CompoundQueryRewriter { this: QueryRewriter =>
       hints = Nil)
   }
 
-  private def rewriteIfPrefix(q: BinaryTree[Anal], r: BinaryTree[Anal]): Option[BinaryTree[Anal]] = {
+  private def rewriteIfPrefix(q: AnalysisTree, r: AnalysisTree): Option[AnalysisTree] = {
     rewriteIfPrefix(q, r, rightMost(q))
   }
 
-  private def rewriteIfPrefix(q: BinaryTree[Anal], r: BinaryTree[Anal], qRightMost: Leaf[Anal]): Option[BinaryTree[Anal]] = {
+  private def rewriteIfPrefix(q: AnalysisTree, r: AnalysisTree, qRightMost: Leaf[Analysis]): Option[AnalysisTree] = {
     q match {
       case c@Compound(_, ql, qr) =>
         if (isEqual(q, r, qRightMost)) {
@@ -91,7 +91,7 @@ trait CompoundQueryRewriter { this: QueryRewriter =>
   /**
     * q is equal r ignoring limit and offset of the right most of q
     */
-  private def isEqual(q: BinaryTree[Anal], r: BinaryTree[Anal], qRightMost: Leaf[Anal]): Boolean = {
+  private def isEqual(q: AnalysisTree, r: AnalysisTree, qRightMost: Leaf[Analysis]): Boolean = {
     (q, r) match {
       case (Compound(qo, ql, qr), Compound(ro, rl, rr)) if qo == ro =>
         isEqual(ql, rl, qRightMost) && isEqual(qr, rr, qRightMost)
@@ -109,4 +109,12 @@ trait CompoundQueryRewriter { this: QueryRewriter =>
       case l@Leaf(_) => l
     }
   }
+
+  private def compoundRollup(q: Analysis): Boolean = {
+    q.hints.exists {
+      case CompoundRollup(_) => true
+      case _ => false
+    }
+  }
+
 }

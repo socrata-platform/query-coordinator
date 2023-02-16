@@ -1,6 +1,7 @@
 package com.socrata.querycoordinator
 
-import com.socrata.querycoordinator.QueryRewriter.{Anal, RollupName}
+import com.socrata.querycoordinator.rollups.{QueryRewriter, RollupInfo}
+import com.socrata.querycoordinator.rollups.QueryRewriter.{Analysis, RollupName}
 import com.socrata.querycoordinator.util.Join
 import com.socrata.soql.SoQLAnalysis
 import com.socrata.soql.environment.ColumnName
@@ -27,9 +28,9 @@ class TestQueryRewriterDateTruncBase extends TestQueryRewriterBase {
   val rollupInfos = rollups.map { x => new RollupInfo(x._1, x._2) }
 
   /** Pull in the rollupAnalysis for easier debugging */
-  val rollupAnalysis = QueryRewriter.simpleRollups(rewriter.analyzeRollups(schema, rollupInfos, getSchemaWithFieldName))
+  val rollupAnalysis = QueryRewriter.mergeRollupsAnalysis(rewriter.analyzeRollups(schema, rollupInfos, getSchemaWithFieldName))
 
-  val rollupRawSchemas = rollupAnalysis.mapValues { case analysis: Anal =>
+  val rollupRawSchemas = rollupAnalysis.mapValues { case analysis: Analysis =>
     analysis.selection.values.toSeq.zipWithIndex.map { case (expr, idx) =>
       rewriter.rollupColumnId(idx) -> expr.typ
     }.toMap
@@ -49,6 +50,6 @@ class TestQueryRewriterDateTruncBase extends TestQueryRewriterBase {
     rewrittenQueryAnalysis
   }
 
-  def rewritesFor(q: String): Map[RollupName, Anal] =
+  def rewritesFor(q: String): Map[RollupName, Analysis] =
     rewriter.possibleRewrites(analyzeQuery(q), rollupAnalysis)
 }

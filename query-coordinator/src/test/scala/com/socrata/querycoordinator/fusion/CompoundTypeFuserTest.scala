@@ -1,8 +1,9 @@
 package com.socrata.querycoordinator.fusion
 
-import com.socrata.querycoordinator.QueryRewriter._
+import com.socrata.querycoordinator.rollups.QueryRewriter._
 import com.socrata.querycoordinator.caching.SoQLAnalysisDepositioner
-import com.socrata.querycoordinator.{QueryParser, QueryRewriter, Schema, TestBase}
+import com.socrata.querycoordinator.rollups.{QueryRewriter, QueryRewriterImplementation}
+import com.socrata.querycoordinator.{QueryParser, Schema, TestBase}
 import com.socrata.querycoordinator.util.Join
 import com.socrata.soql.ast.Select
 import com.socrata.soql.{BinaryTree, SoQLAnalyzer}
@@ -20,7 +21,7 @@ class CompoundTypeFuserTest extends TestBase {
   import Join._
 
   val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
-  val rewriter = new QueryRewriter(analyzer)
+  val rewriter: QueryRewriter = new QueryRewriterImplementation(analyzer)
 
   /** The raw of the table that we get as part of the secondary /schema call */
   val rawSchema = Map[String, SoQLType](

@@ -7,8 +7,8 @@ import com.socrata.soql.ast._
 import com.socrata.soql.collection.OrderedSet
 import com.socrata.soql.environment.{ColumnName, UntypedDatasetContext}
 import com.socrata.soql.functions.SoQLFunctions
-import com.socrata.soql.parsing.standalone_exceptions.BadParse
-import com.socrata.soql.types.SoQLType
+import com.socrata.soql.exceptions.NoSuchFunction
+import com.socrata.soql.types.{SoQLLocation, SoQLPhone, SoQLType, SoQLUrl}
 import com.typesafe.scalalogging.Logger
 
 import scala.util.parsing.input.NoPosition
@@ -236,7 +236,7 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite {
                   .map(subProp => ColumnOrAliasRef(NoQualifier, ColumnName(s"${name.name}_$subProp"))(NoPosition))
                 Some(FunctionCall(SoQLFunctions.HumanAddress.name, args, filter, window)(NoPosition, NoPosition))
               case _ =>
-                throw BadParse("unknown location property", fc.position)
+                throw NoSuchFunction(SpecialFunctions.Field(SoQLLocation.name, prop), 1, fc.position)
             }
           case Some(FTPhone) =>
             prop match {
@@ -245,7 +245,7 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite {
               case "phone_type" =>
                 Some(ColumnOrAliasRef(NoQualifier, ColumnName(s"${name.name}_type"))(NoPosition))
               case _ =>
-                throw BadParse("unknown phone property", fc.position)
+                throw NoSuchFunction(SpecialFunctions.Field(SoQLPhone.name, prop), 1, fc.position)
             }
           case Some(FTUrl) =>
             prop match {
@@ -254,10 +254,10 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite {
               case "description" =>
                 Some(ColumnOrAliasRef(NoQualifier, ColumnName(s"${name.name}_description"))(NoPosition))
               case _ =>
-                throw BadParse("unknown phone property", fc.position)
+                throw NoSuchFunction(SpecialFunctions.Field(SoQLUrl.name, prop), 1, fc.position)
             }
           case Some(FTRemove) =>
-            throw BadParse("subscript call on sub-column", fc.position)
+            throw NoSuchFunction(fnName, 1, fc.position)
           case _ =>
             Some(fc)
         }

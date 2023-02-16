@@ -1,0 +1,58 @@
+{
+  "schemas": {
+    "_": {
+      "a193-1871": ["number", "RowKey"],
+      "a194-1872": ["text", "EFSPName"],
+      "a195-1873": ["text", "County"],
+      "a196-1874": ["text", "Office"],
+      "a100-1875": ["text", "OrgChartName"],
+      "a101-1876": ["number", "NodeID"],
+      "a131-1906": ["text", "CaseDataID"],
+      "a103-1878": ["text", "CaseNumber"],
+      "a104-1879": ["number", "EnvelopeID"],
+      "a105-1880": ["number", "IsInitial"],
+      "a106-1881": ["number", "FilingID"],
+      "a107-1882": ["text", "FilingType"],
+      "a108-1883": ["floating_timestamp", "Submitted"],
+      "a109-1884": ["text", "SubmittedDay"],
+      "a110-1885": ["text", "FilingState"],
+      "a111-1886": ["text", "CaseCategoryCode"],
+      "a112-1887": ["text", "CaseTypeCode"],
+      "a113-1888": ["text", "FilingCode"],
+      "a114-1889": ["text", "IsIndividualFirm"],
+      "a115-1890": ["text", "UserName"],
+      "a116-1891": ["number", "FirmID"],
+      "a117-1892": ["text", "FirmName"],
+      "a118-1893": ["text", "RejectionReason"],
+      "a119-1894": ["number", "NumberOfDocuments"],
+      "a120-1895": ["floating_timestamp", "UnderReview"],
+      "a121-1896": ["floating_timestamp", "Reviewed"],
+      "a122-1897": ["number", "PrimaryAmount"],
+      "a123-1898": ["number", "SecondaryAmount"],
+      "a124-1899": ["text", "SystemPaymentAccountType"],
+      "a125-1900": ["text", "Clerkname"],
+      "a126-1901": ["floating_timestamp", "AdjustedSubmitDate"],
+      "a127-1902": ["number", "ClerkResponseTime"],
+      "a128-1903": ["text", "InsertedBy"],
+      "a129-1904": ["text", "District"],
+      "a130-1905": ["text", "Circuit"]
+    }
+  },
+  "rollups": {
+    "r1": "SELECT `casetypecode` AS `casetypecode`, `orgchartname` AS `orgchartname`, `office` AS `office`, `county` AS `county`, `rejectionreason` AS `rejectionreason`, `casecategorycode` AS `casecategorycode`, `efspname` AS `efspname`, `filingstate` AS `filingstate`, `isindividualfirm` AS `isindividualfirm`, NOT (LOWER(`casecategorycode`) LIKE '%criminal%' OR LOWER(`casecategorycode`) LIKE '%juvenile%' OR LOWER(`casecategorycode`) LIKE '%driving under the influence%'), (CONTAINS(LOWER(`casecategorycode`), 'criminal') OR CONTAINS(LOWER(`casecategorycode`), 'driving under') OR CONTAINS(LOWER(`casecategorycode`), 'juvenile')), `filingstate` = 'RejectedByCourt', `filingstate` = 'AcceptedByCourt', `isindividualfirm` = 'Individual', `isindividualfirm` = 'Firm', (`primaryamount` + `secondaryamount` != 0), `clerkresponsetime` / 60 >= 1 AND `clerkresponsetime` / 60 < 3, `clerkresponsetime` / 60 >= 4 AND `clerkresponsetime` / 60 < 6, `clerkresponsetime` / 60 >= 7 AND `clerkresponsetime` / 60 < 10, `clerkresponsetime` / 60 >= 11 AND `clerkresponsetime` / 60 < 15, `clerkresponsetime` / 60 >= 16 AND `clerkresponsetime` / 60 <= 25, date_trunc_ymd(`submitted`), date_trunc_ym(`submitted`), date_trunc_y(`submitted`), date_extract_woy(`submitted`), min(`submitted`), max(`submitted`), count(*), count(`filingid`), count(`filingstate`), (COUNT(`filingstate`) FILTER (WHERE `filingstate` = 'RejectedByCourt') / coalesce(nullif(COUNT(`filingstate`) FILTER (WHERE `filingstate` IN ('AcceptedByCourt', 'RejectedByCourt')), 0), 1) * 100), (COUNT(`filingstate`) FILTER (WHERE `filingstate` = 'AcceptedByCourt') / coalesce(nullif(COUNT(`filingstate`) FILTER (WHERE `filingstate` IN ('AcceptedByCourt', 'RejectedByCourt')), 0), 1) * 100), SUM(`clerkresponsetime` / 60), COUNT(`clerkresponsetime` / 60), (SUM(CASE(`isindividualfirm` = 'Firm' AND `filingstate` = 'RejectedByCourt', 1, TRUE, 0)) / nullif(SUM(CASE(`filingstate` = 'AcceptedByCourt' OR `filingstate` = 'RejectedByCourt', 1, TRUE, 0)), 0) * 100), (SUM(CASE(`isindividualfirm` = 'Individual' AND `filingstate` = 'RejectedByCourt', 1, TRUE, 0)) / nullif(SUM(CASE(`filingstate` = 'AcceptedByCourt' OR `filingstate` = 'RejectedByCourt', 1, TRUE, 0)), 0) * 100), (sum(case(`isindividualfirm` = 'Firm', 1, TRUE, 0)) / nullif(count(`filingid`), 0) * 100), (sum(case(`isindividualfirm` = 'Individual', 1, TRUE, 0)) / nullif(count(`filingid`), 0) * 100), (sum(case(`filingstate` = 'RejectedByCourt', 1, TRUE, 0)) / nullif(case(sum(case(`filingstate` IN ('AcceptedByCourt', 'RejectedByCourt'), 1, TRUE, 0)) = 0, 1, TRUE, sum(case(`filingstate` IN ('AcceptedByCourt', 'RejectedByCourt'), 1, TRUE, 0))), 0) * 100), sum(`primaryamount` + `secondaryamount`) GROUP BY `casetypecode`, `orgchartname`, `office`, `county`, `rejectionreason`, `casecategorycode`, `efspname`, `filingstate`, `isindividualfirm`, NOT (LOWER(`casecategorycode`) LIKE '%criminal%' OR LOWER(`casecategorycode`) LIKE '%juvenile%' OR LOWER(`casecategorycode`) LIKE '%driving under the influence%'), (CONTAINS(LOWER(`casecategorycode`), 'criminal') OR CONTAINS(LOWER(`casecategorycode`), 'driving under') OR CONTAINS(LOWER(`casecategorycode`), 'juvenile')), `filingstate` = 'RejectedByCourt', `filingstate` = 'AcceptedByCourt', `isindividualfirm` = 'Individual', `isindividualfirm` = 'Firm', (`primaryamount` + `secondaryamount` != 0), `clerkresponsetime` / 60 >= 1 AND `clerkresponsetime` / 60 < 3, `clerkresponsetime` / 60 >= 4 AND `clerkresponsetime` / 60 < 6, `clerkresponsetime` / 60 >= 7 AND `clerkresponsetime` / 60 < 10, `clerkresponsetime` / 60 >= 11 AND `clerkresponsetime` / 60 < 15, `clerkresponsetime` / 60 >= 16 AND `clerkresponsetime` / 60 <= 25, date_trunc_ymd(`submitted`), date_trunc_ym(`submitted`), date_trunc_y(`submitted`), date_extract_woy(`submitted`)"
+  },
+  "tests": [
+    {
+      "query": "SELECT county as dimension__alias, COUNT(filingstate) FILTER(where filingstate in ( 'RejectedByCourt'))/coalesce(nullif(COUNT(filingstate) FILTER(where filingstate in ('AcceptedByCourt','RejectedByCourt')),0),1)*100 as count__alias WHERE (submitted >= '2020-01-01') AND (submitted < '2022-08-01') GROUP BY dimension__alias ORDER BY count__alias DESC NULL last LIMIT 6",
+      "rewrites": {
+        "r1": "SELECT c4 AS dimension__alias, coalesce(sum(c30) FILTER(where c8 in ('RejectedByCourt')),0)/coalesce(nullif(coalesce(sum(c30) FILTER(where c8 in ('AcceptedByCourt','RejectedByCourt')),0),0),1)*100 as count__alias WHERE (c24 >= '2020-01-01') AND (c23 < '2022-08-01') GROUP BY c4 ORDER BY count__alias DESC NULL last LIMIT 6"
+      }
+    },
+    {
+      "query": "SELECT county as dimension__alias,COUNT(filingstate) FILTER(where filingstate = 'RejectedByCourt')/coalesce(nullif(COUNT(filingstate) FILTER(where filingstate in ('AcceptedByCourt','RejectedByCourt')),0),1)*100 as count__alias WHERE (submitted >= '2020-01-01') AND (submitted < '2022-08-01') GROUP BY dimension__alias ORDER BY count__alias DESC NULL last LIMIT 6",
+      "rewrites": {
+        "r1": "SELECT c4 AS dimension__alias, coalesce(sum(c30) FILTER(where c12),0)/coalesce(nullif(coalesce(sum(c30) FILTER(where c8 in ('AcceptedByCourt','RejectedByCourt')),0),0),1)*100 as count__alias WHERE (c24 >= '2020-01-01') AND (c23 < '2022-08-01') GROUP BY c4 ORDER BY count__alias DESC NULL last LIMIT 6"
+      }
+    }
+  ]
+}
