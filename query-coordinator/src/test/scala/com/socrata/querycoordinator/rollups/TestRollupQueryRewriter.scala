@@ -218,4 +218,8 @@ class TestRollupQueryRewriter extends BaseConfigurableRollupTest {
     loadAndRunTests("rollups/query_rewriter_test_configs/test_derived_view_join.json")
   }
 
+  test("filtering") {
+    loadAndRunTests("rollups/query_rewriter_test_configs/test_filtering.json")
+  }
+
 }

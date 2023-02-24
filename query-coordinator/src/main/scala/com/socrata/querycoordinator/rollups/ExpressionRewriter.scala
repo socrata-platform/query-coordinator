@@ -97,7 +97,7 @@ class ExpressionRewriter(val rollupColumnId: (Int) => String,
   private def rewriteCountStarOrLiteral(r: Analysis, rollupColIdx: Map[Expr, Int], fc: FunctionCall): Option[Expr] = {
     val filterAndRollupWhere = andRollupWhereToFilter(fc.filter, r: Analysis)
     for {
-      idx <- findCountStarOrLiteral(rollupColIdx) // find count(*) column in rollup
+      idx <- findCountStarOrLiteral(fc, rollupColIdx) // find count(*) column in rollup with matching filter
       rwFilter <- rewriteWhere(filterAndRollupWhere, r, rollupColIdx)
     } yield {
       val simplifiedRwFilter = simplifyAndTrue(rwFilter)
@@ -108,9 +108,10 @@ class ExpressionRewriter(val rollupColumnId: (Int) => String,
   }
 
   /** Find the first column index that is a count(*) or count(literal). */
-  private def findCountStarOrLiteral(rollupColIdx: Map[Expr, Int]): Option[Int] = {
+  private def findCountStarOrLiteral(fc: FunctionCall, rollupColIdx: Map[Expr, Int]): Option[Int] = {
     rollupColIdx.find {
-      case (fc: FunctionCall, _) => isCountStarOrLiteral(fc)
+      case (e: FunctionCall, _) if e.filter == fc.filter => isCountStarOrLiteral(e)
+      case (e: FunctionCall, _) if e.filter == None => isCountStarOrLiteral(e)
       case _ => false
     }.map(_._2)
   }

@@ -1,0 +1,41 @@
+{
+  "schemas": {
+    "_": {
+      "a193-1190": ["number", "ftrans_id"],
+      "a173-1170": ["number", "order_id"],
+      "a183-1180": ["floating_timestamp", "TIMESTAMP"],
+      "a165-1162": ["floating_timestamp", "settle_date"],
+      "a167-1164": ["text", "implement_type"],
+      "a171-1168": ["text", "implement_name"],
+      "a184-1181": ["text", "transaction_type"],
+      "a170-1167": ["text", "account_number"],
+      "a166-1163": ["text", "merchant"],
+      "a178-1175": ["text", "service"],
+      "a179-1176": ["number", "transaction_amount"],
+      "a174-1171": ["text", "failure_message"],
+      "a187-1184": ["text", "processor"],
+      "a194-1191": ["text", "order_url"],
+      "a180-1177": ["number", "processing_cost"],
+      "a190-1187": ["text", "customer_state"],
+      "a161-1158": ["text", "billing_state"],
+      "a181-1178": ["text", "customer_country"],
+      "a164-1161": ["text", "billing_country"],
+      "a188-1185": ["text", "government_level"],
+      "a186-1183": ["text", "agency_category"],
+      "a175-1172": ["text", "email_address"]
+    }
+  },
+  "rollups": {
+    "r1": "SELECT date_trunc_ymd(`timestamp`) AS `date_trunc_ymd_timestamp`, `merchant`, `implement_type`, `service`, `implement_name`, `transaction_type`, count(`ftrans_id`) AS `count_ftrans_id`, sum(`transaction_amount`) AS `sum_transaction_amount`, count(*) FILTER (WHERE `transaction_type` = 'VOID') AS `count_transaction_type_VOID`, count(*) FILTER (WHERE `transaction_type` = 'RETURN') AS `count_transaction_type_RETURN` GROUP BY `date_trunc_ymd_timestamp`, `merchant`, `implement_type`, `service`, `implement_name`, `transaction_type`"
+  },
+  "tests": [
+    {
+      "query": "SELECT merchant as dimension__alias,(count(*) FILTER(WHERE transaction_type='RETURN')) as count__alias WHERE (timestamp >= '2019-01-01') AND (timestamp < '2023-02-15') GROUP BY dimension__alias ORDER BY count__alias DESC LIMIT 15",
+      "rewrites": {
+        "r1": "SELECT c2 as dimension__alias, coalesce(sum(c10) FILTER(WHERE c6='RETURN'), 0) as count__alias WHERE (c1 >= '2019-01-01') AND (c1 < '2023-02-15') GROUP BY c2 ORDER BY coalesce(sum(c10) FILTER(WHERE c6='RETURN'), 0) DESC LIMIT 15"
+      }
+    }
+  ]
+}
+
+
