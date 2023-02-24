@@ -278,7 +278,7 @@ object QueryParser {
     }
 
     def toColumnNameJoinAlias(joinAlias: Option[String], columnName: ColumnName) = (columnName, joinAlias)
-    def toUserColumnId(columnName: ColumnName) = columnName.name
+    def toUserColumnId(columnName: ColumnName) = columnName.caseFolded
 
     analyses match {
       case PipeQuery(l, r) =>
