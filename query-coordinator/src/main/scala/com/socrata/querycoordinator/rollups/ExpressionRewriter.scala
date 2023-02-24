@@ -111,6 +111,7 @@ class ExpressionRewriter(val rollupColumnId: (Int) => String,
   private def findCountStarOrLiteral(fc: FunctionCall, rollupColIdx: Map[Expr, Int]): Option[Int] = {
     rollupColIdx.find {
       case (e: FunctionCall, _) if e.filter == fc.filter => isCountStarOrLiteral(e)
+      case (e: FunctionCall, _) if e.filter == None => isCountStarOrLiteral(e)
       case _ => false
     }.map(_._2)
   }
