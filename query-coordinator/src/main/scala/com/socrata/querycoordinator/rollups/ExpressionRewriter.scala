@@ -263,7 +263,7 @@ class ExpressionRewriter(val rollupColumnId: (Int) => String,
 
   private def isAggregateExpression(e: Expr): Boolean = {
     e match {
-      case fc: FunctionCall => fc.function.isAggregate || fc.parameters.foldLeft(false) {_ || isAggregateExpression(_)}
+      case fc: FunctionCall => fc.function.isAggregate || fc.parameters.exists(isAggregateExpression)
       case _ => false
     }
   }
