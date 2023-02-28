@@ -105,6 +105,7 @@ object QueryRewritingTestUtility {
   def AnalyzeRewrittenFromRollup(expectedRewrittenQuery: String, expectedRollupName: Option[String])(rollupsDefinition: RollupsDefinition, soqlParseFunction: SoqlParseFunction, analyzedDatasetContext: AnalyzedDatasetContext, analysisFunction: SoqlAnalysisFunction, columnMapping: ColumnMappings, analysisMappingFunction: RemapAnalyzedSoqlFunction): (RemappedAnalyzedSoql, Seq[String]) = {
     expectedRollupName match{
       case Some(rollupName)=>
+        //Since we expect a rollup, parse and analyze as a rollup query. Meaning: combine contexts and do column name id mapping
         val rollup = rollupsDefinition(rollupName)
         val parsed = soqlParseFunction(expectedRewrittenQuery)
         val ruCtx = rollupContext(soqlParseFunction, analysisFunction, analyzedDatasetContext)(rollup)
@@ -113,6 +114,7 @@ object QueryRewritingTestUtility {
         val columnMap = columnMapping ++ rollupColumnIds(soqlParseFunction, analysisFunction, analyzedDatasetContext)(rollup)
         (analysisMappingFunction(columnMap)(result), Seq(rollupName))
       case None=>
+        //We do not expect a rewrite. No need to expand context or do column name id mapping
         val parsed = soqlParseFunction(expectedRewrittenQuery)
         val result = analysisFunction(analyzedDatasetContext)(parsed)
         (analysisMappingFunction(columnMapping)(result), Seq.empty)
