@@ -34,8 +34,8 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
   /** Maps the rollup column expression to the 0 based index in the rollup table.  If we have
     * multiple columns with the same definition, that is fine but we will only use one.
     */
-  def rewriteSelection(q: Selection, r: Analysis, rollupColIdx: Map[Expr, Int]): Option[Selection] = {
-    val mapped: OrderedMap[ColumnName, Option[Expr]] = q.mapValues(e => rewriteExpr(e, r, rollupColIdx))
+  def rewriteSelection(q: Selection, r: Analysis, rollupColIdx: Map[Expr, Int], allClausesMatch:Boolean = false): Option[Selection] = {
+    val mapped: OrderedMap[ColumnName, Option[Expr]] = q.mapValues(e => rewriteExpr(e, r, rollupColIdx,allClausesMatch))
 
     if (mapped.values.forall(c => c.isDefined)) {
       Some(mapped.mapValues { v => v.get })
@@ -206,10 +206,6 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
         case _ => false
       }
 
-      val selection = rewriteSelection(q.selection, r, rollupColIdx) map { s =>
-        if (shouldRemoveAggregates) s.mapValues(removeAggregates)
-        else s
-      }
 
       val orderBy = rewriteOrderBy(q.orderBys, r, rollupColIdx) map { o =>
         if (shouldRemoveAggregates) o.map(removeAggregates)
@@ -219,6 +215,11 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
       val having = rewriteHaving(q.having, q.groupBys, r, rollupColIdx) map { h =>
         if (shouldRemoveAggregates) h.map(removeAggregates)
         else h
+      }
+
+      val selection = rewriteSelection(q.selection, r, rollupColIdx,(where.isDefined && groupBy.nonEmpty && having.isDefined)) map { s =>
+        if (shouldRemoveAggregates) s.mapValues(removeAggregates)
+        else s
       }
 
       val joins = rewriteJoin(q.joins, r)
