@@ -161,4 +161,24 @@ class QueryRewriterWindowFunctionTest extends FunSuite {
   }
 
 
+  test("Window function should rewrite when there are no clauses and its not top level") {
+    // Assumes a default setup, ie.. SoQLAnalyzer/AbstractParser.Parameters/Parser/QueryRewriter
+    AssertRewriteDefault(
+      Map(
+        "_" -> Map(
+          "depname_column" -> (SoQLText.t, "depname"),
+          "empno_column" -> (SoQLNumber.t, "empno"),
+          "salary_column" -> (SoQLNumber.t, "salary")
+        )
+      ),
+      Map(
+        "one" -> "SELECT depname, empno, salary, (1 + avg(salary) OVER (PARTITION BY depname)) as avgSalary"
+      ),
+      "SELECT depname, empno, salary, (1 + avg(salary) OVER (PARTITION BY depname)) as avgSalary",
+      "select c1 as depname, c2 as empno, c3 as salary, c4 as avgSalary",
+      Some("one")
+    )
+  }
+
+
 }
