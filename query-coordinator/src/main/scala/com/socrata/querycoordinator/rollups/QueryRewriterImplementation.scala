@@ -36,9 +36,11 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
     * multiple columns with the same definition, that is fine but we will only use one.
     */
   def rewriteSelection(q: Selection, r: Analysis, rollupColIdx: Map[Expr, Int], allClausesMatch:Boolean = false): Option[Selection] = {
-    var expressionRewriter:ExpressionRewriter = if(allClausesMatch){
+    val expressionRewriter:ExpressionRewriter = if(allClausesMatch){
+      //Maps window functions
       rewriteExprWithClauses
     }else {
+      //Does not map window functions
       rewriteExpr
     }
     val mapped: OrderedMap[ColumnName, Option[Expr]] = q.mapValues(e => expressionRewriter(e, r, rollupColIdx))
