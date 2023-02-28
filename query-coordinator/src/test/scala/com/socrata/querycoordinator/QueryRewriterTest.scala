@@ -64,7 +64,7 @@ class QueryRewriterTest extends FunSuite {
         // The expected rewritten query
         "select c1 as count_ward",
         // The rollup we expect to be used
-        "one"
+        Some("one")
       )
     )
   }
@@ -90,7 +90,7 @@ class QueryRewriterTest extends FunSuite {
       ),
       "select count(ward) as count_ward",
       "select c1 as count_ward",
-      "one"
+      Some("one")
     )
   }
 }

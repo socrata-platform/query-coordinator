@@ -34,7 +34,7 @@ object QueryRewritingTestUtility {
 
   // Wrapping method for AssertRewrite that handles defaulting the first argument group
   // Also removed needed call to AnalyzeRewrittenFromRollup, instead making the caller simply provide the strings
-  def AssertRewriteDefault(datasetDefinitions: DatasetDefinitions, rollupsDefinition: RollupsDefinition, queryDefinition: QueryDefinition, expectedRewritten: String, expectedRollupName: String): Unit = {
+  def AssertRewriteDefault(datasetDefinitions: DatasetDefinitions, rollupsDefinition: RollupsDefinition, queryDefinition: QueryDefinition, expectedRewritten: String, expectedRollupName: Option[String]): Unit = {
     val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
     val parserParams = AbstractParser.Parameters(allowJoins = true)
     val parser = new Parser(parserParams)
@@ -102,14 +102,24 @@ object QueryRewritingTestUtility {
   }
 
   // This is the function passed as the last argument to AssertRewrite, that helps build what the expected rewritten query should be. Second argument set satisfies BuildRewrittenContextFunction
-  def AnalyzeRewrittenFromRollup(expectedRewrittenQuery: String, expectedRollupName: String)(rollupsDefinition: RollupsDefinition, soqlParseFunction: SoqlParseFunction, analyzedDatasetContext: AnalyzedDatasetContext, analysisFunction: SoqlAnalysisFunction, columnMapping: ColumnMappings, analysisMappingFunction: RemapAnalyzedSoqlFunction): (RemappedAnalyzedSoql, Seq[String]) = {
-    val rollup = rollupsDefinition(expectedRollupName)
-    val parsed = soqlParseFunction(expectedRewrittenQuery)
-    val ruCtx = rollupContext(soqlParseFunction, analysisFunction, analyzedDatasetContext)(rollup)
-    val ctx = analyzedDatasetContext.withUpdatedSchemas(_ ++ ruCtx)
-    val result = analysisFunction(ctx)(parsed)
-    val columnMap = columnMapping ++ rollupColumnIds(soqlParseFunction, analysisFunction, analyzedDatasetContext)(rollup)
-    (analysisMappingFunction(columnMap)(result), Seq(expectedRollupName))
+  def AnalyzeRewrittenFromRollup(expectedRewrittenQuery: String, expectedRollupName: Option[String])(rollupsDefinition: RollupsDefinition, soqlParseFunction: SoqlParseFunction, analyzedDatasetContext: AnalyzedDatasetContext, analysisFunction: SoqlAnalysisFunction, columnMapping: ColumnMappings, analysisMappingFunction: RemapAnalyzedSoqlFunction): (RemappedAnalyzedSoql, Seq[String]) = {
+    expectedRollupName match{
+      case Some(rollupName)=>
+        //Since we expect a rollup, parse and analyze as a rollup query. Meaning: combine contexts and do column name id mapping
+        val rollup = rollupsDefinition(rollupName)
+        val parsed = soqlParseFunction(expectedRewrittenQuery)
+        val ruCtx = rollupContext(soqlParseFunction, analysisFunction, analyzedDatasetContext)(rollup)
+        val ctx = analyzedDatasetContext.withUpdatedSchemas(_ ++ ruCtx)
+        val result = analysisFunction(ctx)(parsed)
+        val columnMap = columnMapping ++ rollupColumnIds(soqlParseFunction, analysisFunction, analyzedDatasetContext)(rollup)
+        (analysisMappingFunction(columnMap)(result), Seq(rollupName))
+      case None=>
+        //We do not expect a rewrite. No need to expand context or do column name id mapping
+        val parsed = soqlParseFunction(expectedRewrittenQuery)
+        val result = analysisFunction(analyzedDatasetContext)(parsed)
+        (analysisMappingFunction(columnMapping)(result), Seq.empty)
+    }
+
   }
 
   private def rollupContext(soqlParseFunction: SoqlParseFunction, analysisFunction: SoqlAnalysisFunction, analyzedDatasetContext: AnalyzedDatasetContext)(ruQuery: String): Map[String, DatasetContext[SoQLType]] = {
