@@ -25,7 +25,7 @@ class ExpressionRewriter(val rollupColumnId: (Int) => String,
     * Note that every case here needs to ensure to map every expression recursively
     * to ensure it is either a literal or mapped to the rollup.
     */
-  def apply(e: Expr, r: Analysis, rollupColIdx: Map[Expr, Int],allClausesMatch:Boolean = false): Option[Expr] = {
+  def apply(e: Expr, r: Analysis, rollupColIdx: Map[Expr, Int]): Option[Expr] = {
     log.trace("Attempting to match expr: {}", e)
     e match {
       case literal: typed.TypedLiteral[_] =>
@@ -38,11 +38,7 @@ class ExpressionRewriter(val rollupColumnId: (Int) => String,
       // coordination between expression mapping and mapping other clauses at a higher level that isn't implemented,
       // so for now we just forbid it entirely to avoid incorrect rewrites.
       case fc: FunctionCall if fc.window.nonEmpty =>
-        if(allClausesMatch){
-          Some(typed.ColumnRef(NoQualifier, rollupColumnId(rollupColIdx(fc)), fc.typ)(fc.position))
-        }else{
-          None
-        }
+        None
       // A count(*) or count(non-null-literal) on q gets mapped to a sum on any such column in rollup
       case fc: FunctionCall if isCountStarOrLiteral(fc) =>
         rewriteCountStarOrLiteral(r, rollupColIdx, fc)

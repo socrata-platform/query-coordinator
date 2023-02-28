@@ -29,13 +29,19 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
   private[querycoordinator] def rollupColumnId(idx: Int): String = "c" + (idx + 1)
 
   val rewriteExpr = new ExpressionRewriter(rollupColumnId, rewriteWhere)
+  val rewriteExprWithClauses = new ClauseAwareExpressionRewriter(rollupColumnId, rewriteWhere)
 
 
   /** Maps the rollup column expression to the 0 based index in the rollup table.  If we have
     * multiple columns with the same definition, that is fine but we will only use one.
     */
   def rewriteSelection(q: Selection, r: Analysis, rollupColIdx: Map[Expr, Int], allClausesMatch:Boolean = false): Option[Selection] = {
-    val mapped: OrderedMap[ColumnName, Option[Expr]] = q.mapValues(e => rewriteExpr(e, r, rollupColIdx,allClausesMatch))
+    var expressionRewriter:ExpressionRewriter = if(allClausesMatch){
+      rewriteExprWithClauses
+    }else {
+      rewriteExpr
+    }
+    val mapped: OrderedMap[ColumnName, Option[Expr]] = q.mapValues(e => expressionRewriter(e, r, rollupColIdx))
 
     if (mapped.values.forall(c => c.isDefined)) {
       Some(mapped.mapValues { v => v.get })
