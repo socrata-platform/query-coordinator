@@ -5,6 +5,12 @@ import com.socrata.querycoordinator.rollups.QueryRewriterImplementation.{Functio
 import com.socrata.querycoordinator.util.Join.NoQualifier
 import com.socrata.soql.typed
 
+/*
+This class handles a specific case of the ExpressionRewriter where we know that all clauses (where/groupby/having) match,
+so therefor we want to rewrite the window functions.
+This class mostly exists as to not have to pass around an extra parameter recursively throughout the original rewriter.
+The decision of which class to use is made in com.socrata.querycoordinator.rollups.QueryRewriterImplementation.rewriteSelection
+*/
 class ClauseAwareExpressionRewriter(override val rollupColumnId: (Int) => String,
                                     override val rewriteWhere: (Option[Expr], Analysis, Map[Expr, Int]) => Option[Where]) extends ExpressionRewriter(rollupColumnId, rewriteWhere) {
   /** Recursively maps the Expr based on the rollupColIdx map, returning either
