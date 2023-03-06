@@ -5,7 +5,7 @@ import com.socrata.querycoordinator.rollups.QueryRewriterImplementation.{Functio
 import com.socrata.querycoordinator.util.Join.NoQualifier
 import com.socrata.soql.typed
 
-import scala.util.Try
+import scala.util.{Failure, Success, Try}
 
 /*
 This class handles a specific case of the ExpressionRewriter where we know that all clauses (where/groupby/having) match,
@@ -24,7 +24,11 @@ class ClauseAwareExpressionRewriter(override val rollupColumnId: (Int) => String
    override def apply(e: Expr, r: Analysis, rollupColIdx: Map[Expr, Int]): Option[Expr] = {
     e match{
       case fc: FunctionCall if fc.window.nonEmpty =>
-        Try(Some(typed.ColumnRef(NoQualifier, rollupColumnId(rollupColIdx(fc)), fc.typ)(fc.position))).getOrElse(None)
+        Try(rollupColIdx(fc))match{
+          case Success(remappedColumn)=>Some(typed.ColumnRef(NoQualifier, rollupColumnId(remappedColumn), fc.typ)(fc.position))
+          case Failure(e:NoSuchElementException)=>None
+          case Failure(e)=> throw e
+        }
       case _=>
         super.apply(e, r, rollupColIdx)
     }
