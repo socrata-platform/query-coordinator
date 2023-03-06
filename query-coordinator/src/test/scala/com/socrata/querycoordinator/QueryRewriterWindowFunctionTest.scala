@@ -180,5 +180,23 @@ class QueryRewriterWindowFunctionTest extends FunSuite {
     )
   }
 
+  test("Rewrite a query with a window function when no rollups have a window function, should not rewrite") {
+    // Assumes a default setup, ie.. SoQLAnalyzer/AbstractParser.Parameters/Parser/QueryRewriter
+    AssertRewriteDefault(
+      Map(
+        "_" -> Map(
+          "depname_column" -> (SoQLText.t, "depname"),
+          "empno_column" -> (SoQLNumber.t, "empno"),
+          "salary_column" -> (SoQLNumber.t, "salary")
+        )
+      ),
+      Map(
+        "one" -> "SELECT depname, empno, sum(salary) as salarySum group by depname,empno"
+      ),
+      "SELECT depname, empno, salary, avg(salary) OVER (PARTITION BY depname) as avgSalary",
+      "SELECT depname, empno, salary, avg(salary) OVER (PARTITION BY depname) as avgSalary",
+      None
+    )
+  }
 
 }
