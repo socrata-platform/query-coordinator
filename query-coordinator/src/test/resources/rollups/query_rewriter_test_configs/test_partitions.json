@@ -16,9 +16,10 @@
   },
   "tests": [
     {
-      "description": "!!! PARTITIONS ARE NOT SUPPORTED !!!",
       "query": "SELECT `incident` AS `incident`, count(*) OVER (PARTITION BY `incident`)",
-      "rewrites": {}
+      "rewrites": {
+        "p1": "SELECT c1 AS incident, c2 AS count_over_partition_by_incident"
+      }
     }
   ]
 }
