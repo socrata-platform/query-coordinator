@@ -1,13 +1,13 @@
 package com.socrata.querycoordinator
 
 import com.socrata.querycoordinator.QueryRewritingTestUtility._
-import com.socrata.soql.types.{SoQLDate, SoQLNumber, SoQLText}
+import com.socrata.soql.types.{SoQLNumber, SoQLText}
 import org.scalatest.FunSuite
 
 class QueryRewriterWindowFunctionTest extends FunSuite {
 
   test("Window function should rewrite when there are no clauses") {
-    // Assumes a default setup, ie.. SoQLAnalyzer/AbstractParser.Parameters/Parser/QueryRewriter
+
     AssertRewriteDefault(
       Map(
         "_" -> Map(
@@ -26,7 +26,7 @@ class QueryRewriterWindowFunctionTest extends FunSuite {
   }
 
   test("Window function should rewrite when where clauses match") {
-    // Assumes a default setup, ie.. SoQLAnalyzer/AbstractParser.Parameters/Parser/QueryRewriter
+
     AssertRewriteDefault(
       Map(
         "_" -> Map(
@@ -45,7 +45,7 @@ class QueryRewriterWindowFunctionTest extends FunSuite {
   }
 
   test("Mismatch of query where clause with window function should not rewrite") {
-    // Assumes a default setup, ie.. SoQLAnalyzer/AbstractParser.Parameters/Parser/QueryRewriter
+
     AssertRewriteDefault(
       Map(
         "_" -> Map(
@@ -64,7 +64,7 @@ class QueryRewriterWindowFunctionTest extends FunSuite {
   }
 
   test("Mismatch of rollup where clause with window function should not rewrite") {
-    // Assumes a default setup, ie.. SoQLAnalyzer/AbstractParser.Parameters/Parser/QueryRewriter
+
     AssertRewriteDefault(
       Map(
         "_" -> Map(
@@ -84,7 +84,7 @@ class QueryRewriterWindowFunctionTest extends FunSuite {
 
 
   test("Window function should rewrite when groupby clauses match") {
-    // Assumes a default setup, ie.. SoQLAnalyzer/AbstractParser.Parameters/Parser/QueryRewriter
+
     AssertRewriteDefault(
       Map(
         "_" -> Map(
@@ -103,7 +103,7 @@ class QueryRewriterWindowFunctionTest extends FunSuite {
   }
 
   test("Mismatch of groupby with window function should not rewrite") {
-    // Assumes a default setup, ie.. SoQLAnalyzer/AbstractParser.Parameters/Parser/QueryRewriter
+
     AssertRewriteDefault(
       Map(
         "_" -> Map(
@@ -123,7 +123,7 @@ class QueryRewriterWindowFunctionTest extends FunSuite {
 
 
   test("Window function should rewrite when having clauses match") {
-    // Assumes a default setup, ie.. SoQLAnalyzer/AbstractParser.Parameters/Parser/QueryRewriter
+
     AssertRewriteDefault(
       Map(
         "_" -> Map(
@@ -142,7 +142,7 @@ class QueryRewriterWindowFunctionTest extends FunSuite {
   }
 
   test("Mismatch having clause with window function should not rewrite") {
-    // Assumes a default setup, ie.. SoQLAnalyzer/AbstractParser.Parameters/Parser/QueryRewriter
+
     AssertRewriteDefault(
       Map(
         "_" -> Map(
@@ -162,7 +162,7 @@ class QueryRewriterWindowFunctionTest extends FunSuite {
 
 
   test("Window function should rewrite when there are no clauses and its not top level") {
-    // Assumes a default setup, ie.. SoQLAnalyzer/AbstractParser.Parameters/Parser/QueryRewriter
+
     AssertRewriteDefault(
       Map(
         "_" -> Map(
@@ -180,5 +180,23 @@ class QueryRewriterWindowFunctionTest extends FunSuite {
     )
   }
 
+  test("Rewrite a query with a window function when no rollups have a window function, should not rewrite") {
+
+    AssertRewriteDefault(
+      Map(
+        "_" -> Map(
+          "depname_column" -> (SoQLText.t, "depname"),
+          "empno_column" -> (SoQLNumber.t, "empno"),
+          "salary_column" -> (SoQLNumber.t, "salary")
+        )
+      ),
+      Map(
+        "one" -> "SELECT depname, empno, sum(salary) as salarySum group by depname,empno"
+      ),
+      "SELECT depname, empno, salary, avg(salary) OVER (PARTITION BY depname) as avgSalary",
+      "SELECT depname, empno, salary, avg(salary) OVER (PARTITION BY depname) as avgSalary",
+      None
+    )
+  }
 
 }
