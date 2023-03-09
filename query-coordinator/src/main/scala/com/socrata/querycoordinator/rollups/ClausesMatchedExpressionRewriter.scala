@@ -24,8 +24,7 @@ class ClausesMatchedExpressionRewriter(override val rollupColumnId: (Int) => Str
       //At this point our where/groupby/having clauses match.
       //We are trying to do an exact rewrite, but only if there is a window function while all clauses match.
       //Lets check if any functionCalls in the expression chain contains a window function
-      case fc: FunctionCall if extractFunctionCallChain(fc).exists(_.window.nonEmpty)
-      =>
+      case fc: FunctionCall if extractFunctionCallChain(fc).exists(_.window.nonEmpty) =>
         //and try to rewrite it at the coarsest level
         rollupColIdx.get(fc).map(cid => typed.ColumnRef(NoQualifier, rollupColumnId(cid), fc.typ)(fc.position))
           .orElse(super.apply(e, r, rollupColIdx))
