@@ -82,12 +82,6 @@ object QueryRewritingTestUtility {
 
   }
 
-  private def reMapColumns(datasetDefinitions: DatasetDefinitions,binaryTree: BinaryTree[Select]): BinaryTree[Select] ={
-    val mapperContexts = datasetDefinitions.map{case (a,b)=>(a->b.map{case (_,(_,d))=>(ColumnName(d)->ColumnName(d))})}
-    val mapper = new ColumnNameMapper(mapperContexts)
-    mapper.mapSelects(binaryTree, true)
-  }
-
   private def buildRollups(anal: AnalyzeSoqlAndRemapFunction, parser: SoqlParseFunction)(rollups: RollupsDefinition): RemappedRollupAnalysis = {
     rollups.map { case (name, soql) => (new RollupName(name), anal(parser(soql))) }
   }
