@@ -218,7 +218,7 @@ class QueryRewriterWindowFunctionTest extends FunSuite {
     )
   }
 
-  test("Window function should rewrite when there are no clauses and its reaaaally not top level") {
+  test("Window function should rewrite when there are no clauses and its far from the top level") {
 
     AssertRewriteDefault(
       Map(

@@ -22,7 +22,7 @@ class ClausesMatchedExpressionRewriter(override val rollupColumnId: (Int) => Str
   override def apply(e: Expr, r: Analysis, rollupColIdx: Map[Expr, Int]): Option[Expr] = {
     e match {
       //At this point our where/groupby/having clauses match.
-      //Ee are trying to do an exact rewrite, but only if there is a window function while all clauses match.
+      //We are trying to do an exact rewrite, but only if there is a window function while all clauses match.
       //Lets check if any functionCalls in the expression chain contains a window function
       case fc: FunctionCall if extractFunctionCallChain(fc).exists(_.window.nonEmpty)
       =>
