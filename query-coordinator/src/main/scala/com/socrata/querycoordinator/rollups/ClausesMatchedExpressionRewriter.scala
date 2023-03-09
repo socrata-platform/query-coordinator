@@ -11,8 +11,8 @@ so therefor we want to rewrite the window functions.
 This class mostly exists as to not have to pass around an extra parameter recursively throughout the original rewriter.
 The decision of which class to use is made in com.socrata.querycoordinator.rollups.QueryRewriterImplementation.rewriteSelection
 */
-class ClauseAwareExpressionRewriter(override val rollupColumnId: (Int) => String,
-                                    override val rewriteWhere: (Option[Expr], Analysis, Map[Expr, Int]) => Option[Where]) extends ExpressionRewriter(rollupColumnId, rewriteWhere) {
+class ClausesMatchedExpressionRewriter(override val rollupColumnId: (Int) => String,
+                                       override val rewriteWhere: (Option[Expr], Analysis, Map[Expr, Int]) => Option[Where]) extends ExpressionRewriter(rollupColumnId, rewriteWhere) {
   /** Recursively maps the Expr based on the rollupColIdx map, returning either
     * a mapped expression or None if the expression couldn't be mapped.
     *
@@ -21,10 +21,24 @@ class ClauseAwareExpressionRewriter(override val rollupColumnId: (Int) => String
     */
   override def apply(e: Expr, r: Analysis, rollupColIdx: Map[Expr, Int]): Option[Expr] = {
     e match {
-      case fc: FunctionCall if fc.window.nonEmpty =>
+      //At this point our where/groupby/having clauses match.
+      //Ee are trying to do an exact rewrite, but only if there is a window function while all clauses match.
+      //Lets check if any functionCalls in the expression chain contains a window function
+      case fc: FunctionCall if extractFunctionCallChain(fc).exists(_.window.nonEmpty)
+      =>
+        //and try to rewrite it at the coarsest level
         rollupColIdx.get(fc).map(cid => typed.ColumnRef(NoQualifier, rollupColumnId(cid), fc.typ)(fc.position))
+          .orElse(super.apply(e, r, rollupColIdx))
       case _ =>
         super.apply(e, r, rollupColIdx)
     }
+  }
+
+  //Walks down the functionCall parameters and collects all functionCalls
+  private def extractFunctionCallChain(functionCall: FunctionCall): Seq[FunctionCall]={
+    functionCall.parameters.flatMap{
+      case a:FunctionCall => extractFunctionCallChain(a):+a
+      case _=>Seq.empty
+    }:+functionCall
   }
 }

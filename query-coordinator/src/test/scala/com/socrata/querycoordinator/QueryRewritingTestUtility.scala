@@ -1,12 +1,13 @@
 package com.socrata.querycoordinator
 
 import com.socrata.querycoordinator.rollups.{QueryRewriter, QueryRewriterImplementation}
-import com.socrata.querycoordinator.rollups.QueryRewriter.{ColumnId, RollupName}
+import com.socrata.querycoordinator.rollups.QueryRewriter.{Analysis, ColumnId, RollupName}
 import com.socrata.soql._
 import com.socrata.soql.ast.Select
 import com.socrata.soql.collection.OrderedMap
 import com.socrata.soql.environment.{ColumnName, DatasetContext}
 import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
+import com.socrata.soql.mapping.ColumnNameMapper
 import com.socrata.soql.parsing.{AbstractParser, Parser}
 import com.socrata.soql.typed.CoreExpr
 import com.socrata.soql.types.{SoQLType, SoQLValue}
@@ -45,7 +46,17 @@ object QueryRewritingTestUtility {
       (a: AnalyzedDatasetContext) => (b: ParsedSoql) => analyzer.analyzeBinary(b)(a),
       // aka ReMap
       (a: ColumnMappings) => (b: AnalyzedSoql) => QueryParser.remapAnalyses(a, b),
-      (a, b) => rewriter.possibleRewrites(a, b, false)
+      (a, b) => {
+        a match {
+          case Leaf(analysis) => possiblyRewriteQuery(rewriter, analysis, QueryRewriter.mergeRollupsAnalysis(b)) match {
+            case (rewrittenAnal, ru@Some(_)) =>
+              (Leaf(rewrittenAnal), ru.toSeq)
+            case _ =>
+              (a,Seq.empty)
+          }
+          case _ => rewriter.possibleRewrites(a, b, false)
+        }
+      }
     )(
       datasetDefinitions,
       rollupsDefinition,
@@ -54,6 +65,13 @@ object QueryRewritingTestUtility {
     )
   }
 
+  def possiblyRewriteQuery(rewriter: QueryRewriter,analyzedQuery: SoQLAnalysis[String, SoQLType], rollups: Map[RollupName, Analysis]):
+  (SoQLAnalysis[String, SoQLType], Option[String]) = {
+    val rewritten = rewriter.bestRollup(
+      rewriter.possibleRewrites(analyzedQuery, rollups, false).toSeq)
+    val (rollupName, analysis) = rewritten map { x => (Option(x._1), x._2) } getOrElse ((None, analyzedQuery))
+    (analysis, rollupName)
+  }
   // This is the test method to use to assert query rewriting functionality
   def AssertRewrite(soqlParseFunction: SoqlParseFunction, analysisFunction: SoqlAnalysisFunction, analysisMappingFunction: RemapAnalyzedSoqlFunction, rewriteFunction: RewriteFunction)(datasetDefinitions: DatasetDefinitions, rollupsDefinition: RollupsDefinition, queryDefinition: QueryDefinition, expected: BuildRewrittenContextFunction): Unit = {
     val (datasetContext, columnMappings) = buildDatasetContextAndMapping(datasetDefinitions)
@@ -62,6 +80,12 @@ object QueryRewritingTestUtility {
     val actual: Rewrites = rewriteFunction(query, rollupAnalysis)
     actual should equal(expected(rollupsDefinition, soqlParseFunction, datasetContext, analysisFunction, columnMappings, analysisMappingFunction))
 
+  }
+
+  private def reMapColumns(datasetDefinitions: DatasetDefinitions,binaryTree: BinaryTree[Select]): BinaryTree[Select] ={
+    val mapperContexts = datasetDefinitions.map{case (a,b)=>(a->b.map{case (_,(_,d))=>(ColumnName(d)->ColumnName(d))})}
+    val mapper = new ColumnNameMapper(mapperContexts)
+    mapper.mapSelects(binaryTree, true)
   }
 
   private def buildRollups(anal: AnalyzeSoqlAndRemapFunction, parser: SoqlParseFunction)(rollups: RollupsDefinition): RemappedRollupAnalysis = {

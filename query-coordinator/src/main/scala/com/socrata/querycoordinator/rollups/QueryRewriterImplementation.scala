@@ -29,7 +29,7 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
   private[querycoordinator] def rollupColumnId(idx: Int): String = "c" + (idx + 1)
 
   val rewriteExpr = new ExpressionRewriter(rollupColumnId, rewriteWhere)
-  val rewriteExprWithClauses = new ClauseAwareExpressionRewriter(rollupColumnId, rewriteWhere)
+  val rewriteExprWithClauses = new ClausesMatchedExpressionRewriter(rollupColumnId, rewriteWhere)
 
 
   /** Maps the rollup column expression to the 0 based index in the rollup table.  If we have
@@ -225,7 +225,7 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
         else h
       }
 
-      val selection = rewriteSelection(q.selection, r, rollupColIdx,(where.isDefined && groupBy.nonEmpty && having.isDefined)) map { s =>
+      val selection = rewriteSelection(q.selection, r, rollupColIdx,(r.where.equals(q.where)&&r.groupBys.equals(q.groupBys)&&r.having.equals(q.having))) map { s =>
         if (shouldRemoveAggregates) s.mapValues(removeAggregates)
         else s
       }
