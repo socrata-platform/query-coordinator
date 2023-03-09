@@ -36,7 +36,7 @@ class ClausesMatchedExpressionRewriter(override val rollupColumnId: (Int) => Str
   //Walks down the functionCall parameters and collects all functionCalls
   private def extractFunctionCallChain(functionCall: FunctionCall): Seq[FunctionCall]={
     functionCall.parameters.flatMap{
-      case a:FunctionCall => extractFunctionCallChain(a):+a
+      case a:FunctionCall => extractFunctionCallChain(a)
       case _=>Seq.empty
     }:+functionCall
   }
