@@ -218,6 +218,25 @@ class QueryRewriterWindowFunctionTest extends FunSuite {
     )
   }
 
+  test("Window function should rewrite when there are no clauses and its reaaaally not top level") {
+
+    AssertRewriteDefault(
+      Map(
+        "_" -> Map(
+          "depname_column" -> (SoQLText.t, "depname"),
+          "empno_column" -> (SoQLNumber.t, "empno"),
+          "salary_column" -> (SoQLNumber.t, "salary")
+        )
+      ),
+      Map(
+        "one" -> "SELECT depname, empno, salary, (1 + (1 + (1 + (1 + avg(salary) OVER (PARTITION BY depname))))) as avgSalary"
+      ),
+      "SELECT depname, empno, salary, (1 + (1 + (1 + (1 + avg(salary) OVER (PARTITION BY depname))))) as avgSalary",
+      "select c1 as depname, c2 as empno, c3 as salary, c4 as avgSalary",
+      Some("one")
+    )
+  }
+
   test("Window function should rewrite when there are no clauses and its not top level, even with an extra column in the rollup") {
 
     AssertRewriteDefault(
