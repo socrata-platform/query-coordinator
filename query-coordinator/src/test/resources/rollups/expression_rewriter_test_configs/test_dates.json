@@ -42,7 +42,7 @@
   "tests": [
     {
       "expression": "'REVERSE RETURN'",
-      "rewrite": "'REVERSE RETURN' :: text"
+      "rewrite": "\"REVERSE RETURN\" :: text"
     },
     {
       "expression": "merchant",
