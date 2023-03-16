@@ -336,8 +336,12 @@ class QueryResource(secondary: Secondary,
               case PipeQuery(l, r) =>
                 val (nl, rollupLeft) = possiblyRewriteOneAnalysisInQuery(schema, l, Some(ruMap))
                 val (nr, rollupJoin) = possiblyRewriteJoin(r)
-                val rewritten = (PipeQuery(nl, nr), rollupLeft ++ rollupJoin)
-                if (ruMapOpt.isEmpty && ruMap.nonEmpty && rollupLeft.isEmpty) {
+                val (nr2, rollupRight) = possiblyRewriteOneAnalysisInQuery(schema, nr, Some(ruMap))
+                val rewritten = ((rollupLeft,rollupJoin,rollupRight)match{
+                  case (Nil,Nil,Seq(_)) | (Nil,Seq(_),Nil) | (Nil,Seq(_),Seq(_))=>nr2
+                  case _=>PipeQuery(nl,nr2)
+                }, rollupLeft ++ rollupRight ++ rollupJoin)
+                if (ruMapOpt.isEmpty && ruMap.nonEmpty && (rollupLeft.isEmpty&&rollupRight.isEmpty&&rollupJoin.isEmpty)) {
                   // simple rewrite has higher priority over compound query rewrite
                   // for fear that compound rewrite is not as matured as simple rewrite
                   queryRewriter.possibleRewrites(analyzedQuery, ruMap, true)
