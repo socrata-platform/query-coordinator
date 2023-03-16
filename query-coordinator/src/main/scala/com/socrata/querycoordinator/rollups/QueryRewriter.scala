@@ -1,10 +1,11 @@
 package com.socrata.querycoordinator.rollups
 
 import com.socrata.querycoordinator.rollups.QueryRewriter.{Analysis, AnalysisTree, Expr, RollupName}
+import com.socrata.querycoordinator.util.BinaryTreeHelper
 import com.socrata.querycoordinator.{Schema, SchemaWithFieldName}
 import com.socrata.soql.environment.{ColumnName, TableName}
 import com.socrata.soql.functions.SoQLFunctions
-import com.socrata.soql.{BinaryTree, PipeQuery, SoQLAnalysis}
+import com.socrata.soql.{BinaryTree, Leaf, PipeQuery, SoQLAnalysis}
 import com.socrata.soql.types.SoQLType
 
 /**
@@ -70,11 +71,14 @@ object QueryRewriter {
     SoQLAnalysis.merge(
       SoQLFunctions.And.monomorphic.get,
       analysisTree
-    ) match {
-      case x@PipeQuery(PipeQuery(_,_),_) => doMerge(x)
+    )match {
+      case x@PipeQuery(y@PipeQuery(_, _), r) => doMerge(PipeQuery(doMerge(y),r))
       case a => a
     }
   }
+
+  //x=>doMerge(Leaf(x)).outputSchema.leaf
+
 
   def primaryRollup(names: Seq[String]): Option[String] = {
     names.filterNot(_.startsWith(TableName.SoqlPrefix)).headOption
