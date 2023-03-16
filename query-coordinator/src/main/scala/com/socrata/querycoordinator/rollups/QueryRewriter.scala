@@ -67,17 +67,17 @@ object QueryRewriter {
       ).outputSchema.leaf.mapColumnIds((columnName, _) => columnName.name)
     )
   }
+
   def doMerge(analysisTree: BinaryTree[SoQLAnalysis[ColumnName, SoQLType]]): BinaryTree[SoQLAnalysis[ColumnName, SoQLType]] = {
     SoQLAnalysis.merge(
       SoQLFunctions.And.monomorphic.get,
       analysisTree
-    )match {
-      case x@PipeQuery(y@PipeQuery(_, _), r) => doMerge(PipeQuery(doMerge(y),r))
-      case a => a
+    ) match {
+      case PipeQuery(l @ PipeQuery(_, _), r) =>
+        doMerge(PipeQuery(doMerge(l), r))
+      case other => other
     }
   }
-
-  //x=>doMerge(Leaf(x)).outputSchema.leaf
 
 
   def primaryRollup(names: Seq[String]): Option[String] = {
