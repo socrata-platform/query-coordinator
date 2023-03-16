@@ -338,7 +338,9 @@ class QueryResource(secondary: Secondary,
                 val (nr, rollupJoin) = possiblyRewriteJoin(r)
                 val (nr2, rollupRight) = possiblyRewriteOneAnalysisInQuery(schema, nr, Some(ruMap))
                 val rewritten = ((rollupLeft,rollupJoin,rollupRight)match{
+                  //If Join or Right are rewritten, then its officially the "right" side, only right matters
                   case (Nil,Nil,Seq(_)) | (Nil,Seq(_),Nil) | (Nil,Seq(_),Seq(_))=>nr2
+                  //Else left was rewritten, but we want to return a PipQuery because there are still further expressions acting
                   case _=>PipeQuery(nl,nr2)
                 }, rollupLeft ++ rollupRight ++ rollupJoin)
                 if (ruMapOpt.isEmpty && ruMap.nonEmpty && (rollupLeft.isEmpty&&rollupRight.isEmpty&&rollupJoin.isEmpty)) {
