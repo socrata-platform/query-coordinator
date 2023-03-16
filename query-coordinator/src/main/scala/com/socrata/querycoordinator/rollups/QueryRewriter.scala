@@ -4,7 +4,7 @@ import com.socrata.querycoordinator.rollups.QueryRewriter.{Analysis, AnalysisTre
 import com.socrata.querycoordinator.{Schema, SchemaWithFieldName}
 import com.socrata.soql.environment.{ColumnName, TableName}
 import com.socrata.soql.functions.SoQLFunctions
-import com.socrata.soql.{BinaryTree, SoQLAnalysis}
+import com.socrata.soql.{BinaryTree, PipeQuery, SoQLAnalysis}
 import com.socrata.soql.types.SoQLType
 
 /**
@@ -61,16 +61,22 @@ object QueryRewriter {
     */
   def mergeRollupsAnalysis(rus: Map[RollupName, AnalysisTree]): Map[RollupName, Analysis] = {
     rus.mapValues(bt =>
-      SoQLAnalysis.merge(
-        SoQLFunctions.And.monomorphic.get,
-        bt.map(a => a.mapColumnIds((columnId, _) => ColumnName(columnId))
-        )
+      doMerge(
+        bt.map(a => a.mapColumnIds((columnId, _) => ColumnName(columnId)))
       ).outputSchema.leaf.mapColumnIds((columnName, _) => columnName.name)
     )
+  }
+  def doMerge(analysisTree: BinaryTree[SoQLAnalysis[ColumnName, SoQLType]]): BinaryTree[SoQLAnalysis[ColumnName, SoQLType]] = {
+    SoQLAnalysis.merge(
+      SoQLFunctions.And.monomorphic.get,
+      analysisTree
+    ) match {
+      case x@PipeQuery(PipeQuery(_,_),_) => doMerge(x)
+      case a => a
+    }
   }
 
   def primaryRollup(names: Seq[String]): Option[String] = {
     names.filterNot(_.startsWith(TableName.SoqlPrefix)).headOption
   }
 }
-
