@@ -43,7 +43,7 @@ class CompoundQueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends
         )
         val rewritten = ((rollupLeft, rollupJoin, rollupRight) match {
           //If Join or Right are rewritten, then its officially the "right" side, only right matters
-          case (Nil, Nil, Seq(_)) | (Nil, Seq(_), Nil) | (Nil, Seq(_), Seq(_)) => nr2
+          case (Nil, Nil, Seq(_)) | (Nil, Seq(_), Nil) | (Nil, Seq(_), Seq(_)) | (Seq(_), Nil, Seq(_)) => nr2
           //Else left was rewritten, but we want to return a PipQuery because there are still further expressions acting
           case _ => PipeQuery(nl, nr2)
         }, rollupLeft ++ rollupRight ++ rollupJoin)
