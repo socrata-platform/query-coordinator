@@ -131,7 +131,9 @@ class QueryRewriterTest extends BaseConfigurableRollupTest {
   //  Actual test
   //
   test("rollup rewriter tests") {
-    loadAndRunTests("rollups/query_rewriter_real_test_configs/test_query_rewriter.json")
+//    loadAndRunTests("rollups/query_rewriter_real_test_configs/test_query_rewriter.json")
+//    loadAndRunTests("rollups/query_rewriter_real_test_configs/test_pipes_1.json")
+    loadAndRunTests("rollups/query_rewriter_real_test_configs/test_pipes_2.json")
   }
 
 
