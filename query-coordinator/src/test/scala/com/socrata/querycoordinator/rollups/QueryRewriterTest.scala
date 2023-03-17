@@ -4,7 +4,7 @@ import com.rojoma.json.v3.util.AutomaticJsonCodecBuilder
 import com.socrata.querycoordinator._
 import com.socrata.querycoordinator.rollups.QueryRewriter.ColumnId
 import com.socrata.soql._
-import com.socrata.soql.environment.TableName
+import com.socrata.soql.environment.{TableName}
 import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLFunctions, SoQLTypeInfo}
 import com.socrata.soql.parsing.{AbstractParser, Parser}
 import com.socrata.soql.types.{SoQLType, SoQLValue}
@@ -30,6 +30,9 @@ class QueryRewriterTest extends BaseConfigurableRollupTest {
   val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
   val rewriter: QueryRewriter = new CompoundQueryRewriter(analyzer)
 
+  //
+  //  Fetchers for QueryRewriter
+  //
   def fetchRollupInfo(config: TestConfig): Seq[RollupInfo] = config.rollups.map({
     case (k, v) => RollupInfo(k, v)
   }).toList
@@ -42,7 +45,10 @@ class QueryRewriterTest extends BaseConfigurableRollupTest {
     )
   }
 
-  private def loadQueryAnalysis(q: String,
+  //
+  //  Query loader
+  //
+  private def analyzeQuery(q: String,
                            context: AnalysisContext[SoQLType, SoQLValue],
                            columnMapping: Map[QualifiedColumnName, String]):
   BinaryTree[SoQLAnalysis[ColumnId, SoQLType]] = {
@@ -54,18 +60,21 @@ class QueryRewriterTest extends BaseConfigurableRollupTest {
     QueryParser.remapAnalyses(columnMapping, merged)
   }
 
+  //
+  //  Generic method to load and run test
+  //
   private def loadAndRunTests(configFile: String) {
     val config = getConfig[TestConfig](configFile)
     val context = getContext(config.schemas)
     val mapping = getColumnMapping(config.schemas)
     val schema = Schema(
       "",
-      config.schemas.getOrElse("_", Map.empty).map({ case (k, v) => (v._2, v._1)}),
+      config.schemas.getOrElse("_", Map.empty).map({ case (k, v) => (k, v._1)}),
       ":pk"
     )
 
     config.tests.foreach(test => {
-      val queryAnalysis = loadQueryAnalysis(test.query, context, mapping)
+      val queryAnalysis = analyzeQuery(test.query, context, mapping)
 
       val rewrites = rewriter.possiblyRewriteOneAnalysisInQuery(
         "_",
@@ -77,14 +86,21 @@ class QueryRewriterTest extends BaseConfigurableRollupTest {
         true
       )
 
-      Console.println(rewrites)
+      rewrites._2 should have size test.rewrites.size
+
+      test.rewrites.foreach { case (rollupName, rewrittenQuery) =>
+        rewrites._1.toString should equal(rewrittenQuery)
+      }
 
     })
 
   }
 
+  //
+  //  Actual test
+  //
   test("rollup rewriter tests") {
-    loadAndRunTests("rollups/query_rewriter_test_configs/test_query_rewriter.json")
+    loadAndRunTests("rollups/query_rewriter_real_test_configs/test_query_rewriter.json")
   }
 
 
