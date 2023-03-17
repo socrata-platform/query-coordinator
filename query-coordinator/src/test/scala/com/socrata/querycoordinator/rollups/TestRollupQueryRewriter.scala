@@ -61,7 +61,7 @@ class TestRollupQueryRewriter extends BaseConfigurableRollupTest {
   // System Under Test
   //
   val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
-  val rewriter: QueryRewriter = new QueryRewriterWithJoinEnabled(analyzer)
+  val rewriter: QueryRewriterWithJoinEnabled = new QueryRewriterWithJoinEnabled(analyzer)
 
   //
   //  Helper methods

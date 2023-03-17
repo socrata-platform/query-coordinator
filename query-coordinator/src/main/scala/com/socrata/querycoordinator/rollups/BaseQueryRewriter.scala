@@ -3,7 +3,7 @@ package com.socrata.querycoordinator.rollups
 import com.socrata.querycoordinator._
 import com.socrata.querycoordinator.rollups.ExpressionRewriter._
 import com.socrata.querycoordinator.rollups.QueryRewriter._
-import com.socrata.querycoordinator.rollups.QueryRewriterImplementation._
+import com.socrata.querycoordinator.rollups.BaseQueryRewriter._
 import com.socrata.soql._
 import com.socrata.soql.ast.{JoinFunc, JoinQuery, JoinTable, Select}
 import com.socrata.soql.collection.OrderedMap
@@ -18,9 +18,9 @@ import com.socrata.soql.types._
 import scala.util.parsing.input.NoPosition
 import scala.util.{Failure, Success, Try}
 
-class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends QueryRewriter with CompoundQueryRewriter {
+abstract class BaseQueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) {
 
-  val log = org.slf4j.LoggerFactory.getLogger(classOf[QueryRewriterImplementation])
+  val log = org.slf4j.LoggerFactory.getLogger(classOf[BaseQueryRewriter])
 
   private def ensure(expr: Boolean, msg: String): Option[String] = if (!expr) Some(msg) else None
 
@@ -28,14 +28,27 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
   // instead of assuming.
   private[querycoordinator] def rollupColumnId(idx: Int): String = "c" + (idx + 1)
 
-  val rewriteExpr = new ExpressionRewriter(rollupColumnId, rewriteWhere)
-  val rewriteExprWithClauses = new ClausesMatchedExpressionRewriter(rollupColumnId, rewriteWhere)
+  private[querycoordinator] val rewriteExpr = new ExpressionRewriter(rollupColumnId, rewriteWhere)
+  private val rewriteExprWithClauses = new ClausesMatchedExpressionRewriter(rollupColumnId, rewriteWhere)
+
+  def possiblyRewriteQuery(dataset: String,
+                                   analyzedQuery: SoQLAnalysis[String, SoQLType],
+                                   rollups: Map[RollupName, Analysis],
+                                   debug: Boolean = false):
+  (SoQLAnalysis[String, SoQLType], Option[String]) = {
+
+    val rewritten = bestRollup(possibleRewrites(analyzedQuery, rollups, debug).toSeq)
+    val (rollupName, analysis) = rewritten map { x => (Option(x._1), x._2) } getOrElse ((None, analyzedQuery))
+    rollupName.foreach(ru => log.info(s"Rewrote query on dataset $dataset to rollup $ru")) // only log rollup name if it is defined.
+    log.debug(s"Rewritten analysis: $analysis")
+    (analysis, rollupName)
+  }
 
 
   /** Maps the rollup column expression to the 0 based index in the rollup table.  If we have
     * multiple columns with the same definition, that is fine but we will only use one.
     */
-  def rewriteSelection(q: Selection, r: Analysis, rollupColIdx: Map[Expr, Int], allClausesMatch:Boolean = false): Option[Selection] = {
+  private def rewriteSelection(q: Selection, r: Analysis, rollupColIdx: Map[Expr, Int], allClausesMatch:Boolean = false): Option[Selection] = {
     val expressionRewriter:ExpressionRewriter = if(allClausesMatch){
       //Maps window functions
       rewriteExprWithClauses
@@ -75,7 +88,7 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
     }
   }
 
-  def rewriteJoin(joins: Seq[Join], r: Analysis): Option[Seq[Join]] = {
+  private def rewriteJoin(joins: Seq[Join], r: Analysis): Option[Seq[Join]] = {
     if (joins == r.joins) {
       Some(Seq.empty)
     } else {
@@ -83,7 +96,7 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
     }
   }
 
-  def rewriteGroupBy(qOpt: GroupBy, r: Analysis, qSelection: Selection,
+  private def rewriteGroupBy(qOpt: GroupBy, r: Analysis, qSelection: Selection,
                      rollupColIdx: Map[Expr, Int]): Option[GroupBy] = {
     val rOpt: GroupBy = r.groupBys
     (qOpt, rOpt) match {
@@ -113,7 +126,7 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
     }
   }
 
-  def rewriteWhere(qeOpt: Option[Expr], r: Analysis, rollupColIdx: Map[Expr, Int]): Option[Where] = {
+  private def rewriteWhere(qeOpt: Option[Expr], r: Analysis, rollupColIdx: Map[Expr, Int]): Option[Where] = {
     log.debug(s"Attempting to map query where expression '${qeOpt}' to rollup ${r}")
 
     val rw = (qeOpt, r.where) match {
@@ -136,7 +149,7 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
     * @param qbs   group by sequence
     * @param r     rollup analysis
     */
-  def rewriteHaving(qeOpt: Option[Expr], qbs: Seq[Expr], r: Analysis, rollupColIdx: Map[Expr, Int]): Option[Having] = {
+  private def rewriteHaving(qeOpt: Option[Expr], qbs: Seq[Expr], r: Analysis, rollupColIdx: Map[Expr, Int]): Option[Having] = {
     log.debug(s"Attempting to map query having expression '${qeOpt}' to rollup ${r}")
 
     val rw = (qeOpt, r.having) match {
@@ -155,7 +168,7 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
     rw.map(simplifyAndTrue)
   }
 
-  def rewriteOrderBy(obsOpt: Seq[OrderBy], r: Analysis, rollupColIdx: Map[Expr, Int]): Option[Seq[OrderBy]] = {
+  private def rewriteOrderBy(obsOpt: Seq[OrderBy], r: Analysis, rollupColIdx: Map[Expr, Int]): Option[Seq[OrderBy]] = {
     log.debug(s"Attempting to map order by expression '${obsOpt}'") // scalastyle:ignore multiple.string.literals
 
     // it is silly if the rollup has an order by, but we really don't care.
@@ -278,7 +291,7 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
     candidates.collect { case (k, Some(v)) => k -> v }
   }
 
-  def andExpr(a: Option[Expr], b: Option[Expr]): Option[Expr] = {
+  private def andExpr(a: Option[Expr], b: Option[Expr]): Option[Expr] = {
     (a, b) match {
       case (None, None) => None
       case (Some(a), None) => Some(a)
@@ -314,7 +327,7 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
     QueryParser.dsContext(columnIdMap, schema.schema)
   }
 
-  def analyzeRollups(schema: Schema, rollups: Seq[RollupInfo],
+  private[querycoordinator] def analyzeRollups(schema: Schema, rollups: Seq[RollupInfo],
                      getSchemaByTableName: TableName => SchemaWithFieldName): Map[RollupName, AnalysisTree] = {
 
     val dsContext = Map(TableName.PrimaryTable.qualifier -> prefixedDsContext(schema))
@@ -353,11 +366,11 @@ class QueryRewriterImplementation(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) e
     }
   }
 
-  def bestRollup(rollups: Seq[(RollupName, Analysis)]): Option[(RollupName, Analysis)] = RollupScorer.bestRollup(rollups)
+  private[querycoordinator] def bestRollup(rollups: Seq[(RollupName, Analysis)]): Option[(RollupName, Analysis)] = RollupScorer.bestRollup(rollups)
 }
 
 
-object QueryRewriterImplementation {
+object BaseQueryRewriter {
 
   import com.socrata.soql.typed._ // scalastyle:ignore import.grouping
 

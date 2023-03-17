@@ -10,19 +10,17 @@ import com.socrata.http.server.implicits._
 import com.socrata.http.server.responses._
 import com.socrata.http.server.util.RequestId
 import com.socrata.querycoordinator.rollups.QueryRewriter.{Analysis, AnalysisTree, ColumnId, RollupName}
-import com.socrata.querycoordinator.SchemaFetcher.{BadResponseFromSecondary, NoSuchDatasetInSecondary, NonSchemaResponse, Result, SecondaryConnectFailed, Successful, TimeoutFromSecondary}
+import com.socrata.querycoordinator.SchemaFetcher.{NoSuchDatasetInSecondary, Successful, TimeoutFromSecondary}
 import com.socrata.querycoordinator._
 import com.socrata.querycoordinator.caching.SharedHandle
 import com.socrata.querycoordinator.datetime.NowAnalyzer
 import com.socrata.querycoordinator.exceptions.JoinedDatasetNotColocatedException
-import com.socrata.querycoordinator.rollups.{QueryRewriter, RollupInfoFetcher, RollupScorer}
-import com.socrata.querycoordinator.util.BinaryTreeHelper
+import com.socrata.querycoordinator.rollups.{QueryRewriter, RollupInfoFetcher, RollupInfo}
 import com.socrata.soql.environment.{ColumnName, TableName}
 import com.socrata.soql.exceptions.{DuplicateAlias, NoSuchColumn, TypecheckException}
-import com.socrata.soql.{BinaryTree, Compound, JoinAnalysis, Leaf, PipeQuery, SoQLAnalysis, SubAnalysis}
+import com.socrata.soql.{BinaryTree, SoQLAnalysis}
 import com.socrata.soql.types.{SoQLID, SoQLNumber, SoQLType}
 import com.socrata.soql.stdlib.Context
-import com.socrata.soql.typed.{Join, RollupAtJoin}
 import org.apache.http.HttpStatus
 import org.joda.time.format.ISODateTimeFormat
 import org.joda.time.{DateTime, DateTimeZone, Interval}
@@ -303,158 +301,38 @@ class QueryResource(secondary: Secondary,
           }
         }
 
+        def fetchRollupInfo(): Seq[RollupInfo] = rollupInfoFetcher(base.receiveTimeoutMS(schemaTimeout.toMillis.toInt), Left(dataset), copy) match {
+          case RollupInfoFetcher.Successful(rollups) =>
+            rollups
+          case RollupInfoFetcher.NoSuchDatasetInSecondary =>
+            chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
+            finishRequest(notFoundResponse(dataset))
+          case RollupInfoFetcher.TimeoutFromSecondary =>
+            chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
+            finishRequest(upstreamTimeoutResponse)
+          case other: RollupInfoFetcher.Result =>
+            log.error(unexpectedError, other)
+            chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
+            finishRequest(internalServerError)
+          case unsuccessful =>
+            log.warn(s"No rollups ${dataset} ${unsuccessful.toString}")
+            Seq.empty
+        }
+
         /**
          * Scan from left to right (inner to outer), rewrite the first possible one.
          * TODO: Find a better way to apply rollup?
          */
         def possiblyRewriteOneAnalysisInQuery(schema: Schema, analyzedQuery: BinaryTree[SoQLAnalysis[String, SoQLType]],
                                               ruMapOpt: Option[Map[RollupName, AnalysisTree]] = None):
-            (BinaryTree[SoQLAnalysis[String, SoQLType]], Seq[String]) = {
-
+        (BinaryTree[SoQLAnalysis[String, SoQLType]], Seq[String]) = {
           if (noRollup) {
             (analyzedQuery, Seq.empty)
           } else {
-            val ruMap: Map[RollupName, AnalysisTree] = ruMapOpt.getOrElse(
-              rollupInfoFetcher(base.receiveTimeoutMS(schemaTimeout.toMillis.toInt), Left(dataset), copy) match {
-                case RollupInfoFetcher.Successful(rollups) =>
-                  queryRewriter.analyzeRollups(schema, rollups, getSchemaByTableName)
-                case RollupInfoFetcher.NoSuchDatasetInSecondary =>
-                  chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
-                  finishRequest(notFoundResponse(dataset))
-                case RollupInfoFetcher.TimeoutFromSecondary =>
-                  chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
-                  finishRequest(upstreamTimeoutResponse)
-                case other: RollupInfoFetcher.Result =>
-                  log.error(unexpectedError, other)
-                  chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
-                  finishRequest(internalServerError)
-                case unsuccessful =>
-                  log.warn(s"No rollups ${dataset} ${unsuccessful.toString}")
-                  Map.empty
-              })
-            analyzedQuery match {
-              case PipeQuery(l, r) =>
-                val (nl, rollupLeft) = possiblyRewriteOneAnalysisInQuery(schema, l, Some(ruMap))
-                val (nr, rollupJoin) = possiblyRewriteJoin(r)
-                val (nr2, rollupRight) = possiblyRewriteOneAnalysisInQuery(schema, nr, Some(ruMap))
-                val rewritten = ((rollupLeft,rollupJoin,rollupRight)match{
-                  //If Join or Right are rewritten, then its officially the "right" side, only right matters
-                  case (Nil,Nil,Seq(_)) | (Nil,Seq(_),Nil) | (Nil,Seq(_),Seq(_))=>nr2
-                  //Else left was rewritten, but we want to return a PipQuery because there are still further expressions acting
-                  case _=>PipeQuery(nl,nr2)
-                }, rollupLeft ++ rollupRight ++ rollupJoin)
-                if (ruMapOpt.isEmpty && ruMap.nonEmpty && (rollupLeft.isEmpty&&rollupRight.isEmpty&&rollupJoin.isEmpty)) {
-                  // simple rewrite has higher priority over compound query rewrite
-                  // for fear that compound rewrite is not as matured as simple rewrite
-                  queryRewriter.possibleRewrites(analyzedQuery, ruMap, true)
-                } else {
-                  rewritten
-                }
-              case Compound(_, _, _) =>
-                if (ruMapOpt.isEmpty && ruMap.nonEmpty) {
-                  queryRewriter.possibleRewrites(analyzedQuery, ruMap, true) match {
-                    case (unchanged, Nil) =>
-                      possiblyRewriteJoin(unchanged)
-                    case rewritten@(_, _) =>
-                      rewritten
-                  }
-                } else {
-                  possiblyRewriteJoin(analyzedQuery)
-                }
-              case Leaf(analysis) =>
-                val (schemaFrom, datasetOrResourceName) = analysis.from match {
-                  case Some(TableName(TableName.This, _)) =>
-                    (schema, Left(dataset))
-                  case Some(tableName@TableName(TableName.SingleRow, _)) =>
-                    (Schema.SingleRow, Right(tableName.name))
-                  case Some(tableName) =>
-                    val schemaWithFieldName = getSchemaByTableName(tableName)
-                    (schemaWithFieldName.toSchema(), Right(tableName.name))
-                  case None =>
-                    (schema, Left(dataset))
-                }
-
-                datasetOrResourceName match {
-                  case Left(dataset) =>
-                    val rus = QueryRewriter.mergeRollupsAnalysis(ruMap)
-                    // Only the leftmost soql in a chain can use rollups.
-                    possiblyRewriteQuery(analysis, rus) match {
-                      case (rewrittenAnal, ru@Some(_)) =>
-                        (Leaf(rewrittenAnal), ru.toSeq)
-                      case (_, None) =>
-                        val (possiblyRewrittenAnalysis, rollupJoin) = possiblyRewriteJoin(analysis)
-                        (Leaf(possiblyRewrittenAnalysis), rollupJoin)
-                    }
-                  case Right(resourceName) =>
-                    // TODO: union cannot use RollUp yet.
-                    // Further work needs to decorate the analysis with more than one rollup info so that
-                    // soql-postgres-adapter can get to the rollup table name.
-                    // Options to put the additional rollups info -
-                    // 1. Request Header
-                    // 2. in Analysis.from
-                    (Leaf(analysis), Seq.empty)
-                }
-            }
+            queryRewriter.possiblyRewriteOneAnalysisInQuery(
+              dataset, schema, analyzedQuery, ruMapOpt, fetchRollupInfo, getSchemaByTableName, debug
+            )
           }
-        }
-
-        def possiblyRewriteJoin(analyses: BinaryTree[SoQLAnalysis[String, SoQLType]]): (BinaryTree[SoQLAnalysis[String, SoQLType]], Seq[String]) = {
-          analyses match {
-            case Compound(op, l, r) =>
-              val (nl, rul) = possiblyRewriteJoin(l)
-              val (nr, rur) = possiblyRewriteJoin(r)
-              (Compound(op, nl, nr), rul ++ rur)
-            case Leaf(l) =>
-              val (nl, ru) = possiblyRewriteJoin(l)
-              (Leaf(nl), ru)
-          }
-        }
-
-        def possiblyRewriteJoin(analysis: SoQLAnalysis[String, SoQLType]): (SoQLAnalysis[String, SoQLType], Seq[String]) = {
-          if (!QueryRewriter.rollupAtJoin(analysis)) {
-            return (analysis, Nil)
-          }
-
-          val (rwJoins, rus) = analysis.joins.foldLeft((Seq.empty[Join[String, SoQLType]], Seq.empty[String])) { (acc, join) =>
-            join.from.subAnalysis match {
-              case Right(SubAnalysis(analyses, alias)) =>
-                val leftMost = analyses.leftMost
-                val leftMostFromRemoved = Leaf(leftMost.leaf.copy(from = None))
-                val joinedAnalysesFromRemoved = analyses.replace(leftMost, leftMostFromRemoved)
-                val joinedTable = leftMost.leaf.from.get
-                rollupInfoFetcher(base.receiveTimeoutMS(schemaTimeout.toMillis.toInt), Right(joinedTable.name), copy) match {
-                  case RollupInfoFetcher.Successful(rollups) =>
-                    val joinedSchema = getSchemaByTableName(joinedTable)
-                    val analyzedRollupsOfJoinTable = queryRewriter.analyzeRollups(joinedSchema.toSchema(), rollups, getSchemaByTableName)
-                    queryRewriter.possibleRewrites(joinedAnalysesFromRemoved, analyzedRollupsOfJoinTable, false) match {
-                      case (rwAnalyses, Seq(ruApplied)) =>
-                        val ruTableName = TableName(s"${joinedTable.name}.${ruApplied}")
-                        val rwAnalysesRollupTableApplied = rwAnalyses.leftMost.leaf.copy(from = Some(ruTableName))
-                        val rwSubAnalysis = SubAnalysis(Leaf(rwAnalysesRollupTableApplied), alias)
-                        val rwJoinJoinAnalysis: JoinAnalysis[ColumnId, SoQLType] = join.from.copy(subAnalysis = Right(rwSubAnalysis))
-                        val rwJoin = join.copy(from = rwJoinJoinAnalysis)
-                        (acc._1 :+ rwJoin, acc._2 :+ ruTableName.nameWithSoqlPrefix)
-                      case _ =>
-                        (acc._1 :+ join, acc._2)
-                    }
-                  case _ =>
-                    (acc._1 :+ join, acc._2)
-                }
-              case _ =>
-                (acc._1 :+ join, acc._2)
-            }
-          }
-          (analysis.copy(joins = rwJoins), rus)
-        }
-
-        def possiblyRewriteQuery(analyzedQuery: SoQLAnalysis[String, SoQLType], rollups: Map[RollupName, Analysis]):
-          (SoQLAnalysis[String, SoQLType], Option[String]) = {
-          val rewritten = queryRewriter.bestRollup(
-            queryRewriter.possibleRewrites(analyzedQuery, rollups, debug).toSeq)
-          val (rollupName, analysis) = rewritten map { x => (Option(x._1), x._2) } getOrElse ((None, analyzedQuery))
-          rollupName.foreach(ru => log.info(s"Rewrote query on dataset $dataset to rollup $ru")) // only log rollup name if it is defined.
-          log.debug(s"Rewritten analysis: $analysis")
-          (analysis, rollupName)
         }
 
         case class Versioned[T](payload: T, copyNumber: Long, dataVersion: Long, lastModified: DateTime)

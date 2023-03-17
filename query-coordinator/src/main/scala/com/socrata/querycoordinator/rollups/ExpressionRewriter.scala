@@ -6,7 +6,7 @@ import com.socrata.soql.functions.SoQLFunctions._
 import com.socrata.soql.types._
 import com.socrata.querycoordinator.rollups.ExpressionRewriter._
 import com.socrata.querycoordinator.rollups.QueryRewriter.{Analysis, Expr, ColumnId}
-import com.socrata.querycoordinator.rollups.QueryRewriterImplementation._
+import com.socrata.querycoordinator.rollups.BaseQueryRewriter._
 import com.socrata.soql.typed.{ColumnRef => _, FunctionCall => _, Join => _, OrderBy => _, _}
 
 import org.joda.time.{DateTimeConstants, LocalDateTime}

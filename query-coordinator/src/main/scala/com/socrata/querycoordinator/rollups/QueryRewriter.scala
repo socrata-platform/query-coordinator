@@ -13,30 +13,16 @@ import com.socrata.soql.types.SoQLType
   *
   * Any class wishing to use the QueryRewriter must use the interface, not a concrete implementation.
   */
-abstract class QueryRewriter {
+trait QueryRewriter {
 
-  /**
-    * *Map rollup definitions into query analysis in schema context
-    *
-    * ToDo: Should this return merged analysis?
-    *
-    */
-  def analyzeRollups(schema: Schema, rollups: Seq[RollupInfo],
-                     getSchemaByTableName: TableName => SchemaWithFieldName): Map[RollupName, AnalysisTree]
-
-  /**
-    * Creates possible rewrites for the query given the rollups
-    *
-    */
-  def possibleRewrites(q: Analysis, rollups: Map[RollupName, Analysis]): Map[RollupName, Analysis]
-  def possibleRewrites(q: AnalysisTree, rollups: Map[RollupName, AnalysisTree], requireCompoundRollupHint: Boolean): (AnalysisTree, Seq[String])
-  def possibleRewrites(q: Analysis, rollups: Map[RollupName, Analysis], debug: Boolean): Map[RollupName, Analysis]
-
-  /**
-    * Returns best scored rollup
-    *
-    */
-  def bestRollup(rollups: Seq[(RollupName, Analysis)]): Option[(RollupName, Analysis)]
+  def possiblyRewriteOneAnalysisInQuery(dataset: String,
+                                        schema: Schema,
+                                        analyzedQuery: BinaryTree[SoQLAnalysis[String, SoQLType]],
+                                        ruMapOpt: Option[Map[RollupName, AnalysisTree]],
+                                        ruFetcher: () => Seq[RollupInfo],
+                                        schemaFetcher: TableName => SchemaWithFieldName,
+                                        debug: Boolean):
+  (BinaryTree[SoQLAnalysis[String, SoQLType]], Seq[String])
 
 }
 
