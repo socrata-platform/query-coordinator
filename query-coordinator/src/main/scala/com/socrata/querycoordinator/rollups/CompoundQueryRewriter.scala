@@ -38,8 +38,16 @@ class CompoundQueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends
           dataset, schema, l, Some(ruMap), rollupFetcher, schemaFetcher, debug
         )
         val (nr, rollupJoin) = possiblyRewriteJoin(r, rollupFetcher, schemaFetcher)
-        val rewritten = (PipeQuery(nl, nr), rollupLeft ++ rollupJoin)
-        if (ruMapOpt.isEmpty && ruMap.nonEmpty && rollupLeft.isEmpty) {
+        val (nr2, rollupRight) = possiblyRewriteOneAnalysisInQuery(
+          dataset, schema, nr, Some(ruMap), rollupFetcher, schemaFetcher, debug
+        )
+        val rewritten = ((rollupLeft, rollupJoin, rollupRight) match {
+          //If Join or Right are rewritten, then its officially the "right" side, only right matters
+          case (Nil, Nil, Seq(_)) | (Nil, Seq(_), Nil) | (Nil, Seq(_), Seq(_)) => nr2
+          //Else left was rewritten, but we want to return a PipQuery because there are still further expressions acting
+          case _ => PipeQuery(nl, nr2)
+        }, rollupLeft ++ rollupRight ++ rollupJoin)
+        if (ruMapOpt.isEmpty && ruMap.nonEmpty && (rollupLeft.isEmpty && rollupRight.isEmpty && rollupJoin.isEmpty)) {
           // simple rewrite has higher priority over compound query rewrite
           // for fear that compound rewrite is not as matured as simple rewrite
           possibleRewrites(analyzedQuery, ruMap, true)

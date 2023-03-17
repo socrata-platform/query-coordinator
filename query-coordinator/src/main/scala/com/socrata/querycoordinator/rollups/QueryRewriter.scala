@@ -59,4 +59,3 @@ object QueryRewriter {
     names.filterNot(_.startsWith(TableName.SoqlPrefix)).headOption
   }
 }
-
