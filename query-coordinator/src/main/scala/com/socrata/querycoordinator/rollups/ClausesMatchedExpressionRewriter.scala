@@ -1,7 +1,7 @@
 package com.socrata.querycoordinator.rollups
 
 import com.socrata.querycoordinator.rollups.QueryRewriter.{Analysis, Expr}
-import com.socrata.querycoordinator.rollups.QueryRewriterImplementation.{FunctionCall, Where}
+import com.socrata.querycoordinator.rollups.BaseQueryRewriter.{FunctionCall, Where}
 import com.socrata.querycoordinator.util.Join.NoQualifier
 import com.socrata.soql.typed
 

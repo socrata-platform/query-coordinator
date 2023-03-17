@@ -21,7 +21,7 @@ import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
 import com.socrata.soql.types.SoQLType
 import com.socrata.soql.{AnalysisSerializer, SoQLAnalyzer}
 import com.socrata.curator.{ConfigWatch, CuratorFromConfig, DiscoveryFromConfig}
-import com.socrata.querycoordinator.rollups.{QueryRewriter, QueryRewriterImplementation, RollupInfoFetcher}
+import com.socrata.querycoordinator.rollups.{CompoundQueryRewriter, RollupInfoFetcher}
 import com.socrata.thirdparty.metrics.{MetricsReporter, SocrataHttpSupport}
 import com.socrata.thirdparty.typesafeconfig.Propertizer
 import com.typesafe.config.{Config, ConfigFactory}
@@ -108,7 +108,7 @@ object Main extends App with DynamicPortMap {
       schemaCache = (_, _, _) => (),
       schemaDecache = (_, _) => None,
       secondaryInstance = secondaryInstanceSelector,
-      queryRewriter = new QueryRewriterImplementation(analyzer),
+      queryRewriter = new CompoundQueryRewriter(analyzer),
       rollupInfoFetcher = new RollupInfoFetcher(httpClient)
     )
 
