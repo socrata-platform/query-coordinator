@@ -93,7 +93,7 @@ class CompoundQueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends
   //So, given a query such as 'SELECT timezone, count(*) GROUP BY timezone |> SELECT count(*) as ct'
   //And a rollup 'SELECT `timezone` AS `timezone`, `country` AS `country`, count(*) AS `count` GROUP BY `timezone`, `country`'
   //Our rollup rewriting process would see both 'count(*)'s as candidates for rewriting to the same expression, however this is not true.
-  //This is due to the expressions being analyzed without the context of groupBys
+  //This is due to the expressions being analyzed without the context of groupBys, and similar aliases between pipes are not always the same meaning
   //So logically what we want to do is only rewrite one of the pipes at a time, preferably the left-most
   //Joins are also considered the "right" side, but I believe they are not an issue due to lack of a groupBy
   def postProcessPipeRewrite(analyzedQuery: PipeQuery[SoQLAnalysis[String, SoQLType]],ruMap: Map[RollupName, AnalysisTree],left:(BinaryTree[SoQLAnalysis[String, SoQLType]],Seq[String]),join:(BinaryTree[SoQLAnalysis[String, SoQLType]],Seq[String]),right:(BinaryTree[SoQLAnalysis[String, SoQLType]],Seq[String])):(BinaryTree[SoQLAnalysis[String, SoQLType]], Seq[String])={
