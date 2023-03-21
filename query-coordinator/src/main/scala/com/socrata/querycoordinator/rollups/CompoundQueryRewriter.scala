@@ -9,6 +9,7 @@ import com.socrata.soql.typed.{ColumnRef, CompoundRollup, Indistinct}
 import com.socrata.soql.types.{SoQLType, SoQLValue}
 import com.socrata.soql.{BinaryTree, Compound, Leaf, PipeQuery, SoQLAnalyzer}
 import com.socrata.querycoordinator._
+import com.socrata.querycoordinator.util.BinaryTreeHelper
 
 
 /**
@@ -33,7 +34,7 @@ class CompoundQueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends
     })
 
     analyzedQuery match {
-      case PipeQuery(l, r) =>
+      case analyzedPipeQuery@PipeQuery(l, r) =>
         val (nl, rollupLeft) = possiblyRewriteOneAnalysisInQuery(
           dataset, schema, l, Some(ruMap), rollupFetcher, schemaFetcher, debug
         )
@@ -41,19 +42,7 @@ class CompoundQueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends
         val (nr2, rollupRight) = possiblyRewriteOneAnalysisInQuery(
           dataset, schema, nr, Some(ruMap), rollupFetcher, schemaFetcher, debug
         )
-        val rewritten = ((rollupLeft, rollupJoin, rollupRight) match {
-          //If Join or Right are rewritten, then its officially the "right" side, only right matters
-          case (Nil, Nil, Seq(_)) | (Nil, Seq(_), Nil) | (Nil, Seq(_), Seq(_)) | (Seq(_), Nil, Seq(_)) => nr2
-          //Else left was rewritten, but we want to return a PipQuery because there are still further expressions acting
-          case _ => PipeQuery(nl, nr2)
-        }, rollupLeft ++ rollupRight ++ rollupJoin)
-        if (ruMapOpt.isEmpty && ruMap.nonEmpty && (rollupLeft.isEmpty && rollupRight.isEmpty && rollupJoin.isEmpty)) {
-          // simple rewrite has higher priority over compound query rewrite
-          // for fear that compound rewrite is not as matured as simple rewrite
-          possibleRewrites(analyzedQuery, ruMap, true)
-        } else {
-          rewritten
-        }
+        postProcessPipeRewrite(analyzedPipeQuery,ruMap,(nl,rollupLeft),(nr, rollupJoin),(nr2,rollupRight))
       case Compound(_, _, _) =>
         if (ruMapOpt.isEmpty && ruMap.nonEmpty) {
           possibleRewrites(analyzedQuery, ruMap, true) match {
@@ -98,6 +87,29 @@ class CompoundQueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends
             // 2. in Analysis.from
             (Leaf(analysis), Seq.empty)
         }
+    }
+  }
+
+  //So, given a query such as 'SELECT timezone, count(*) GROUP BY timezone |> SELECT count(*) as ct'
+  //Our rollup rewriting process would see both 'count(*)'s as candidates for rewriting to the same expression, however this is not true.
+  //This is due to the expressions being analyzed without the context of groupBys
+  //So logically what we want to do is only rewrite one of the pipes at a time, preferably the left-most
+  //Joins are also considered the "right" side, but I believe they are not an issue due to lack of a groupBy
+  def postProcessPipeRewrite(analyzedQuery: PipeQuery[SoQLAnalysis[String, SoQLType]],ruMap: Map[RollupName, AnalysisTree],left:(BinaryTree[SoQLAnalysis[String, SoQLType]],Seq[String]),join:(BinaryTree[SoQLAnalysis[String, SoQLType]],Seq[String]),right:(BinaryTree[SoQLAnalysis[String, SoQLType]],Seq[String])):(BinaryTree[SoQLAnalysis[String, SoQLType]], Seq[String])={
+    val PipeQuery(originalLeft,originalRight)=analyzedQuery
+    val (leftRewrite,leftRollups)=left
+    val (joinRewrite,joinRollups)=join
+    val (rightRewrite,rightRollups)=right
+    (leftRollups,joinRollups,rightRollups)match{
+      //If the right is rewritten, we only care about the right, left is not needed, and the right will be the post-join
+      case (Nil,_,Seq(_)) => right
+      //If only the join is rewritten, it acts as the "right". If right was not rewritten, join and right are the same, but lets be explicit.
+      case (Nil,Seq(_),Nil) => join
+      case (Seq(_),Seq(_),_) => (PipeQuery(leftRewrite,joinRewrite),leftRollups++joinRollups)
+      case (Seq(_),Nil,_) => (PipeQuery(leftRewrite,originalRight),leftRollups)
+      //Last resort if we have no rewrites, try to compound rewrite(exact...etc)
+      case (Nil,Nil,Nil) | _ => possibleRewrites(analyzedQuery,ruMap,true)
+
     }
   }
 
