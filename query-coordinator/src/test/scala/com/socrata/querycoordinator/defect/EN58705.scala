@@ -1,4 +1,4 @@
-git apackage com.socrata.querycoordinator.defect
+package com.socrata.querycoordinator.defect
 
 import com.socrata.querycoordinator.QueryRewritingTestUtility.AssertRewriteDefault
 import com.socrata.soql.types.{SoQLBoolean, SoQLDate, SoQLFloatingTimestamp, SoQLNumber, SoQLText}
