@@ -1,0 +1,22 @@
+{
+  "schemas": {
+    "_": {
+      "2dup-k82r": ["text", "make"],
+      "ep9t-zk9z": ["text", "country"],
+      "47rk-qiqd": ["number", "timezone"],
+      "ghq4-bfhu": ["text", "phone"]
+   }
+  },
+  "rollups": {
+    "r1": "SELECT `_47rk-qiqd` AS `timezone`, `_ep9t-zk9z` AS `country`, count(*) AS `count` GROUP BY `timezone`, `country`"
+  },
+  "tests": [
+    {
+      "query": "SELECT timezone, count(*) GROUP BY timezone |> SELECT count(*) as ct",
+      "rewrites": {
+        "comment": "this is wrong, need to have group by c1",
+        "r1": "SELECT ListMap(ct -> coalesce(sum(c3 :: number) :: number,0 :: number) :: number)"
+      }
+    }
+  ]
+}
