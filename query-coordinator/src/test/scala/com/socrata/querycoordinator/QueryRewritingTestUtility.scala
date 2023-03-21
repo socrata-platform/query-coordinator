@@ -1,12 +1,13 @@
 package com.socrata.querycoordinator
 
-import com.socrata.querycoordinator.rollups.{QueryRewriter, CompoundQueryRewriter}
+import com.socrata.querycoordinator.QueryRewritingTestUtility.schemaFetcherFromDatasetDefinition
+import com.socrata.querycoordinator.rollups.{CompoundQueryRewriter, QueryRewriter, RollupInfo}
 import com.socrata.querycoordinator.rollups.QueryRewriter.{Analysis, ColumnId, RollupName}
-import com.socrata.soql._
+import com.socrata.soql.{SoQLAnalysis, _}
 import com.socrata.soql.ast.Select
 import com.socrata.soql.collection.OrderedMap
-import com.socrata.soql.environment.{ColumnName, DatasetContext}
-import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
+import com.socrata.soql.environment.{ColumnName, DatasetContext, TableName}
+import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLFunctions, SoQLTypeInfo}
 import com.socrata.soql.mapping.ColumnNameMapper
 import com.socrata.soql.parsing.{AbstractParser, Parser}
 import com.socrata.soql.typed.CoreExpr
@@ -40,29 +41,30 @@ object QueryRewritingTestUtility {
     val parserParams = AbstractParser.Parameters(allowJoins = true)
     val parser = new Parser(parserParams)
     val rewriter: CompoundQueryRewriter = new CompoundQueryRewriter(analyzer)
+    val rollupFetcher = rollupFetcherFromDefinition(rollupsDefinition)
+    val schemaFetcher=schemaFetcherFromDatasetDefinition(datasetDefinitions)
+    val dataset = "_"
+    val schema = schemaFetcher(TableName(dataset)).toSchema()
     AssertRewrite(
       parser.binaryTreeSelect,
       // aka Analyze(analyzer)
-      (a: AnalyzedDatasetContext) => (b: ParsedSoql) => analyzer.analyzeBinary(b)(a),
+      (a: AnalyzedDatasetContext) => (b: ParsedSoql) => SoQLAnalysis.merge(SoQLFunctions.And.monomorphic.get, analyzer.analyzeBinary(b)(a)),
       // aka ReMap
       (a: ColumnMappings) => (b: AnalyzedSoql) => QueryParser.remapAnalyses(a, b),
-      (a, b) => {
-        a match {
-          case Leaf(analysis) => possiblyRewriteQuery(rewriter, analysis, QueryRewriter.mergeRollupsAnalysis(b)) match {
-            case (rewrittenAnal, ru@Some(_)) =>
-              (Leaf(rewrittenAnal), ru.toSeq)
-            case _ =>
-              (a,Seq.empty)
-          }
-          case _ => rewriter.possibleRewrites(a, b, false)
-        }
-      }
+      (a, b) => rewriter.possiblyRewriteOneAnalysisInQuery(dataset,schema,a,Some(b),rollupFetcher,schemaFetcher,true)
     )(
       datasetDefinitions,
       rollupsDefinition,
       queryDefinition,
       AnalyzeRewrittenFromRollup(expectedRewritten,expectedRollupName)
     )
+  }
+
+  def schemaFetcherFromDatasetDefinition(datasetDefinitions: DatasetDefinitions):TableName => SchemaWithFieldName={
+    (tableName)=>datasetDefinitions.get(tableName.name).map(a=>SchemaWithFieldName(null,a,null)).getOrElse(throw new IllegalStateException(s"Could not load schema ${tableName.name}"))
+  }
+  def rollupFetcherFromDefinition(rollupsDefinition: RollupsDefinition): ()=>Seq[RollupInfo]={
+    ()=>rollupsDefinition.map{case (name,soql)=>RollupInfo(name,soql)}.toSeq
   }
 
   def possiblyRewriteQuery(rewriter: CompoundQueryRewriter, analyzedQuery: SoQLAnalysis[String, SoQLType], rollups: Map[RollupName, Analysis]):
