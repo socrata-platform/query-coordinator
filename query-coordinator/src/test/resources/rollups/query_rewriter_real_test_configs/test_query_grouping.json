@@ -14,8 +14,7 @@
     {
       "query": "SELECT timezone, count(*) GROUP BY timezone |> SELECT count(*) as ct",
       "rewrites": {
-        "comment": "this is wrong, need to have group by c1",
-        "r1": "SELECT ListMap(ct -> coalesce(sum(c3 :: number) :: number,0 :: number) :: number)"
+        "r1": "SELECT ListMap(timezone -> c1 :: number, count -> coalesce(sum(c3 :: number) :: number,0 :: number) :: number) GROUP BY c1 :: number |> SELECT ListMap(ct -> count/*() :: number)"
       }
     }
   ]
