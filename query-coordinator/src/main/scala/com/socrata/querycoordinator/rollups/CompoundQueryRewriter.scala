@@ -91,6 +91,7 @@ class CompoundQueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends
   }
 
   //So, given a query such as 'SELECT timezone, count(*) GROUP BY timezone |> SELECT count(*) as ct'
+  //And a rollup 'SELECT `timezone` AS `timezone`, `country` AS `country`, count(*) AS `count` GROUP BY `timezone`, `country`'
   //Our rollup rewriting process would see both 'count(*)'s as candidates for rewriting to the same expression, however this is not true.
   //This is due to the expressions being analyzed without the context of groupBys
   //So logically what we want to do is only rewrite one of the pipes at a time, preferably the left-most
@@ -103,9 +104,11 @@ class CompoundQueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends
     (leftRollups,joinRollups,rightRollups)match{
       //If the right is rewritten, we only care about the right, left is not needed, and the right will be the post-join
       case (Nil,_,Seq(_)) => right
-      //If only the join is rewritten, it acts as the "right". If right was not rewritten, join and right are the same, but lets be explicit.
+      //If only the join is rewritten, it acts as the "right". If right was not rewritten, join and right are the same, but lets be explicit and use the join version.
       case (Nil,Seq(_),Nil) => join
+      //If left was rewritten, we only want at most the join? Definitely not the right
       case (Seq(_),Seq(_),_) => (PipeQuery(leftRewrite,joinRewrite),leftRollups++joinRollups)
+      //If just left and no join, lets use rewritten left and original right
       case (Seq(_),Nil,_) => (PipeQuery(leftRewrite,originalRight),leftRollups)
       //Last resort if we have no rewrites, try to compound rewrite(exact...etc)
       case (Nil,Nil,Nil) | _ => possibleRewrites(analyzedQuery,ruMap,true)
