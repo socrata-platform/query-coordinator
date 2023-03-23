@@ -11,15 +11,15 @@
   },
   "rollups": {
     "r1": "SELECT `_dxyz-num1` AS `number1`, count(`number1`) GROUP BY `number1`",
-    "r2": "SELECT count(`ward`), `_wido-ward` AS `ward` GROUP BY `ward`",
-    "r3": "SELECT `_wido-ward` AS `ward`, count(*), count(`_crim-typ3`) AS `count(crime_type)` GROUP BY `ward`",
+    "r2": "SELECT count(`_wido-ward`), `_wido-ward` AS `ward` GROUP BY `ward`",
+    "r3": "SELECT `_wido-ward` AS `ward`, count(*), count(`_crim-typ3`) GROUP BY `ward`",
     "r4": "SELECT `_wido-ward` AS `ward`, `_crim-typ3` AS `crime_type`, count(*), `_dxyz-num1` AS `number1`, `_crim-date` AS `crime_date` GROUP BY `ward`, `crime_type`, `number1`, `crime_date`",
     "r5": "SELECT `_crim-typ3` AS `crime_type`, count(1) group by `crime_type`",
     "r6": "SELECT `_wido-ward` AS `ward`, `_crim-typ3` AS `crime_type`",
-    "r7": "SELECT `_wido-ward` AS `ward`, min(`_dxyz-num1`) AS `min(number1)`, max(`_dxyz-num1`) AS `max(number1)`, sum(`_dxyz-num1`) AS `sum(number1)`, count(*) GROUP BY `ward`",
-    "r8": "SELECT date_trunc_ym(`_crim-date`) AS `date_trunc_ym(crime_date)`, `_wido-ward` AS `ward`, count(*) GROUP BY `date_trunc_ym(crime_date)`, `ward`",
-    "r9": "SELECT `crim-typ3` AS `crime_type`, count(case(crime_date IS NOT NULL, crime_date, true, some_date)) group by crime_type",
-    "r10": "SELECT `_wido-ward` AS `ward`, sum(`dxyz-num1`) AS `sum(number1)`, count(`dxyz-num1`) AS `count(number1)` GROUP BY `ward`"
+    "r7": "SELECT `_wido-ward` AS `ward`, min(`_dxyz-num1`), max(`_dxyz-num1`), sum(`_dxyz-num1`) count(*) GROUP BY `ward`",
+    "r8": "SELECT date_trunc_ym(`_crim-date`), `_wido-ward` AS `ward`, count(*) GROUP BY date_trunc_ym(`_crim-date`), `ward`",
+    "r9": "SELECT `_crim-typ3` AS `crime_type`, count(case(`_crim-date` IS NOT NULL, `_crim-date`, true, `_some-date`)) group by `_crim-typ3`",
+    "r10": "SELECT `_wido-ward` AS `ward`, sum(`_dxyz-num1`), count(`_dxyz-num1`) GROUP BY `ward`"
   },
   "tests": [
     {
@@ -59,19 +59,19 @@
     {
       "query": "SELECT crime_type, count(case(crime_date IS NOT NULL, crime_date, true, some_date)) AS c GROUP BY crime_type",
       "rewrites": {
-        "r9": "SELECT ListMap(crime_type -> crim-typ3 :: text, c -> count(case(#IS_NOT_NULL(crim-date :: floating_timestamp) :: boolean,crim-date :: floating_timestamp,TRUE :: boolean,some-date :: floating_timestamp) :: floating_timestamp) :: number) GROUP BY crim-typ3 :: text"
+        "r9": "SELECT ListMap(crime_type -> c1 :: text, c -> coalesce(c2 :: number,0 :: number) :: number)"
       }
     },
     {
       "query": "SELECT ward, count(crime_type) AS crime_type_count WHERE ward != 5 GROUP BY ward",
       "rewrites": {
-        "r3": "SELECT ListMap(ward -> wido-ward :: number, crime_type_count -> count(crim-typ3 :: text) :: number) WHERE op$!=(wido-ward :: number,5 :: number) :: boolean GROUP BY wido-ward :: number"
+        "r3": "SELECT ListMap(ward -> c1 :: number, crime_type_count -> coalesce(c3 :: number,0 :: number) :: number) WHERE op$!=(c1 :: number,5 :: number) :: boolean"
       }
     },
     {
       "query": "SELECT ward, count(*) AS ward_count GROUP BY ward",
       "rewrites": {
-        "r4": "SELECT ListMap(ward -> c1 :: number, ward_count -> coalesce(sum(c3 :: number) :: number,0 :: number) :: number) GROUP BY c1 :: number"
+        "r4": "SELECT ListMap(ward -> c2 :: number, ward_count -> coalesce(sum(c3 :: number) :: number,0 :: number) :: number) GROUP BY c2 :: number"
       }
     }
   ]

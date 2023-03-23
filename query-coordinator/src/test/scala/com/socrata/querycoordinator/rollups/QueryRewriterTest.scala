@@ -117,7 +117,7 @@ class QueryRewriterTest extends BaseConfigurableRollupTest {
         true
       )
 
-//      rewrites._2 should have size test.rewrites.size
+      rewrites._2 should have size test.rewrites.size
 
       test.rewrites.foreach { case (rollupName, rewrittenQuery) =>
         rewrites._1.toString should equal(rewrittenQuery)
@@ -136,4 +136,5 @@ class QueryRewriterTest extends BaseConfigurableRollupTest {
     loadAndRunTests("rollups/query_rewriter_real_test_configs/test_pipes_1.json")
     loadAndRunTests("rollups/query_rewriter_real_test_configs/test_pipes_2.json")
   }
+
 }
