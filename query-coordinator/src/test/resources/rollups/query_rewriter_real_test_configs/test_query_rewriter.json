@@ -1,0 +1,52 @@
+{
+  "schemas": {
+    "_": {
+      "2dup-k82r": ["number", "rowkey"],
+      "ep9t-zk9z": ["text", "efspname"],
+      "47rk-qiqd": ["text", "county"],
+      "ghq4-bfhu": ["text", "office"],
+      "m5tq-d6im": ["text", "orgchartname"],
+      "kr9n-m9si": ["number", "nodeid"],
+      "fzit-v7bd": ["text", "casedataid"],
+      "93hn-8t73": ["text", "casenumber"],
+      "j5zc-yi8s": ["number", "envelopeid"],
+      "au82-27en": ["number", "isinitial"],
+      "73pm-myuw": ["number", "filingid"],
+      "se2f-c6df": ["text", "filingtype"],
+      "u4tu-5655": ["floating_timestamp", "submitted"],
+      "5yit-f8pa": ["text", "submittedday"],
+      "u7rr-ibi9": ["text", "filingstate"],
+      "73bk-8n6s": ["text", "casecategorycode"],
+      "zf5n-7c3g": ["text", "casetypecode"],
+      "x4he-yvi9": ["text", "filingcode"],
+      "mkrg-ubah": ["text", "isindividualfirm"],
+      "bf3j-5h4x": ["text", "username"],
+      "x3qy-sx9g": ["number", "firmid"],
+      "99ww-gkhu": ["text", "firmname"],
+      "i8p7-hrqq": ["text", "rejectionreason"],
+      "kmp3-e6dg": ["number", "numberofdocuments"],
+      "hfwr-7ehp": ["floating_timestamp", "underreview"],
+      "qm2a-kte2": ["floating_timestamp", "reviewed"],
+      "azpu-r6hd": ["number", "primaryamount"],
+      "z9tb-2kgm": ["number", "secondaryamount"],
+      "i2wi-rytf": ["text", "systempaymentaccounttype"],
+      "6uyj-y5av": ["text", "clerkname"],
+      "9vp3-7xvq": ["floating_timestamp", "adjustedsubmitdate"],
+      "mq5b-z4hs": ["number", "clerkresponsetime"],
+      "9mhn-jxsk": ["text", "insertedby"],
+      "tvyg-9zzi": ["text", "district"],
+      "dmxu-538j": ["text", "circuit"]
+    }
+  },
+  "rollups": {
+    "r1": "SELECT `_93hn-8t73` AS `casenumber`, max(`_u4tu-5655`) AS `submitted_` GROUP BY `casenumber`"
+  },
+  "tests": [
+    {
+      "query": "SELECT `casenumber` AS `casenumber`, max(`submitted`) AS `submitted_` GROUP BY `casenumber`",
+      "rewrites": {
+        "r1": "SELECT ListMap(casenumber -> c1 :: text, submitted_ -> c2 :: floating_timestamp)"
+      }
+    }
+  ]
+}
