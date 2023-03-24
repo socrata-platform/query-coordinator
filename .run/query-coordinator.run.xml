@@ -1,9 +1,8 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="query-coordinator" type="Application" factoryName="Application">
-    <option name="ALTERNATIVE_JRE_PATH" value="$USER_HOME$/.asdf/installs/java/adoptopenjdk-8.0.265+1" />
-    <option name="ALTERNATIVE_JRE_PATH_ENABLED" value="true" />
+    <option name="ALTERNATIVE_JRE_PATH" value="1.8" />
     <option name="MAIN_CLASS_NAME" value="com.socrata.querycoordinator.Main" />
-    <module name="query-coordinator_3413" />
+    <module name="queryCoordinator" />
     <option name="VM_PARAMETERS" value="-Dconfig.file=configs/application.conf" />
     <option name="WORKING_DIRECTORY" value="$ProjectFileDir$" />
     <extension name="coverage">
