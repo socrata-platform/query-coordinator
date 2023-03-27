@@ -1,0 +1,23 @@
+{
+  "schemas": {
+    "_": {
+      "dxyz-num1": ["number", "number1"],
+      "wido-ward": ["number", "ward"],
+      "crim-typ3": ["text", "crime_type"],
+      "dont-roll": ["text", "dont_create_rollups"],
+      "crim-date": ["floating_timestamp", "crime_date"],
+      "some-date": ["floating_timestamp", "some_date"]
+    }
+  },
+  "rollups": {
+    "rp1": "SELECT `_wido-ward` as ward, `_crim-typ3` as crime_type, `_dxyz-num1` as number1 WHERE number1='0' |> SELECT ward, crime_type WHERE crime_type='traffic'"
+  },
+  "tests": [
+    {
+      "query": "SELECT ward, crime_type, number1 WHERE number1='0' |> SELECT ward, crime_type WHERE crime_type='traffic'",
+      "rewrites": {
+        "rp1": "SELECT ListMap(ward -> c1 :: number, crime_type -> c2 :: text)"
+      }
+    }
+  ]
+}
