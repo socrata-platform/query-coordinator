@@ -22,7 +22,7 @@ object Dependencies {
     val scalaTest = "3.0.8"
     val scalaCheck = "1.14.0"
     val simpleArm = "2.3.1"
-    val rollupMetrics = "3.3"
+    val rollupMetrics = "3.4"
   }
 
   val postgresql = "org.postgresql" % "postgresql" % versions.postgresql
