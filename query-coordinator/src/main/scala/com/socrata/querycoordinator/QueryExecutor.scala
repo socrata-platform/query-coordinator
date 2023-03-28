@@ -497,14 +497,14 @@ class QueryExecutor(httpClient: HttpClient,
                 resourceScope.close(result)
                 SchemaHashMismatch(newSchema)
               case Left(newStream) => try {
-                Metric.digest(QueryHit(dataset,analyses.toString,duration,LocalDateTime.now(ZoneOffset.UTC)))
+                Metric.digest(QueryHit(dataset,analyses.toString,rollupName,duration,LocalDateTime.now(ZoneOffset.UTC)))
                 forward(result, newStream)
               } finally {
                 newStream.close()
               }
             }
           case _ =>
-            Metric.digest(QueryHit(dataset,analyses.toString,duration,LocalDateTime.now(ZoneOffset.UTC)))
+            Metric.digest(QueryHit(dataset,analyses.toString,rollupName,duration,LocalDateTime.now(ZoneOffset.UTC)))
             forward(result, resourceScope.openUnmanaged(result.inputStream(), transitiveClose = List(result)))
         }
       }
