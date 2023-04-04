@@ -31,13 +31,13 @@ class Secondary(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
   def secondaryMirrors(secondaryName: String): List[String] =
     mirrors.get(secondaryName).map(_.toList).getOrElse(Nil)
 
-  def serviceInstance(dataset: String, instanceName: Option[String]): Option[ServiceInstance[AuxiliaryData]] = {
+  def serviceInstance(dataset: String, instanceName: Option[String], markBrokenOnUnknown: Boolean = true): Option[ServiceInstance[AuxiliaryData]] = {
     val instance = for {
       name <- instanceName
       instance <- Option(secondaryProvider.provider(name).getInstance())
     } yield instance
 
-    if (instance.isEmpty) {
+    if (markBrokenOnUnknown && instance.isEmpty) {
       instanceName.foreach { n => secondaryInstance.flagError(dataset, n) }
     }
 

@@ -124,7 +124,7 @@ class QueryResource(secondary: Secondary,
             finishRequest(noSecondaryAvailable(dataset))
         }
 
-        val mirrorInstances = secondaryMirrorNames.flatMap(name => secondary.serviceInstance(dataset, Some(name)))
+        val mirrorInstances = secondaryMirrorNames.flatMap(name => secondary.serviceInstance(dataset, Some(name), markBrokenOnUnknown = true))
 
         val base = secondary.reqBuilder(second)
         log.debug("Base URI: " + base.url)
