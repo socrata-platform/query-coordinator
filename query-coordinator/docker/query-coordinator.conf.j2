@@ -5,6 +5,14 @@ com.socrata.query-coordinator {
   liveness-check.port = 6031
 
   all-secondary-instance-names = [{{ SECONDARY_INSTANCES }}]
+  mirrors = {
+    {{MIRROR_PRIMARY_1}} = {{MIRROR_1}}
+    {{MIRROR_PRIMARY_2}} = {{MIRROR_2}}
+    {{MIRROR_PRIMARY_3}} = {{MIRROR_3}}
+    {{MIRROR_PRIMARY_4}} = {{MIRROR_4}}
+    {{MIRROR_PRIMARY_5}} = {{MIRROR_5}}
+  }
+
 
   query-timeout = {{ QUERY_TIMEOUT }}
 
