@@ -500,7 +500,7 @@ class QueryExecutor(httpClient: HttpClient,
             log.error("Exception while executing against mirrors", e)
         }
       }
-    }
+    }.start()
 
     try {
       Timing.TimedResultReturningTransformed{
