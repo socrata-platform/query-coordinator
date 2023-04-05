@@ -491,7 +491,10 @@ class QueryExecutor(httpClient: HttpClient,
     new Thread {
       override def run(): Unit = {
         try {
-          mirrors.foreach(sendRequest)
+          mirrors.foreach { req =>
+            log.info(s"Sending debug query ${req.url} as part of base query ${base.url}")
+            sendRequest(req)
+          }
         } catch {
           case e: Throwable =>
             log.error("Exception while executing against mirrors", e)
