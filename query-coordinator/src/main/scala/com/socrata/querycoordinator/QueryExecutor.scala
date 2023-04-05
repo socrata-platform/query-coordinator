@@ -492,7 +492,7 @@ class QueryExecutor(httpClient: HttpClient,
       override def run(): Unit = {
         try {
           mirrors.foreach { req =>
-            log.info(s"Sending mirror query ${req.url} to mirror base query ${base.url}")
+            log.debug(s"Sending mirror query ${req.url} to mirror base query ${base.url}")
             sendRequest(req)
           }
         } catch {
