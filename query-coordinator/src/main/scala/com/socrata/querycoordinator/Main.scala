@@ -90,6 +90,7 @@ object Main extends App with DynamicPortMap {
       secondaryProvider = dataCoordinatorProviderProvider,
       schemaFetcher = SchemaFetcher(httpClient),
       secondaryInstance = secondaryInstanceSelector,
+      mirrors = config.mirrors,
       connectTimeout = config.connectTimeout,
       schemaTimeout = config.schemaTimeout
     )

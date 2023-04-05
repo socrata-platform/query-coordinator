@@ -85,6 +85,7 @@ class QueryExecutor(httpClient: HttpClient,
    */
   def apply(base: RequestBuilder, // scalastyle:ignore parameter.number method.length cyclomatic.complexity
             dataset: String,
+            mirrors: List[RequestBuilder],
             analyses: BinaryTree[SoQLAnalysis[String, SoQLType]],
             schema: Schema,
             precondition: Precondition,
@@ -114,7 +115,7 @@ class QueryExecutor(httpClient: HttpClient,
     }
 
     def go(theAnalyses: BinaryTree[SoQLAnalysis[String, SoQLType]] = analyses): Result =
-      reallyApply(base = base, dataset = dataset, analyses = theAnalyses, context = context, schema = schema, precondition = precondition, ifModifiedSince = ifModifiedSince, rowCount = rowCount, copy = copy,
+      reallyApply(base = base, mirrors = mirrors, dataset = dataset, analyses = theAnalyses, context = context, schema = schema, precondition = precondition, ifModifiedSince = ifModifiedSince, rowCount = rowCount, copy = copy,
                   rollupName = rollupName, obfuscateId = obfuscateId, extraHeaders = extraHeaders, resourceScope = rs, queryTimeoutSeconds = queryTimeoutSeconds, debug = debug, explain = explain)
 
     if(explain ||
@@ -441,6 +442,7 @@ class QueryExecutor(httpClient: HttpClient,
   }
 
   private def reallyApply(base: RequestBuilder, // scalastyle:ignore parameter.number method.length cyclomatic.complexity
+                          mirrors: List[RequestBuilder],
                           dataset: String,
                           analyses: BinaryTree[SoQLAnalysis[String, SoQLType]],
                           context: Context,
@@ -476,9 +478,8 @@ class QueryExecutor(httpClient: HttpClient,
 
     val route = if(explain) "info" else "query"
 
-    try {
-      Timing.TimedResultReturningTransformed{
-        using(IOUtils.toInputStream(serializedAnalyses, StandardCharsets.UTF_8.name)) { queryInputStream =>
+    def sendRequest(base: RequestBuilder) =
+      using(IOUtils.toInputStream(serializedAnalyses, StandardCharsets.UTF_8.name)) { queryInputStream =>
           val request = base.p(route).
             addHeaders(PreconditionRenderer(precondition) ++ ifModifiedSince.map("If-Modified-Since" -> _.toHttpDate)).
             addHeaders(extraHeaders).
@@ -486,6 +487,24 @@ class QueryExecutor(httpClient: HttpClient,
             blob(queryInputStream, "application/octet-stream") // blob implies POST
           httpClient.execute(request, resourceScope)
         }
+
+    new Thread {
+      override def run(): Unit = {
+        try {
+          mirrors.foreach { req =>
+            log.debug(s"Sending mirror query ${req.url} to mirror base query ${base.url}")
+            sendRequest(req)
+          }
+        } catch {
+          case e: Throwable =>
+            log.error("Exception while executing against mirrors", e)
+        }
+      }
+    }.start()
+
+    try {
+      Timing.TimedResultReturningTransformed{
+        sendRequest(base)
       }{ (result,duration)=>
         result.resultCode match {
           case HttpServletResponse.SC_NOT_FOUND =>

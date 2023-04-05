@@ -114,14 +114,23 @@ class QueryResource(secondary: Secondary,
 
       final class QueryRetryState(retriesSoFar: Int, excludedSecondaryNames: Set[String]) {
         val chosenSecondaryName = secondary.chosenSecondaryName(forcedSecondaryName, dataset, copy, excludedSecondaryNames)
+
+        val secondaryMirrorNames = chosenSecondaryName.map(secondary.secondaryMirrors).getOrElse(Nil)
+        log.debug(s"Selected Mirrors: $secondaryMirrorNames")
+
         val second = secondary.serviceInstance(dataset, chosenSecondaryName) match {
           case Some(x) => x
           case None =>
             finishRequest(noSecondaryAvailable(dataset))
         }
 
+        val mirrorInstances = secondaryMirrorNames.flatMap(name => secondary.serviceInstance(dataset, Some(name), markBrokenOnUnknown = false))
+
         val base = secondary.reqBuilder(second)
         log.debug("Base URI: " + base.url)
+
+        val mirrorBases = mirrorInstances.map(secondary.reqBuilder)
+        log.debug(s"Mirror URIs: ${mirrorBases.map(_.url)}")
 
         def checkTooManyRetries(): Unit = {
           if(isTooManyRetries) {
@@ -212,6 +221,7 @@ class QueryResource(secondary: Secondary,
           queryExecutor(
             base = base.receiveTimeoutMS(recvTimeout).connectTimeoutMS(connectTimeout.toMillis.toInt),
             dataset = dataset,
+            mirrors = mirrorBases,
             analyses = analyzedQuery,
             schema = schema.payload,
             precondition = precondition,
