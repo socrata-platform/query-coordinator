@@ -3,22 +3,22 @@
     "_": {
       "aaaa-aaa1": [
         "text",
-        "stationname"
+        "A"
       ],
       "aaaa-aaa2": [
         "number",
-        "roadsurfacetemperature"
+        "B"
       ]
     }
   },
   "rollups": {
-    "r1": "SELECT sum(`roadsurfacetemperature`) / count(`roadsurfacetemperature`) GROUP BY `stationname`"
+    "r1": "SELECT sum(`B`) / count(`B`) GROUP BY `A`"
   },
   "tests": [
     {
-      "query": "SELECT sum(`roadsurfacetemperature`) / count(`roadsurfacetemperature`) GROUP BY `stationname`",
+      "query": "SELECT sum(`B`) / count(`B`) GROUP BY `A`",
       "rewrites": {
-        "r1": "SELECT sum(`roadsurfacetemperature`) / count(`roadsurfacetemperature`) GROUP BY `stationname`"
+        "r1": "SELECT sum(`B`) / count(`B`) GROUP BY `A`"
       }
     }
   ]
