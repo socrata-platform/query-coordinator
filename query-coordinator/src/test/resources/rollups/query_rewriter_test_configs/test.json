@@ -1,0 +1,25 @@
+{
+  "schemas": {
+    "_": {
+      "aaaa-aaa1": [
+        "text",
+        "stationname"
+      ],
+      "aaaa-aaa2": [
+        "number",
+        "roadsurfacetemperature"
+      ]
+    }
+  },
+  "rollups": {
+    "r1": "SELECT sum(`roadsurfacetemperature`) / count(`roadsurfacetemperature`) GROUP BY `stationname`"
+  },
+  "tests": [
+    {
+      "query": "SELECT sum(`roadsurfacetemperature`) / count(`roadsurfacetemperature`) GROUP BY `stationname`",
+      "rewrites": {
+        "r1": "SELECT sum(`roadsurfacetemperature`) / count(`roadsurfacetemperature`) GROUP BY `stationname`"
+      }
+    }
+  ]
+}
