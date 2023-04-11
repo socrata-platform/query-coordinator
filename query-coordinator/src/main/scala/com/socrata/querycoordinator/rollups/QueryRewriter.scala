@@ -49,7 +49,7 @@ object QueryRewriter {
     rus.mapValues(mergeAnalysis)
   }
 
-  private[rollups] def mergeAnalysis(analysis: AnalysisTree): Analysis = {
+  private[querycoordinator] def mergeAnalysis(analysis: AnalysisTree): Analysis = {
     SoQLAnalysis.merge(
       SoQLFunctions.And.monomorphic.get,
       analysis.map(a => a.mapColumnIds((columnId, _) => ColumnName(columnId))
