@@ -5,16 +5,10 @@ import com.socrata.soql.types.{SoQLBoolean, SoQLFloatingTimestamp, SoQLNumber, S
 import org.scalatest.FunSuite
 
 //https://socrata.atlassian.net/browse/EN-58977
-//We have an issue in rewriting when dealing with pipes.
-//Specifically when only the right side of a pipe is candidate for rewriting, there are some edge cases we dont understand how to handle.
-//This right-side-only rewrite is being used and works for com.socrata.querycoordinator.defect.EN58705
-//This same logic is causing a false-success here.
-// Seems there is some rule-set we are missing
-//There is a function com.socrata.soql.SoQLAnalysis.merge, which calls com.socrata.soql.Merger#tryMerge, that we use for collapsing pipes.
-//I propose there is a missed edge case with collapsing pipes, and this is the source of our troubles.
 class EN58977 extends FunSuite{
 
-  test("example one, should fail to rewrite due to groupbys, but also not false succeed from count(*)") {
+  //This rewrite should fail from a mismatch of groupbys in the left pipe, and (after being fixed) fail on the right pipe because of wrong context, causing a rewrite NOT to happen.
+  test("example one, rollup missing groupby in query. Should not rewrite.") {
     AssertRewriteDefault(
       Map(
         "_" -> Map(
@@ -56,7 +50,8 @@ class EN58977 extends FunSuite{
       Map(
         "one" -> "SELECT `clerkname` AS `clerkname`, date_trunc_ymd(`submitted`) AS `date_trunc_ymd_submitted`, date_trunc_ym(`submitted`) AS `date_trunc_ym_submitted`, date_trunc_y(`submitted`) AS `date_trunc_y_submitted`, date_extract_woy(`submitted`) AS `date_extract_woy_submitted`, min(`submitted`) AS `min_submitted`, max(`submitted`) AS `max_submitted`, count(*) AS `count`, count(`filingid`) AS `count_filingid`, count(`filingstate`) AS `count_filingstate`, count(`clerkname`) AS `count_clerkname` GROUP BY `clerkname`, `date_trunc_ymd_submitted`, `date_trunc_ym_submitted`, `date_trunc_y_submitted`, `date_extract_woy_submitted`"
       ),
-      //The issue here is the 'count(*)' from 'select count(*) as rows' rewriting to the rollup 'count(*)', which is wrong.
+      //The issue is here, the 'count(*)' from the rollup is being rewritten into the right-side pipe
+      //Left-side pipe correctly fails to rewrite due to groupby mismatch
       "select count(*) group by casecategorycode |> select count(*) as rows",
       "select count(*) group by casecategorycode |> select count(*) as rows",
       None
