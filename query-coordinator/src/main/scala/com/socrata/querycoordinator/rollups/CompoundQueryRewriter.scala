@@ -9,7 +9,6 @@ import com.socrata.soql.typed.{ColumnRef, CompoundRollup, Indistinct}
 import com.socrata.soql.types.{SoQLType, SoQLValue}
 import com.socrata.soql.{BinaryTree, Compound, Leaf, PipeQuery, SoQLAnalyzer}
 import com.socrata.querycoordinator._
-import com.socrata.querycoordinator.util.BinaryTreeHelper
 
 
 /**

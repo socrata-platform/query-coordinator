@@ -43,16 +43,18 @@ object QueryRewriter {
   }
 
   /**
-    * Merge rollups analysis
+    * Merge rollups analyses
     */
   def mergeRollupsAnalysis(rus: Map[RollupName, AnalysisTree]): Map[RollupName, Analysis] = {
-    rus.mapValues(bt =>
-      SoQLAnalysis.merge(
-        SoQLFunctions.And.monomorphic.get,
-        bt.map(a => a.mapColumnIds((columnId, _) => ColumnName(columnId))
-        )
-      ).outputSchema.leaf.mapColumnIds((columnName, _) => columnName.name)
-    )
+    rus.mapValues(mergeAnalysis)
+  }
+
+  private[rollups] def mergeAnalysis(analysis: AnalysisTree): Analysis = {
+    SoQLAnalysis.merge(
+      SoQLFunctions.And.monomorphic.get,
+      analysis.map(a => a.mapColumnIds((columnId, _) => ColumnName(columnId))
+      )
+    ).outputSchema.leaf.mapColumnIds((columnName, _) => columnName.name)
   }
 
   def primaryRollup(names: Seq[String]): Option[String] = {

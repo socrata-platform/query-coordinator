@@ -11,10 +11,10 @@
       "a122-2122": ["date", "incident_date"]
     }
   },
-  "rollups": {
+  "pipes": {
     "p1": "SELECT `_a115-2115` AS `incident_id`, `_a116-2116` AS `incident` WHERE `_a118-2118` = 'Open' |> SELECT `incident_id`, `incident` WHERE (contains(lower(`incident`), 'robbery')) |> SELECT `incident_id` GROUP BY `incident_id`"
   },
-  "tests": {
-    "p1": "SELECT "
+  "merges": {
+    "p1": "SELECT ListMap(incident_id -> a115-2115 :: number) WHERE op$and(op$=(a118-2118 :: text,\"Open\" :: text) :: boolean,contains(lower(a116-2116 :: text) :: text,\"robbery\" :: text) :: boolean) :: boolean GROUP BY a115-2115 :: number"
   }
 }

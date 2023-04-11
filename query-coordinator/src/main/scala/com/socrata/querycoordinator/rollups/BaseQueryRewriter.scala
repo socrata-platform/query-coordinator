@@ -327,7 +327,7 @@ abstract class BaseQueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) {
     QueryParser.dsContext(columnIdMap, schema.schema)
   }
 
-  private[querycoordinator] def analyzeRollups(schema: Schema, rollups: Seq[RollupInfo],
+  private[rollups] def analyzeRollups(schema: Schema, rollups: Seq[RollupInfo],
                      getSchemaByTableName: TableName => SchemaWithFieldName): Map[RollupName, AnalysisTree] = {
 
     val dsContext = Map(TableName.PrimaryTable.qualifier -> prefixedDsContext(schema))
