@@ -37,7 +37,7 @@ class CompoundQueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends
         //  ToDo: !!!!!
         //    How to check if merge fails ???
         //    As is, it looks like it's always succeed.
-        //    Meybe return None if it fails?
+        //    Maybe return None if it fails?
         //  ToDo: !!!!!
         val mergedQuery = QueryRewriter.mergeAnalysis(analyzedQuery)
 
