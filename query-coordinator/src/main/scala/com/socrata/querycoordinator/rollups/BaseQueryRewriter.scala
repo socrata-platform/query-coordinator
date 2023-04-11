@@ -38,7 +38,11 @@ abstract class BaseQueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) {
   (SoQLAnalysis[String, SoQLType], Option[String]) = {
 
     val rewritten = bestRollup(possibleRewrites(analyzedQuery, rollups, debug).toSeq)
-    val (rollupName, analysis) = rewritten map { x => (Option(x._1), x._2) } getOrElse ((None, analyzedQuery))
+
+    val (rollupName, analysis) = rewritten.map {
+      case (rollupName, analysis) => (Option(rollupName), analysis)
+    }.getOrElse((None, analyzedQuery))
+
     rollupName.foreach(ru => log.info(s"Rewrote query on dataset $dataset to rollup $ru")) // only log rollup name if it is defined.
     log.debug(s"Rewritten analysis: $analysis")
     (analysis, rollupName)
