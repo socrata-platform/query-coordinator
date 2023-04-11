@@ -59,16 +59,11 @@ class CompoundQueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends
         }
 
       case Leaf(analysis) =>
-        val (schemaFrom, datasetOrResourceName) = analysis.from match {
-          case Some(TableName(TableName.This, _)) =>
-            (schema, Left(dataset))
-          case Some(tableName@TableName(TableName.SingleRow, _)) =>
-            (Schema.SingleRow, Right(tableName.name))
-          case Some(tableName) =>
-            val schemaWithFieldName = schemaFetcher(tableName)
-            (schemaWithFieldName.toSchema(), Right(tableName.name))
-          case None =>
-            (schema, Left(dataset))
+        val datasetOrResourceName = analysis.from match {
+          case Some(TableName(TableName.This, _)) => Left(dataset)
+          case Some(tableName@TableName(TableName.SingleRow, _)) => Right(tableName.name)
+          case Some(tableName) => Right(tableName.name)
+          case None => Left(dataset)
         }
 
         datasetOrResourceName match {

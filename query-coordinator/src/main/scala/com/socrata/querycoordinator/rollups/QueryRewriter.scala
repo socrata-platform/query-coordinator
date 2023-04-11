@@ -45,21 +45,21 @@ object QueryRewriter {
   /**
     * Merge rollups analyses
     */
-  def mergeRollupsAnalysis(rus: Map[RollupName, AnalysisTree]): Map[RollupName, Analysis] = {
-    rus.mapValues(mergeAnalysis).collect({
-      case (k, Some(v)) => k -> v
-    })
-  }
+  def mergeRollupsAnalysis(rus: Map[RollupName, AnalysisTree]): Map[RollupName, Analysis] =
+    rus.mapValues(mergeAnalysis).collect {
+      case (rollupName, Some(analysis)) => rollupName -> analysis
+    }
+
 
   private[querycoordinator] def mergeAnalysis(analysis: AnalysisTree): Option[Analysis] = {
-    val m = SoQLAnalysis.merge(
+    val mergedTree = SoQLAnalysis.merge(
       SoQLFunctions.And.monomorphic.get,
-      analysis.map(a => a.mapColumnIds((columnId, _) => ColumnName(columnId))
+      analysis.map(_.mapColumnIds((columnId, _) => ColumnName(columnId))
       )
     )
 
-    m match {
-      case Leaf(_) => Some(m.outputSchema.leaf.mapColumnIds((columnName, _) => columnName.name))
+    mergedTree match {
+      case Leaf(analysis) => Some(analysis.mapColumnIds((columnName, _) => columnName.name))
       case _ => None
     }
   }
