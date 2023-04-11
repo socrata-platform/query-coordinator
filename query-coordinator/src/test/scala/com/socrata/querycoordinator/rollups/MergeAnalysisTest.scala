@@ -85,8 +85,10 @@ class MergeAnalysisTest extends BaseConfigurableRollupTest {
     rollups.size should equal(config.merges.size)
 
     rollups.foreach({ case (name, analysis) =>
-      val merged = QueryRewriter.mergeAnalysis(analysis)
-      merged.toString should equal(config.merges(name))
+      QueryRewriter.mergeAnalysis(analysis) match {
+        case Some(merged) => merged.toString should equal(config.merges(name))
+        case None => config.merges(name).length should equal(0)
+      }
     })
 
   }
@@ -98,6 +100,10 @@ class MergeAnalysisTest extends BaseConfigurableRollupTest {
     loadAndRunTests("rollups/analysis_merge_test_configs/test_pipes_1.json")
     loadAndRunTests("rollups/analysis_merge_test_configs/test_pipes_2.json")
     loadAndRunTests("rollups/analysis_merge_test_configs/test_pipes_3.json")
+  }
+
+  test("pipes another test") {
+    loadAndRunTests("rollups/analysis_merge_test_configs/test_pipes_4.json")
   }
 
 }

@@ -33,38 +33,31 @@ class CompoundQueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends
     })
 
     analyzedQuery match {
-      case PipeQuery(l, r) =>
-        //  ToDo: !!!!!
-        //    How to check if merge fails ???
-        //    As is, it looks like it's always succeed.
-        //    Maybe return None if it fails?
-        //  ToDo: !!!!!
-        val mergedQuery = QueryRewriter.mergeAnalysis(analyzedQuery)
-
-        //  Try to rewrite merged pipe
-        possiblyRewriteOneAnalysisInQuery(dataset, schema, Leaf(mergedQuery), Some(ruMap), rollupFetcher, schemaFetcher, debug) match {
-          // Success? just return the rewrite
-          case (rewrite, rollup) if rollup.nonEmpty => (rewrite, rollup)
-          // Fail? try to rewrite the left part
-          case _ =>
+      case Compound(op, l, r) =>
+        QueryRewriter.mergeAnalysis(analyzedQuery) match {
+          case Some(mergedQuery) =>   // successful merge, it's a leaf
+            //  Try to rewrite merged compound
+            possiblyRewriteOneAnalysisInQuery(dataset, schema, Leaf(mergedQuery), Some(ruMap), rollupFetcher, schemaFetcher, debug) match {
+              // Success? just return the rewrite
+              case (rewrite, rollup) if rollup.nonEmpty => (rewrite, rollup)
+              // Fail? try to rewrite the left part
+              case _ =>
+                possiblyRewriteOneAnalysisInQuery(dataset, schema, l, Some(ruMap), rollupFetcher, schemaFetcher, debug) match {
+                  // Success? append right to the left and return
+                  case (rewrite, rollup) if rollup.nonEmpty => (Compound(op, rewrite, r), rollup)
+                  // Fail? return the original query and empty rollup list
+                  case _ => (analyzedQuery, Seq.empty)
+                }
+            }
+          case None =>
             possiblyRewriteOneAnalysisInQuery(dataset, schema, l, Some(ruMap), rollupFetcher, schemaFetcher, debug) match {
               // Success? append right to the left and return
-              case (rewrite, rollup) if rollup.nonEmpty => (PipeQuery(rewrite, r), rollup)
+              case (rewrite, rollup) if rollup.nonEmpty => (Compound(op, rewrite, r), rollup)
               // Fail? return the original query and empty rollup list
               case _ => (analyzedQuery, Seq.empty)
             }
         }
-      case Compound(_, _, _) =>
-        if (ruMapOpt.isEmpty && ruMap.nonEmpty) {
-          possibleRewrites(analyzedQuery, ruMap, true) match {
-            case (unchanged, Nil) =>
-              possiblyRewriteJoin(unchanged, rollupFetcher, schemaFetcher)
-            case rewritten@(_, _) =>
-              rewritten
-          }
-        } else {
-          possiblyRewriteJoin(analyzedQuery, rollupFetcher, schemaFetcher)
-        }
+
       case Leaf(analysis) =>
         val (schemaFrom, datasetOrResourceName) = analysis.from match {
           case Some(TableName(TableName.This, _)) =>

@@ -1,0 +1,20 @@
+{
+  "schemas": {
+    "_": {
+      "a001-a001": ["number", "field"],
+      "dxyz-txt1": ["text", "timezone"]
+    }
+  },
+  "pipes": {
+    "p1": "SELECT `_dxyz-txt1` as timezone, count(*) GROUP BY timezone |> SELECT count(*) as ct"
+  },
+  "merges": {
+    "p1": ""
+  }
+}
+
+
+
+
+
+
