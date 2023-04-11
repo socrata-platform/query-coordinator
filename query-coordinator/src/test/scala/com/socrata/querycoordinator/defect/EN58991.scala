@@ -7,7 +7,7 @@ import org.scalatest.FunSuite
 //https://socrata.atlassian.net/browse/EN-58991
 class EN58991 extends FunSuite{
 
-  test("example one") {
+  test("example one, should rewrite exact") {
     AssertRewriteDefault(
       Map(
         "_" -> Map(
