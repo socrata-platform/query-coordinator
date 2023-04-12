@@ -32,30 +32,13 @@ class CompoundQueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends
       case rollups => analyzeRollups(schema, rollups, schemaFetcher)
     })
 
-    analyzedQuery match {
+    QueryRewriter.mergeAnalysis(analyzedQuery) match {
       case Compound(op, l, r) =>
-        QueryRewriter.mergeAnalysis(analyzedQuery) match {
-          case Some(mergedQuery) =>   // successful merge, it's a leaf
-            //  Try to rewrite merged compound
-            possiblyRewriteOneAnalysisInQuery(dataset, schema, Leaf(mergedQuery), Some(ruMap), rollupFetcher, schemaFetcher, debug) match {
-              // Success? just return the rewrite
-              case (rewrite, rollup) if rollup.nonEmpty => (rewrite, rollup)
-              // Fail? try to rewrite the left part
-              case _ =>
-                possiblyRewriteOneAnalysisInQuery(dataset, schema, l, Some(ruMap), rollupFetcher, schemaFetcher, debug) match {
-                  // Success? append right to the left and return
-                  case (rewrite, rollup) if rollup.nonEmpty => (Compound(op, rewrite, r), rollup)
-                  // Fail? return the original query and empty rollup list
-                  case _ => (analyzedQuery, Seq.empty)
-                }
-            }
-          case None =>
-            possiblyRewriteOneAnalysisInQuery(dataset, schema, l, Some(ruMap), rollupFetcher, schemaFetcher, debug) match {
-              // Success? append right to the left and return
-              case (rewrite, rollup) if rollup.nonEmpty => (Compound(op, rewrite, r), rollup)
-              // Fail? return the original query and empty rollup list
-              case _ => (analyzedQuery, Seq.empty)
-            }
+        possiblyRewriteOneAnalysisInQuery(dataset, schema, l, Some(ruMap), rollupFetcher, schemaFetcher, debug) match {
+          // Success? just return the rewrite
+          case (rewrite, rollup) if rollup.nonEmpty => (Compound(op, rewrite, r), rollup)
+          // Fail? return original query
+          case _ => (analyzedQuery, Seq.empty)
         }
 
       case Leaf(analysis) =>
