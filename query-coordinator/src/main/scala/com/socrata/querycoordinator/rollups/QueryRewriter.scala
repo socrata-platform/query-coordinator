@@ -4,7 +4,7 @@ import com.socrata.querycoordinator.rollups.QueryRewriter.{Analysis, AnalysisTre
 import com.socrata.querycoordinator.{Schema, SchemaWithFieldName}
 import com.socrata.soql.environment.{ColumnName, TableName}
 import com.socrata.soql.functions.SoQLFunctions
-import com.socrata.soql.{BinaryTree, SoQLAnalysis, Leaf, UnionQuery}
+import com.socrata.soql.{BinaryTree, SoQLAnalysis, Leaf, Compound, UnionQuery}
 import com.socrata.soql.types.SoQLType
 
 /**
@@ -29,6 +29,8 @@ trait QueryRewriter {
 object QueryRewriter {
   import com.socrata.soql.typed._ // scalastyle:ignore import.grouping
 
+  val log = org.slf4j.LoggerFactory.getLogger(classOf[QueryRewriter])
+
   type Analysis = SoQLAnalysis[ColumnId, SoQLType]
   type AnalysisTree = BinaryTree[Analysis]
   type ColumnId = String
@@ -46,8 +48,11 @@ object QueryRewriter {
     * Merge rollups analyses
     */
   def mergeRollupsAnalysis(rus: Map[RollupName, AnalysisTree]): Map[RollupName, Analysis] =
-    rus.mapValues(mergeAnalysis).collect {
-      case (rollupName, Leaf(analysis)) => rollupName -> analysis
+    rus.mapValues(mergeAnalysis).flatMap {
+      case (rollupName, Leaf(analysis)) => Some(rollupName -> analysis)
+      case (rollupName, Compound(_, _, _)) =>
+        log.error(s"Found rollup that was not fully collapsible ${rollupName}")
+        None
     }
 
 
