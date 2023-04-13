@@ -43,14 +43,14 @@ object QueryRewritingTestUtility {
     val (rewriter,dataset,schema,rollupFetcher,schemaFetcher) = defaultRewriterAndFetchers(analyzer,datasetDefinitions, rollupsDefinition)
     AssertRewrite(
       parser.binaryTreeSelect,
-      defaultMergingAnalysisFunction(analyzer),
+      mergingAnalysisFunction(analyzer),
       defaultMappingFunction,
       defaultRewriteFunction(rewriter, dataset, schema, rollupFetcher, schemaFetcher)
     )(
       datasetDefinitions,
       rollupsDefinition,
       queryDefinition,
-      AnalyzeRewrittenFromRollup(expectedRewritten,expectedRollupName)
+      AnalyzeRewrittenFromRollup(expectedRewritten,expectedRollupName,defaultAnalysisFunction(analyzer))
     )
   }
 
@@ -58,7 +58,7 @@ object QueryRewritingTestUtility {
     val (parser,analyzer) = defaultParserAnalyzer()
     AssertMerge(
       parser.binaryTreeSelect,
-      defaultMergingAnalysisFunction(analyzer),
+      mergingAnalysisFunction(analyzer),
       defaultMappingFunction,
       defaultAnalysisFunction(analyzer)
     )(
@@ -84,7 +84,7 @@ object QueryRewritingTestUtility {
 
   def defaultAnalysisFunction(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) = (a: AnalyzedDatasetContext) => (b: ParsedSoql) => analyzer.analyzeBinary(b)(a)
 
-  def defaultMergingAnalysisFunction(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) = defaultAnalysisFunction(analyzer).andThen(_.andThen(SoQLAnalysis.merge(SoQLFunctions.And.monomorphic.get,_)))
+  def mergingAnalysisFunction(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) = defaultAnalysisFunction(analyzer).andThen(_.andThen(SoQLAnalysis.merge(SoQLFunctions.And.monomorphic.get,_)))
 
 
   def defaultMappingFunction = (a: ColumnMappings) => (b: AnalyzedSoql) => QueryParser.remapAnalyses(a, b)
@@ -160,7 +160,7 @@ object QueryRewritingTestUtility {
   }
 
   // This is the function passed as the last argument to AssertRewrite, that helps build what the expected rewritten query should be. Second argument set satisfies BuildRewrittenContextFunction
-  def AnalyzeRewrittenFromRollup(expectedRewrittenQuery: String, expectedRollupName: Option[String])(rollupsDefinition: RollupsDefinition, soqlParseFunction: SoqlParseFunction, analyzedDatasetContext: AnalyzedDatasetContext, analysisFunction: SoqlAnalysisFunction, columnMapping: ColumnMappings, analysisMappingFunction: RemapAnalyzedSoqlFunction): (RemappedAnalyzedSoql, Seq[String]) = {
+  def AnalyzeRewrittenFromRollup(expectedRewrittenQuery: String, expectedRollupName: Option[String], expectedAnalysisFunction: SoqlAnalysisFunction)(rollupsDefinition: RollupsDefinition, soqlParseFunction: SoqlParseFunction, analyzedDatasetContext: AnalyzedDatasetContext, analysisFunction: SoqlAnalysisFunction, columnMapping: ColumnMappings, analysisMappingFunction: RemapAnalyzedSoqlFunction): (RemappedAnalyzedSoql, Seq[String]) = {
     expectedRollupName match{
       case Some(rollupName)=>
         //Since we expect a rollup, parse and analyze as a rollup query. Meaning: combine contexts and do column name id mapping
@@ -168,13 +168,13 @@ object QueryRewritingTestUtility {
         val parsed = soqlParseFunction(expectedRewrittenQuery)
         val ruCtx = rollupContext(soqlParseFunction, analysisFunction, analyzedDatasetContext)(rollup)
         val ctx = analyzedDatasetContext.withUpdatedSchemas(_ ++ ruCtx)
-        val result = analysisFunction(ctx)(parsed)
+        val result = expectedAnalysisFunction(ctx)(parsed)
         val columnMap = columnMapping ++ rollupColumnIds(soqlParseFunction, analysisFunction, analyzedDatasetContext)(rollup)
         (analysisMappingFunction(columnMap)(result), Seq(rollupName))
       case None=>
         //We do not expect a rewrite. No need to expand context or do column name id mapping
         val parsed = soqlParseFunction(expectedRewrittenQuery)
-        val result = analysisFunction(analyzedDatasetContext)(parsed)
+        val result = expectedAnalysisFunction(analyzedDatasetContext)(parsed)
         (analysisMappingFunction(columnMapping)(result), Seq.empty)
     }
 
