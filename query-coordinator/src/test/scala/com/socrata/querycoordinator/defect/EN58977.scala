@@ -98,7 +98,7 @@ class EN58977 extends FunSuite{
         )
       ),
       Map(
-        "one" -> "SELECT `casecategorycode`,`clerkname` AS `clerkname`, date_trunc_ymd(`submitted`) AS `date_trunc_ymd_submitted`, date_trunc_ym(`submitted`) AS `date_trunc_ym_submitted`, date_trunc_y(`submitted`) AS `date_trunc_y_submitted`, date_extract_woy(`submitted`) AS `date_extract_woy_submitted`, min(`submitted`) AS `min_submitted`, max(`submitted`) AS `max_submitted`, count(*) AS `count`, count(`filingid`) AS `count_filingid`, count(`filingstate`) AS `count_filingstate`, count(`clerkname`) AS `count_clerkname` GROUP BY `casecategorycode`, `clerkname`, `date_trunc_ymd_submitted`, `date_trunc_ym_submitted`, `date_trunc_y_submitted`, `date_extract_woy_submitted`"
+        "one" -> "SELECT `casecategorycode`,`clerkname` AS `clerkname`, date_trunc_ymd(`submitted`) AS `date_trunc_ymd_submitted`, date_trunc_ym(`submitted`) AS `date_trunc_ym_submitted`, date_trunc_y(`submitted`) AS `date_trunc_y_submitted`, date_extract_woy(`submitted`) AS `date_extract_woy_submitted`, min(`submitted`) AS `min_submitted`, max(`submitted`) AS `max_submitted`, count(*) AS `count`, count(`filingid`) AS `count_filingid`, count(`filingstate`) AS `count_filingstate`, count(`clerkname`) AS `count_clerkname` GROUP BY `clerkname`, `date_trunc_ymd_submitted`, `date_trunc_ym_submitted`, `date_trunc_y_submitted`, `date_extract_woy_submitted`, `casecategorycode`"
       ),
       "select count(*) group by casecategorycode |> select count(*) as rows",
       "select coalesce(sum(c9),0) as count group by c1 |> select count(*) as rows",
