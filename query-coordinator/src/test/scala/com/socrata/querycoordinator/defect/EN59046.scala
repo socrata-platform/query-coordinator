@@ -1,6 +1,6 @@
 package com.socrata.querycoordinator.defect
 
-import com.socrata.querycoordinator.QueryRewritingTestUtility.AssertRewriteDefault
+import com.socrata.querycoordinator.util.QueryRewritingTestUtility.AssertRewriteDefault
 import com.socrata.soql.types.{SoQLBoolean, SoQLFloatingTimestamp, SoQLNumber, SoQLText}
 import org.scalatest.FunSuite
 
