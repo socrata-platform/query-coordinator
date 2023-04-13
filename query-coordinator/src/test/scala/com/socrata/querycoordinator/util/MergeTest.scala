@@ -52,6 +52,7 @@ class MergeTest extends FunSuite {
           )
         ),
         "select *,1 |> select *,2 |> select *",
+        //correct expected is 'select *,1,2'
         "select *,1 |> select *,2 |> select *"
       )
     }
