@@ -50,7 +50,7 @@ object QueryRewritingTestUtility {
       datasetDefinitions,
       rollupsDefinition,
       queryDefinition,
-      AnalyzeRewrittenFromRollup(expectedRewritten,expectedRollupName,analysisFunction(analyzer))
+      AnalyzeRewrittenFromRollup(expectedRewritten,expectedRollupName,defaultAnalysisFunction(analyzer))
     )
   }
 
@@ -60,7 +60,7 @@ object QueryRewritingTestUtility {
       parser.binaryTreeSelect,
       mergingAnalysisFunction(analyzer),
       defaultMappingFunction,
-      analysisFunction(analyzer)
+      defaultAnalysisFunction(analyzer)
     )(
       datasetDefinitions,
       queryDefinition,
@@ -82,9 +82,9 @@ object QueryRewritingTestUtility {
 
   def defaultRewriteFunction(rewriter: QueryRewriter, dataset: String, schema: Schema, rollupFetcher: RollupFetcherFunction, schemaFetcher: SchemaFetcherFunction) = (a: RemappedAnalyzedSoql, b: RemappedRollupAnalysis) => rewriter.possiblyRewriteOneAnalysisInQuery(dataset, schema, a, Some(b), rollupFetcher, schemaFetcher, true)
 
-  def analysisFunction(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) = (a: AnalyzedDatasetContext) => (b: ParsedSoql) => analyzer.analyzeBinary(b)(a)
+  def defaultAnalysisFunction(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) = (a: AnalyzedDatasetContext) => (b: ParsedSoql) => analyzer.analyzeBinary(b)(a)
 
-  def mergingAnalysisFunction(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) = analysisFunction(analyzer).andThen(_.andThen(SoQLAnalysis.merge(SoQLFunctions.And.monomorphic.get,_)))
+  def mergingAnalysisFunction(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) = defaultAnalysisFunction(analyzer).andThen(_.andThen(SoQLAnalysis.merge(SoQLFunctions.And.monomorphic.get,_)))
 
 
   def defaultMappingFunction = (a: ColumnMappings) => (b: AnalyzedSoql) => QueryParser.remapAnalyses(a, b)
