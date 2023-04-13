@@ -171,9 +171,9 @@ class TestRollupQueryRewriter extends BaseConfigurableRollupTest {
   }
 
 // Unions in rollup definition are not supported
-//  test("rollup rewriter union rollup") {
-//    loadAndRunTests("rollups/query_rewriter_test_configs/test_union.json")
-//  }
+  ignore("rollup rewriter union rollup") {
+    loadAndRunTests("rollups/query_rewriter_test_configs/test_union.json")
+  }
 
 
   /*
