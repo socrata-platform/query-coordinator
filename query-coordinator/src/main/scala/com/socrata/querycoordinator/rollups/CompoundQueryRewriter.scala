@@ -4,12 +4,11 @@ package com.socrata.querycoordinator.rollups
 
 import com.socrata.querycoordinator.rollups.QueryRewriter.{Analysis, AnalysisTree, ColumnId, RollupName}
 import com.socrata.soql._
-import com.socrata.soql.environment.{ColumnName, TableName}
+import com.socrata.soql.environment.{TableName}
 import com.socrata.soql.typed.{ColumnRef, CompoundRollup, Indistinct}
 import com.socrata.soql.types.{SoQLType, SoQLValue}
 import com.socrata.soql.{BinaryTree, Compound, Leaf, PipeQuery, SoQLAnalyzer}
 import com.socrata.querycoordinator._
-import com.socrata.querycoordinator.util.BinaryTreeHelper
 
 
 /**
@@ -33,44 +32,26 @@ class CompoundQueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends
       case rollups => analyzeRollups(schema, rollups, schemaFetcher)
     })
 
-    analyzedQuery match {
-      case analyzedPipeQuery@PipeQuery(l, r) =>
-        val (nl, rollupLeft) = possiblyRewriteOneAnalysisInQuery(
-          dataset, schema, l, Some(ruMap), rollupFetcher, schemaFetcher, debug
-        )
-        val (nr, rollupJoin) = possiblyRewriteJoin(r, rollupFetcher, schemaFetcher)
-        val (nr2, rollupRight) = possiblyRewriteOneAnalysisInQuery(
-          dataset, schema, nr, Some(ruMap), rollupFetcher, schemaFetcher, debug
-        )
-        postProcessPipeRewrite(analyzedPipeQuery,ruMap,(nl,rollupLeft),(nr, rollupJoin),(nr2,rollupRight))
-      case Compound(_, _, _) =>
-        if (ruMapOpt.isEmpty && ruMap.nonEmpty) {
-          possibleRewrites(analyzedQuery, ruMap, true) match {
-            case (unchanged, Nil) =>
-              possiblyRewriteJoin(unchanged, rollupFetcher, schemaFetcher)
-            case rewritten@(_, _) =>
-              rewritten
-          }
-        } else {
-          possiblyRewriteJoin(analyzedQuery, rollupFetcher, schemaFetcher)
+    QueryRewriter.mergeAnalysis(analyzedQuery) match {
+      case Compound(op, l, r) =>
+        possiblyRewriteOneAnalysisInQuery(dataset, schema, l, Some(ruMap), rollupFetcher, schemaFetcher, debug) match {
+          // Success? just return the rewrite
+          case (rewrite, rollup) if rollup.nonEmpty => (Compound(op, rewrite, r), rollup)
+          // Fail? return original query
+          case _ => (analyzedQuery, Seq.empty)
         }
+
       case Leaf(analysis) =>
-        val (schemaFrom, datasetOrResourceName) = analysis.from match {
-          case Some(TableName(TableName.This, _)) =>
-            (schema, Left(dataset))
-          case Some(tableName@TableName(TableName.SingleRow, _)) =>
-            (Schema.SingleRow, Right(tableName.name))
-          case Some(tableName) =>
-            val schemaWithFieldName = schemaFetcher(tableName)
-            (schemaWithFieldName.toSchema(), Right(tableName.name))
-          case None =>
-            (schema, Left(dataset))
+        val datasetOrResourceName = analysis.from match {
+          case Some(TableName(TableName.This, _)) => Left(dataset)
+          case Some(tableName@TableName(TableName.SingleRow, _)) => Right(tableName.name)
+          case Some(tableName) => Right(tableName.name)
+          case None => Left(dataset)
         }
 
         datasetOrResourceName match {
           case Left(dataset) =>
             val rus = QueryRewriter.mergeRollupsAnalysis(ruMap)
-            // Only the leftmost soql in a chain can use rollups.
             possiblyRewriteQuery(dataset, analysis, rus, debug) match {
               case (rewrittenAnal, ru@Some(_)) =>
                 (Leaf(rewrittenAnal), ru.toSeq)
@@ -87,32 +68,6 @@ class CompoundQueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) extends
             // 2. in Analysis.from
             (Leaf(analysis), Seq.empty)
         }
-    }
-  }
-
-  //So, given a query such as 'SELECT timezone, count(*) GROUP BY timezone |> SELECT count(*) as ct'
-  //And a rollup 'SELECT `timezone` AS `timezone`, `country` AS `country`, count(*) AS `count` GROUP BY `timezone`, `country`'
-  //Our rollup rewriting process would see both 'count(*)'s as candidates for rewriting to the same expression, however this is not true.
-  //This is due to the expressions being analyzed without the context of groupBys, and similar aliases between pipes are not always the same meaning
-  //So logically what we want to do is only rewrite one of the pipes at a time, preferably the left-most
-  //Joins are also considered the "right" side, but I believe they are not an issue due to lack of a groupBy
-  def postProcessPipeRewrite(analyzedQuery: PipeQuery[SoQLAnalysis[String, SoQLType]],ruMap: Map[RollupName, AnalysisTree],left:(BinaryTree[SoQLAnalysis[String, SoQLType]],Seq[String]),join:(BinaryTree[SoQLAnalysis[String, SoQLType]],Seq[String]),right:(BinaryTree[SoQLAnalysis[String, SoQLType]],Seq[String])):(BinaryTree[SoQLAnalysis[String, SoQLType]], Seq[String])={
-    val PipeQuery(originalLeft,originalRight)=analyzedQuery
-    val (leftRewrite,leftRollups)=left
-    val (joinRewrite,joinRollups)=join
-    val (rightRewrite,rightRollups)=right
-    (leftRollups,joinRollups,rightRollups)match{
-      //If the right is rewritten, we only care about the right, left is not needed, and the right will be the post-join
-      case (Nil,_,Seq(_)) => right
-      //If only the join is rewritten, it acts as the "right". If right was not rewritten, join and right are the same, but lets be explicit and use the join version.
-      case (Nil,Seq(_),Nil) => join
-      //If left was rewritten, we only want at most the join? Definitely not the right
-      case (Seq(_),Seq(_),_) => (PipeQuery(leftRewrite,joinRewrite),leftRollups++joinRollups)
-      //If just left and no join, lets use rewritten left and original right
-      case (Seq(_),Nil,_) => (PipeQuery(leftRewrite,originalRight),leftRollups)
-      //Last resort if we have no rewrites, try to compound rewrite(exact...etc)
-      case (Nil,Nil,Nil) | _ => possibleRewrites(analyzedQuery,ruMap,true)
-
     }
   }
 
