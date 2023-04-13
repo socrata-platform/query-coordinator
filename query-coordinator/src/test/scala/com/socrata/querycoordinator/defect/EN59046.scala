@@ -45,8 +45,6 @@ class EN59046 extends FunSuite {
           "adjustedsubmitdate_column" -> (SoQLFloatingTimestamp.t, "adjustedsubmitdate"),
           "clerkresponsetime_column" -> (SoQLNumber.t, "clerkresponsetime"),
           "datefilter_column" -> (SoQLNumber.t, "datefilter"),
-
-
         )
       ),
       Map(
@@ -54,8 +52,8 @@ class EN59046 extends FunSuite {
         "one" -> "SELECT `casetypecode`, `filingstate`, `efspname`, date_trunc_ymd(`adjustedsubmitdate`), date_trunc_ym(`adjustedsubmitdate`), date_trunc_y(`adjustedsubmitdate`), min(`adjustedsubmitdate`), count(`filingid`), count(`casecategorycode`), count(`casetypecode`), count(`county`), count(`filingstate`), count(`efspname`), count(`rejectionreason`), count(`orgchartname`), count(`office`), count(`filingcode`), count(*) GROUP BY `casetypecode`, `filingstate`, `efspname`, date_trunc_ymd(`adjustedsubmitdate`), date_trunc_ym(`adjustedsubmitdate`), date_trunc_y(`adjustedsubmitdate`)"
       ),
       "SELECT filingid, 1 as adder |> select sum(adder)",
-      "SELECT filingid, 1 as adder |> select sum(adder)",
-      None
+      "SELECT sum(1) as sum_adder",
+      Some("one")
     )
   }
 
