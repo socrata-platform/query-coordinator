@@ -1,10 +1,10 @@
 package com.socrata.querycoordinator.util
 
-import com.socrata.querycoordinator.util.QueryRewritingTestUtility.{AssertMergeDefault, AssertRewriteDefault}
-import com.socrata.soql.types.{SoQLBoolean, SoQLFloatingTimestamp, SoQLNumber, SoQLText}
+import com.socrata.querycoordinator.util.QueryRewritingTestUtility.AssertMergeDefault
+import com.socrata.soql.types.SoQLNumber
 import org.scalatest.FunSuite
 
-class MergeTest extends FunSuite{
+class MergeTest extends FunSuite {
   test("select * |> select * -> select *") {
     AssertMergeDefault(
       Map(
