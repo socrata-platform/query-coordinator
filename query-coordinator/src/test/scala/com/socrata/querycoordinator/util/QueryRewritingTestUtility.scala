@@ -1,17 +1,16 @@
-package com.socrata.querycoordinator
+package com.socrata.querycoordinator.util
 
-import com.socrata.querycoordinator.QueryRewritingTestUtility.schemaFetcherFromDatasetDefinition
-import com.socrata.querycoordinator.rollups.{CompoundQueryRewriter, QueryRewriter, RollupInfo}
 import com.socrata.querycoordinator.rollups.QueryRewriter.{Analysis, ColumnId, RollupName}
-import com.socrata.soql.{SoQLAnalysis, _}
+import com.socrata.querycoordinator.rollups.{CompoundQueryRewriter, RollupInfo}
+import com.socrata.querycoordinator.{QualifiedColumnName, QueryParser, SchemaWithFieldName}
 import com.socrata.soql.ast.Select
 import com.socrata.soql.collection.OrderedMap
 import com.socrata.soql.environment.{ColumnName, DatasetContext, TableName}
 import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLFunctions, SoQLTypeInfo}
-import com.socrata.soql.mapping.ColumnNameMapper
 import com.socrata.soql.parsing.{AbstractParser, Parser}
 import com.socrata.soql.typed.CoreExpr
 import com.socrata.soql.types.{SoQLType, SoQLValue}
+import com.socrata.soql._
 import org.scalatest.Matchers.{convertToAnyShouldWrapper, equal}
 
 object QueryRewritingTestUtility {
@@ -60,6 +59,26 @@ object QueryRewritingTestUtility {
     )
   }
 
+  def AssertMergeDefault(datasetDefinitions: DatasetDefinitions, queryDefinition: QueryDefinition, expectedQuery: String): Unit = {
+    val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
+    val parserParams = AbstractParser.Parameters(allowJoins = true)
+    val parser = new Parser(parserParams)
+    val schemaFetcher = schemaFetcherFromDatasetDefinition(datasetDefinitions)
+    val dataset = "_"
+    val schema = schemaFetcher(TableName(dataset)).toSchema()
+    AssertMerge(
+      parser.binaryTreeSelect,
+      // aka Analyze(analyzer)
+      (a: AnalyzedDatasetContext) => (b: ParsedSoql) => SoQLAnalysis.merge(SoQLFunctions.And.monomorphic.get, analyzer.analyzeBinary(b)(a)),
+      // aka ReMap
+      (a: ColumnMappings) => (b: AnalyzedSoql) => QueryParser.remapAnalyses(a, b)
+    )(
+      datasetDefinitions,
+      queryDefinition,
+      expectedQuery
+    )
+  }
+
   def schemaFetcherFromDatasetDefinition(datasetDefinitions: DatasetDefinitions):TableName => SchemaWithFieldName={
     (tableName)=>datasetDefinitions.get(tableName.name).map(a=>SchemaWithFieldName(null,a,null)).getOrElse(throw new IllegalStateException(s"Could not load schema ${tableName.name}"))
   }
@@ -81,6 +100,14 @@ object QueryRewritingTestUtility {
     val query = analysisMappingFunction(columnMappings)(analysisFunction(datasetContext)(soqlParseFunction(queryDefinition)))
     val actual: Rewrites = rewriteFunction(query, rollupAnalysis)
     actual should equal(expected(rollupsDefinition, soqlParseFunction, datasetContext, analysisFunction, columnMappings, analysisMappingFunction))
+
+  }
+
+  def AssertMerge(soqlParseFunction: SoqlParseFunction, analysisFunction: SoqlAnalysisFunction, analysisMappingFunction: RemapAnalyzedSoqlFunction)(datasetDefinitions: DatasetDefinitions, queryDefinition: QueryDefinition, expectedQuery: QueryDefinition): Unit = {
+    val (datasetContext, columnMappings) = buildDatasetContextAndMapping(datasetDefinitions)
+    val actual = analysisMappingFunction(columnMappings)(analysisFunction(datasetContext)(soqlParseFunction(queryDefinition)))
+    val expected = analysisMappingFunction(columnMappings)(analysisFunction(datasetContext)(soqlParseFunction(expectedQuery)))
+    actual should equal(expected)
 
   }
 

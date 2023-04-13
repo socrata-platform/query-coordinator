@@ -1,6 +1,6 @@
 package com.socrata.querycoordinator
 
-import com.socrata.querycoordinator.QueryRewritingTestUtility._
+import com.socrata.querycoordinator.util.QueryRewritingTestUtility._
 import com.socrata.soql.types.{SoQLNumber, SoQLText}
 import org.scalatest.FunSuite
 
