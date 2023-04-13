@@ -10,7 +10,7 @@ import org.scalatest.FunSuite
 
 //ToDo: Aggregation bug ?
 class EN59046 extends FunSuite {
-  ignore("example one, sum") {
+  test("example one, sum") {
     AssertRewriteDefault(
       Map(
         "_" -> Map(
@@ -59,7 +59,7 @@ class EN59046 extends FunSuite {
     )
   }
 
-  ignore("example one, count") {
+  test("example one, count") {
     AssertRewriteDefault(
       Map(
         "_" -> Map(
@@ -93,18 +93,16 @@ class EN59046 extends FunSuite {
           "systempaymentaccounttype_column" -> (SoQLText.t, "systempaymentaccounttype"),
           "adjustedsubmitdate_column" -> (SoQLFloatingTimestamp.t, "adjustedsubmitdate"),
           "clerkresponsetime_column" -> (SoQLNumber.t, "clerkresponsetime"),
-          "datefilter_column" -> (SoQLNumber.t, "datefilter"),
-
-
+          "datefilter_column" -> (SoQLNumber.t, "datefilter")
         )
       ),
       Map(
         //ei_auto_rollup_28_2022-03-10_21-00-35
         "one" -> "SELECT `casetypecode`, `filingstate`, `efspname`, date_trunc_ymd(`adjustedsubmitdate`), date_trunc_ym(`adjustedsubmitdate`), date_trunc_y(`adjustedsubmitdate`), min(`adjustedsubmitdate`), count(`filingid`), count(`casecategorycode`), count(`casetypecode`), count(`county`), count(`filingstate`), count(`efspname`), count(`rejectionreason`), count(`orgchartname`), count(`office`), count(`filingcode`), count(*) GROUP BY `casetypecode`, `filingstate`, `efspname`, date_trunc_ymd(`adjustedsubmitdate`), date_trunc_ym(`adjustedsubmitdate`), date_trunc_y(`adjustedsubmitdate`)"
       ),
-      "SELECT filingid, 1 as adder |> select count(adder)",
-      "SELECT filingid, 1 as adder |> select count(adder)",
-      None
+      "SELECT filingid, 1 as adder |> select count(*)",
+      "SELECT coalesce(sum(c18), 0) as count",
+      Some("one")
     )
   }
 
