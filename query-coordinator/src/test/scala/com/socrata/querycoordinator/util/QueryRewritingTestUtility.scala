@@ -108,9 +108,10 @@ object QueryRewritingTestUtility {
     val (datasetContext, columnMappings) = buildDatasetContextAndMapping(datasetDefinitions)
     val rollupAnalysis = buildRollups((a) => analysisMappingFunction(columnMappings)(analysisFunction(datasetContext)(a)), soqlParseFunction)(rollupsDefinition)
     val query = analysisMappingFunction(columnMappings)(analysisFunction(datasetContext)(soqlParseFunction(queryDefinition)))
-    val actual: Rewrites = rewriteFunction(query, rollupAnalysis)
-    actual should equal(expected(rollupsDefinition, soqlParseFunction, datasetContext, analysisFunction, columnMappings, analysisMappingFunction))
-
+    val (actualRewrite,actualRollups): Rewrites = rewriteFunction(query, rollupAnalysis)
+    val (expectedRewrite,expectedRollups) = expected(rollupsDefinition, soqlParseFunction, datasetContext, analysisFunction, columnMappings, analysisMappingFunction)
+    actualRewrite should equal(expectedRewrite)
+    actualRollups should equal(expectedRollups)
   }
 
   def AssertMerge(soqlParseFunction: SoqlParseFunction, mergingAnalysisFunction: SoqlAnalysisFunction, analysisMappingFunction: RemapAnalyzedSoqlFunction,analysisFunction: SoqlAnalysisFunction)(datasetDefinitions: DatasetDefinitions, queryDefinition: QueryDefinition, expectedQuery: QueryDefinition): Unit = {
