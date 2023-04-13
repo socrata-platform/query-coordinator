@@ -63,9 +63,6 @@ object QueryRewritingTestUtility {
     val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
     val parserParams = AbstractParser.Parameters(allowJoins = true)
     val parser = new Parser(parserParams)
-    val schemaFetcher = schemaFetcherFromDatasetDefinition(datasetDefinitions)
-    val dataset = "_"
-    val schema = schemaFetcher(TableName(dataset)).toSchema()
     AssertMerge(
       parser.binaryTreeSelect,
       // aka Analyze(analyzer)
