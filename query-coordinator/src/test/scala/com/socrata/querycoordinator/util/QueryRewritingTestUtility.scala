@@ -1,8 +1,9 @@
 package com.socrata.querycoordinator.util
 
 import com.socrata.querycoordinator.rollups.QueryRewriter.{Analysis, ColumnId, RollupName}
-import com.socrata.querycoordinator.rollups.{CompoundQueryRewriter, RollupInfo}
-import com.socrata.querycoordinator.{QualifiedColumnName, QueryParser, SchemaWithFieldName}
+import com.socrata.querycoordinator.rollups.{CompoundQueryRewriter, QueryRewriter, RollupInfo}
+import com.socrata.querycoordinator.util.QueryRewritingTestUtility.AnalyzedDatasetContext
+import com.socrata.querycoordinator.{QualifiedColumnName, QueryParser, Schema, SchemaWithFieldName}
 import com.socrata.soql.ast.Select
 import com.socrata.soql.collection.OrderedMap
 import com.socrata.soql.environment.{ColumnName, DatasetContext, TableName}
@@ -30,27 +31,21 @@ object QueryRewritingTestUtility {
   type RemappedRollupAnalysis = Map[RollupName, RemappedAnalyzedSoql]
   type QueryDefinition = String
   type RewriteFunction = (RemappedAnalyzedSoql, RemappedRollupAnalysis) => Rewrites
+  type RollupFetcherFunction = ()=>Seq[RollupInfo]
+  type SchemaFetcherFunction = TableName => SchemaWithFieldName
   // Crazy function that helps build what the rewritten query should be
   type BuildRewrittenContextFunction = (RollupsDefinition, SoqlParseFunction, AnalyzedDatasetContext, SoqlAnalysisFunction, ColumnMappings, RemapAnalyzedSoqlFunction) => (RemappedAnalyzedSoql, Seq[String])
 
   // Wrapping method for AssertRewrite that handles defaulting the first argument group
   // Also removed needed call to AnalyzeRewrittenFromRollup, instead making the caller simply provide the strings
   def AssertRewriteDefault(datasetDefinitions: DatasetDefinitions, rollupsDefinition: RollupsDefinition, queryDefinition: QueryDefinition, expectedRewritten: String, expectedRollupName: Option[String]): Unit = {
-    val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
-    val parserParams = AbstractParser.Parameters(allowJoins = true)
-    val parser = new Parser(parserParams)
-    val rewriter: CompoundQueryRewriter = new CompoundQueryRewriter(analyzer)
-    val rollupFetcher = rollupFetcherFromDefinition(rollupsDefinition)
-    val schemaFetcher=schemaFetcherFromDatasetDefinition(datasetDefinitions)
-    val dataset = "_"
-    val schema = schemaFetcher(TableName(dataset)).toSchema()
+    val (parser,analyzer) = defaultParserAnalyzer()
+    val (rewriter,dataset,schema,rollupFetcher,schemaFetcher) = defaultRewriterAndFetchers(analyzer,datasetDefinitions, rollupsDefinition)
     AssertRewrite(
       parser.binaryTreeSelect,
-      // aka Analyze(analyzer)
-      (a: AnalyzedDatasetContext) => (b: ParsedSoql) => SoQLAnalysis.merge(SoQLFunctions.And.monomorphic.get, analyzer.analyzeBinary(b)(a)),
-      // aka ReMap
-      (a: ColumnMappings) => (b: AnalyzedSoql) => QueryParser.remapAnalyses(a, b),
-      (a, b) => rewriter.possiblyRewriteOneAnalysisInQuery(dataset,schema,a,Some(b),rollupFetcher,schemaFetcher,true)
+      defaultMergingAnalysisFunction(analyzer),
+      defaultMappingFunction,
+      defaultRewriteFunction(rewriter, dataset, schema, rollupFetcher, schemaFetcher)
     )(
       datasetDefinitions,
       rollupsDefinition,
@@ -60,15 +55,12 @@ object QueryRewritingTestUtility {
   }
 
   def AssertMergeDefault(datasetDefinitions: DatasetDefinitions, queryDefinition: QueryDefinition, expectedQuery: String): Unit = {
-    val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
-    val parserParams = AbstractParser.Parameters(allowJoins = true)
-    val parser = new Parser(parserParams)
+    val (parser,analyzer) = defaultParserAnalyzer()
     AssertMerge(
       parser.binaryTreeSelect,
-      // aka Analyze(analyzer)
-      (a: AnalyzedDatasetContext) => (b: ParsedSoql) => SoQLAnalysis.merge(SoQLFunctions.And.monomorphic.get, analyzer.analyzeBinary(b)(a)),
-      // aka ReMap
-      (a: ColumnMappings) => (b: AnalyzedSoql) => QueryParser.remapAnalyses(a, b)
+      defaultMergingAnalysisFunction(analyzer),
+      defaultMappingFunction,
+      defaultAnalysisFunction(analyzer)
     )(
       datasetDefinitions,
       queryDefinition,
@@ -76,10 +68,31 @@ object QueryRewritingTestUtility {
     )
   }
 
-  def schemaFetcherFromDatasetDefinition(datasetDefinitions: DatasetDefinitions):TableName => SchemaWithFieldName={
+  def defaultRewriterAndFetchers(analyzer:SoQLAnalyzer[SoQLType,SoQLValue], datasetDefinitions: DatasetDefinitions, rollupsDefinition: RollupsDefinition):(QueryRewriter,String,Schema,RollupFetcherFunction,SchemaFetcherFunction)={
+    val rewriter: CompoundQueryRewriter = new CompoundQueryRewriter(analyzer)
+    val rollupFetcher = rollupFetcherFromDefinition(rollupsDefinition)
+    val schemaFetcher = schemaFetcherFromDatasetDefinition(datasetDefinitions)
+    val dataset = "_"
+    val schema = schemaFetcher(TableName(dataset)).toSchema()
+    (rewriter,dataset,schema,rollupFetcher,schemaFetcher)
+  }
+
+  def defaultParserAnalyzer()= (new Parser(AbstractParser.Parameters(allowJoins = true)),new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo))
+
+
+  def defaultRewriteFunction(rewriter: QueryRewriter, dataset: String, schema: Schema, rollupFetcher: RollupFetcherFunction, schemaFetcher: SchemaFetcherFunction) = (a: RemappedAnalyzedSoql, b: RemappedRollupAnalysis) => rewriter.possiblyRewriteOneAnalysisInQuery(dataset, schema, a, Some(b), rollupFetcher, schemaFetcher, true)
+
+  def defaultAnalysisFunction(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) = (a: AnalyzedDatasetContext) => (b: ParsedSoql) => analyzer.analyzeBinary(b)(a)
+
+  def defaultMergingAnalysisFunction(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) = defaultAnalysisFunction(analyzer).andThen(_.andThen(SoQLAnalysis.merge(SoQLFunctions.And.monomorphic.get,_)))
+
+
+  def defaultMappingFunction = (a: ColumnMappings) => (b: AnalyzedSoql) => QueryParser.remapAnalyses(a, b)
+
+  def schemaFetcherFromDatasetDefinition(datasetDefinitions: DatasetDefinitions):SchemaFetcherFunction={
     (tableName)=>datasetDefinitions.get(tableName.name).map(a=>SchemaWithFieldName(null,a,null)).getOrElse(throw new IllegalStateException(s"Could not load schema ${tableName.name}"))
   }
-  def rollupFetcherFromDefinition(rollupsDefinition: RollupsDefinition): ()=>Seq[RollupInfo]={
+  def rollupFetcherFromDefinition(rollupsDefinition: RollupsDefinition): RollupFetcherFunction={
     ()=>rollupsDefinition.map{case (name,soql)=>RollupInfo(name,soql)}.toSeq
   }
 
@@ -100,9 +113,9 @@ object QueryRewritingTestUtility {
 
   }
 
-  def AssertMerge(soqlParseFunction: SoqlParseFunction, analysisFunction: SoqlAnalysisFunction, analysisMappingFunction: RemapAnalyzedSoqlFunction)(datasetDefinitions: DatasetDefinitions, queryDefinition: QueryDefinition, expectedQuery: QueryDefinition): Unit = {
+  def AssertMerge(soqlParseFunction: SoqlParseFunction, mergingAnalysisFunction: SoqlAnalysisFunction, analysisMappingFunction: RemapAnalyzedSoqlFunction,analysisFunction: SoqlAnalysisFunction)(datasetDefinitions: DatasetDefinitions, queryDefinition: QueryDefinition, expectedQuery: QueryDefinition): Unit = {
     val (datasetContext, columnMappings) = buildDatasetContextAndMapping(datasetDefinitions)
-    val actual = analysisMappingFunction(columnMappings)(analysisFunction(datasetContext)(soqlParseFunction(queryDefinition)))
+    val actual = analysisMappingFunction(columnMappings)(mergingAnalysisFunction(datasetContext)(soqlParseFunction(queryDefinition)))
     val expected = analysisMappingFunction(columnMappings)(analysisFunction(datasetContext)(soqlParseFunction(expectedQuery)))
     actual should equal(expected)
 
@@ -186,13 +199,5 @@ object QueryRewritingTestUtility {
       case (cn, _typ) =>
         QualifiedColumnName(None, cn) -> cn.name
     }
-  }
-
-  def ReMap(mapping: ColumnMappings)(analysis: AnalyzedSoql): RemappedAnalyzedSoql = {
-    QueryParser.remapAnalyses(mapping, analysis)
-  }
-
-  def Analyze(analyzer: SoQLAnalyzer[SoQLType, SoQLValue])(ctx: AnalyzedDatasetContext)(parsed: ParsedSoql): AnalyzedSoql = {
-    analyzer.analyzeBinary(parsed)(ctx)
   }
 }
