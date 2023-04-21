@@ -446,9 +446,9 @@ class QueryResource(secondary: Secondary,
       new Interval(qsLastModified, sfLastModified)
     }).toDuration
     if (DataVersionDiff == 0 && timeDiff.getMillis == 0) {
-      log.info("schema from {} is identical", secondaryAddress)
+      log.debug("schema from {} is identical", secondaryAddress)
     } else {
-      log.info("schema from {} differs {} {} {} {} {}v {}{}m",
+      log.debug("schema from {} differs {} {} {} {} {}v {}{}m",
         secondaryAddress,
         sfDataVersion.toString,
         sfLastModified.toString(ISODateTimeFormat.dateHourMinuteSecond),

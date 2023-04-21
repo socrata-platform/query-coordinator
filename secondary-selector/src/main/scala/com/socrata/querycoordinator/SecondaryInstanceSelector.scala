@@ -153,7 +153,7 @@ class SecondaryInstanceSelector(config: SecondarySelectorConfig) extends Metrics
 
     syncDSS(dataset, dss)
     val instanceName = getInstanceName0
-    logger.info("Accessing dataset {} in {}", dataset, instanceName)
+    logger.debug("Accessing dataset {} in {}", dataset, instanceName)
     instanceName
   }
 
