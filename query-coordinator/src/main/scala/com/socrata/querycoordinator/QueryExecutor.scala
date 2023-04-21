@@ -359,12 +359,12 @@ class QueryExecutor(httpClient: HttpClient,
     // It is normal that queries whether group by or not to return no rows.
     // But let's be paranoid!  The worst that happens is that we'll fail to cache something.
     if(firstBlock.isEmpty) {
-      log.info(s"Empty block!  Not caching. ${queryTimeMs}ms $startWindow $endWindow ${offsetLimitInfo(relimitedAnalyses)}" )
+      log.debug(s"Empty block! Not caching. ${queryTimeMs}ms $startWindow $endWindow ${offsetLimitInfo(relimitedAnalyses)}" )
       return false
     }
 
     if(cacheSessionProvider.shouldSkip(queryTimeMs)) {
-      log.info(s"Query does not take long!  Not caching. ${queryTimeMs}ms $startWindow $endWindow ${offsetLimitInfo(relimitedAnalyses)}" )
+      log.debug(s"Query does not take long!  Not caching. ${queryTimeMs}ms $startWindow $endWindow ${offsetLimitInfo(relimitedAnalyses)}" )
       return false
     }
 
