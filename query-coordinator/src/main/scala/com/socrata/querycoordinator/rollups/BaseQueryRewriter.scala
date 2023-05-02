@@ -449,7 +449,7 @@ object BaseQueryRewriter {
     * Whether the expression is valid in SELECT clause when the query is grouped (both explicitly or implicitly)
     */
   private val selectableWhenGroup : Expr => Boolean = {
-    case fc: FunctionCall if (fc.function.isAggregate && !fc.parameters.isEmpty  && fc.parameters.forall(isAConstant)) =>
+    case fc @ FunctionCall(SumNumber, parameters, _, _)  if !parameters.isEmpty  && fc.parameters.forall(isAConstant) =>
       false
     case fc: FunctionCall if fc.function.isAggregate => true
     case fc: FunctionCall =>
