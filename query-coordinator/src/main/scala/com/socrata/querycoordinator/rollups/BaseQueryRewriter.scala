@@ -37,7 +37,8 @@ abstract class BaseQueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) {
                                    debug: Boolean = false):
   (SoQLAnalysis[String, SoQLType], Option[String]) = {
 
-    val rewritten = bestRollup(possibleRewrites(analyzedQuery, rollups, debug).toSeq)
+    val possible = possibleRewrites(analyzedQuery, rollups, debug)
+    val rewritten = bestRollup(possible.toSeq)
 
     val (rollupName, analysis) = rewritten.map {
       case (rollupName, analysis) => (Option(rollupName), analysis)
@@ -439,20 +440,24 @@ object BaseQueryRewriter {
     }
   }
 
+  private val isAConstant: Expr => Boolean = {
+    case l: typed.TypedLiteral[_] => true
+    case _ => false
+  }
+
   /**
     * Whether the expression is valid in SELECT clause when the query is grouped (both explicitly or implicitly)
     */
-  private def selectableWhenGroup(expr: Expr): Boolean = {
-    expr match {
-      case fc: FunctionCall if fc.function.isAggregate =>
-        true
-      case fc: FunctionCall =>
-        fc.parameters.forall(selectableWhenGroup)
-      case _: typed.TypedLiteral[_] =>
-        true
-      case _ =>
-        false
-    }
+  private val selectableWhenGroup : Expr => Boolean = {
+    case fc @ FunctionCall(SumNumber, parameters, _, _)  if !parameters.isEmpty  && fc.parameters.exists(isAConstant) =>
+      false
+    case fc: FunctionCall if fc.function.isAggregate => true
+    case fc: FunctionCall =>
+      fc.parameters.forall(selectableWhenGroup)
+    case _: typed.TypedLiteral[_] =>
+      true
+    case _ =>
+      false
   }
 
   def collectTableNames(selects: BinaryTree[Select]): Set[String] = {
