@@ -26,8 +26,10 @@ pipeline {
   parameters {
     booleanParam(name: 'RELEASE_CUT', defaultValue: false, description: 'Are we cutting a new release candidate?')
     booleanParam(name: 'FORCE_BUILD', defaultValue: false, description: 'Force build from latest tag if sbt release needed to be run between cuts')
+    booleanParam(name: 'FORCE_DOCKERIZE', defaultValue: false, description: 'Are we forcing a docker build?')
     string(name: 'AGENT', defaultValue: 'build-worker-pg13', description: 'Which build agent to use?')
     string(name: 'BRANCH_SPECIFIER', defaultValue: default_branch_specifier, description: 'Use this branch for building the artifact.')
+
 
   }
   agent {
@@ -61,6 +63,13 @@ pipeline {
             stage_cut = true  // other stages will be enabled in the cut stage if needed
             deploy_environment = "rc"
           }
+
+          // determine if we need to force a docker build
+          if (params.FORCE_DOCKERIZE == true) {
+            stage_build = true
+            stage_dockerize = true
+          }
+
           else if (env.CHANGE_ID != null) { // we're running a PR test
             stage_build = true
           }
