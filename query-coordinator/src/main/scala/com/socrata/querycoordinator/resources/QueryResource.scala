@@ -116,7 +116,7 @@ class QueryResource(secondary: Secondary,
         val chosenSecondaryName = secondary.chosenSecondaryName(forcedSecondaryName, dataset, copy, excludedSecondaryNames)
 
         val secondaryMirrorNames = chosenSecondaryName.map(secondary.secondaryMirrors).getOrElse(Nil)
-        log.info(s"Selected Mirrors for ${chosenSecondaryName}: $secondaryMirrorNames")
+        log.debug(s"Selected Mirrors for ${chosenSecondaryName}: $secondaryMirrorNames")
 
         val second = secondary.serviceInstance(dataset, chosenSecondaryName) match {
           case Some(x) => x
@@ -130,7 +130,7 @@ class QueryResource(secondary: Secondary,
         log.debug("Base URI: " + base.url)
 
         val mirrorBases = mirrorInstances.map(secondary.reqBuilder)
-        log.info(s"Mirror URIs: ${mirrorBases.map(_.url)}")
+        log.debug(s"Mirror URIs: ${mirrorBases.map(_.url)}")
 
         def checkTooManyRetries(): Unit = {
           if(isTooManyRetries) {
