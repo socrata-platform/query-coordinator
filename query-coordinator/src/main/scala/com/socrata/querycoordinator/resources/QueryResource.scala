@@ -116,7 +116,7 @@ class QueryResource(secondary: Secondary,
         val chosenSecondaryName = secondary.chosenSecondaryName(forcedSecondaryName, dataset, copy, excludedSecondaryNames)
 
         val secondaryMirrorNames = chosenSecondaryName.map(secondary.secondaryMirrors).getOrElse(Nil)
-        log.debug(s"Selected Mirrors: $secondaryMirrorNames")
+        log.info(s"Selected Mirrors for ${chosenSecondaryName}: $secondaryMirrorNames")
 
         val second = secondary.serviceInstance(dataset, chosenSecondaryName) match {
           case Some(x) => x
