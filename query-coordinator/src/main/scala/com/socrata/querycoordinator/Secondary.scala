@@ -28,8 +28,10 @@ class Secondary(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
     }
   }
 
-  def secondaryMirrors(secondaryName: String): List[String] =
+  def secondaryMirrors(secondaryName: String): List[String] = {
+    log.info(s"Determining secondary mirror for $secondaryName via $mirrors")
     mirrors.filterKeys(secondaryName.contains).values.headOption.getOrElse(Nil)
+  }
 
   def serviceInstance(dataset: String, instanceName: Option[String], markBrokenOnUnknown: Boolean = true): Option[ServiceInstance[AuxiliaryData]] = {
     val instance = for {
