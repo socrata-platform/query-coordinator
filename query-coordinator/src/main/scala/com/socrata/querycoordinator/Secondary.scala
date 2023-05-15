@@ -34,7 +34,7 @@ class Secondary(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
     } yield instance
 
     if (instance.isEmpty) {
-      log.info(s"Getting instance $instanceName failed")
+      log.info(s"Getting instance $instanceName failed. Options are ${secondaryProvider.providers}")
       if (markBrokenOnUnknown) {
         instanceName.foreach { n => secondaryInstance.flagError(dataset, n) }
       }
