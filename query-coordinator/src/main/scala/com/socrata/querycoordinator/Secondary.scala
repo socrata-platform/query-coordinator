@@ -33,8 +33,11 @@ class Secondary(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
       instance <- Option(secondaryProvider.provider(name).getInstance())
     } yield instance
 
-    if (markBrokenOnUnknown && instance.isEmpty) {
-      instanceName.foreach { n => secondaryInstance.flagError(dataset, n) }
+    if instance.isEmpty {
+      log.info(s"Getting instance $instanceName failed")
+      if (markBrokenOnUnknown) {
+        instanceName.foreach { n => secondaryInstance.flagError(dataset, n) }
+      }
     }
 
     instance
