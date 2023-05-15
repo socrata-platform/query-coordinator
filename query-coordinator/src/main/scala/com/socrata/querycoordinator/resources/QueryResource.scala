@@ -29,7 +29,8 @@ import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
 
 
-class QueryResource(secondary: Secondary,
+case class QueryResource(secondary: Secondary,
+                    mirror: Mirror,
                     schemaFetcher: SchemaFetcher,
                     queryParser: QueryParser,
                     queryExecutor: QueryExecutor,
@@ -115,7 +116,7 @@ class QueryResource(secondary: Secondary,
       final class QueryRetryState(retriesSoFar: Int, excludedSecondaryNames: Set[String]) {
         val chosenSecondaryName = secondary.chosenSecondaryName(forcedSecondaryName, dataset, copy, excludedSecondaryNames)
 
-        val secondaryMirrorNames = chosenSecondaryName.map(secondary.secondaryMirrors).getOrElse(Nil)
+        val secondaryMirrorNames = chosenSecondaryName.map(mirror.secondaryMirrors).getOrElse(Nil)
         log.debug(s"Selected Mirrors for ${chosenSecondaryName}: $secondaryMirrorNames")
 
         val second = secondary.serviceInstance(dataset, chosenSecondaryName) match {
@@ -129,7 +130,7 @@ class QueryResource(secondary: Secondary,
         val base = secondary.reqBuilder(second)
         log.debug("Base URI: " + base.url)
 
-        val mirrorBases = mirrorInstances.map(secondary.reqBuilder)
+        val mirrorBases = mirrorInstances.map(secondary.reqBuilder).toSet
         log.debug(s"Mirror URIs: ${mirrorBases.map(_.url)}")
 
         def checkTooManyRetries(): Unit = {
@@ -480,34 +481,5 @@ class QueryResource(secondary: Secondary,
                throw new Exception(s"X-Socrata-Fuse-Columns parse error $s.")
      }
      .toMap
-  }
-}
-
-object QueryResource {
-  def apply(secondary: Secondary, // scalastyle:ignore
-            schemaFetcher: SchemaFetcher,
-            queryParser: QueryParser,
-            queryExecutor: QueryExecutor,
-            connectTimeout: FiniteDuration,
-            schemaTimeout: FiniteDuration,
-            receiveTimeout: FiniteDuration,
-            schemaCache: (String, Option[String], Schema) => Unit,
-            schemaDecache: (String, Option[String]) => Option[Schema],
-            secondaryInstance: SecondaryInstanceSelector,
-            queryRewriter: QueryRewriter,
-            rollupInfoFetcher: RollupInfoFetcher): QueryResource = {
-    new QueryResource(secondary,
-      schemaFetcher,
-      queryParser,
-      queryExecutor,
-      connectTimeout,
-      schemaTimeout,
-      receiveTimeout,
-      schemaCache,
-      schemaDecache,
-      secondaryInstance,
-      queryRewriter,
-      rollupInfoFetcher
-    )
   }
 }

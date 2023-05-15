@@ -85,7 +85,7 @@ class QueryExecutor(httpClient: HttpClient,
    */
   def apply(base: RequestBuilder, // scalastyle:ignore parameter.number method.length cyclomatic.complexity
             dataset: String,
-            mirrors: List[RequestBuilder],
+            mirrors: Set[RequestBuilder],
             analyses: BinaryTree[SoQLAnalysis[String, SoQLType]],
             schema: Schema,
             precondition: Precondition,
@@ -442,7 +442,7 @@ class QueryExecutor(httpClient: HttpClient,
   }
 
   private def reallyApply(base: RequestBuilder, // scalastyle:ignore parameter.number method.length cyclomatic.complexity
-                          mirrors: List[RequestBuilder],
+                          mirrors: Set[RequestBuilder],
                           dataset: String,
                           analyses: BinaryTree[SoQLAnalysis[String, SoQLType]],
                           context: Context,
