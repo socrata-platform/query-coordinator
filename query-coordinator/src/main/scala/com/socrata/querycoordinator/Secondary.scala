@@ -11,7 +11,6 @@ import scala.concurrent.duration.FiniteDuration
 class Secondary(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
                 schemaFetcher: SchemaFetcher,
                 secondaryInstance: SecondaryInstanceSelector,
-                mirrors: Map[String, List[String]],
                 connectTimeout: FiniteDuration,
                 schemaTimeout: FiniteDuration) extends QueryService{
 
@@ -27,9 +26,6 @@ class Secondary(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
       secondaryInstance.getInstanceName(dataset, isInSecondary(_, dataset, copy), excludedSecondaryNames)
     }
   }
-
-  def secondaryMirrors(secondaryName: String): List[String] =
-    mirrors.get(secondaryName).map(_.toList).getOrElse(Nil)
 
   def serviceInstance(dataset: String, instanceName: Option[String], markBrokenOnUnknown: Boolean = true): Option[ServiceInstance[AuxiliaryData]] = {
     val instance = for {
@@ -86,11 +82,10 @@ object Secondary {
   def apply(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
             schemaFetcher: SchemaFetcher,
             secondaryInstance: SecondaryInstanceSelector,
-            mirrors: Map[String, List[String]],
             connectTimeout: FiniteDuration,
             schemaTimeout: FiniteDuration): Secondary = {
 
-    new Secondary(secondaryProvider, schemaFetcher, secondaryInstance, mirrors, connectTimeout, schemaTimeout)
+    new Secondary(secondaryProvider, schemaFetcher, secondaryInstance, connectTimeout, schemaTimeout)
   }
 
 }

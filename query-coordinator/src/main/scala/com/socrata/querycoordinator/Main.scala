@@ -90,16 +90,18 @@ object Main extends App with DynamicPortMap {
       secondaryProvider = dataCoordinatorProviderProvider,
       schemaFetcher = SchemaFetcher(httpClient),
       secondaryInstance = secondaryInstanceSelector,
-      mirrors = config.mirrors,
       connectTimeout = config.connectTimeout,
       schemaTimeout = config.schemaTimeout
     )
+
+    val mirror = Mirror(config.mirrors)
 
     val windower = new Windower(config.cache.rowsPerWindow)
     val maxWindowCount = config.cache.maxWindows
     val schemaFetcher = SchemaFetcher(httpClient)
     val queryResource = QueryResource(
       secondary = secondary,
+      mirror = mirror,
       schemaFetcher = schemaFetcher,
       queryParser = new QueryParser(analyzer, schemaFetcher, config.maxRows, config.defaultRowsLimit),
       queryExecutor = new QueryExecutor(httpClient, analysisSerializer, teeStream, cacheSessionProvider, windower, maxWindowCount, config.maxDbQueryTimeout.toSeconds),
