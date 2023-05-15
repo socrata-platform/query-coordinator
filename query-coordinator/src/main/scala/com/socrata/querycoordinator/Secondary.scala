@@ -28,13 +28,13 @@ class Secondary(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
   }
 
   def serviceInstance(dataset: String, instanceName: Option[String], markBrokenOnUnknown: Boolean = true): Option[ServiceInstance[AuxiliaryData]] = {
-    val instance = for {
-      name <- instanceName
-      instance <- Option(secondaryProvider.provider(name).getInstance())
-    } yield instance
+
+    val foundInstance = instanceName.flatMap(name => Option(secondaryProvider.provider(name)))
+    log.info(s"Found instance for $instanceName: ${foundInstance}")
+    val instance = foundInstance.flatMap(instance => Option(instance.getInstance()))
+    log.info(s"Instantiated instance for $instanceName: ${instance}. Options are ${secondaryProvider.providers}")
 
     if (instance.isEmpty) {
-      log.info(s"Getting instance $instanceName failed. Options are ${secondaryProvider.providers}")
       if (markBrokenOnUnknown) {
         instanceName.foreach { n => secondaryInstance.flagError(dataset, n) }
       }
