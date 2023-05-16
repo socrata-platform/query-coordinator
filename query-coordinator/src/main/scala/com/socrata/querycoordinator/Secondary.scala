@@ -44,7 +44,7 @@ class Secondary(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
     // TODO we should either create a separate less expensive method for checking if a dataset
     // is in a secondary, or we should integrate this into schema caching if and when we
     // build that.
-    val result = for {
+    for {
       instance <- Option(secondaryProvider.provider(name).getInstance())
       base <- Some(reqBuilder(instance))
       result <- schemaFetcher(base.receiveTimeoutMS(schemaTimeoutMillis), dataset, copy) match {
@@ -57,8 +57,6 @@ class Secondary(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
           None
       }
     } yield result
-    log.info(s"Checking if $dataset is in $name. Result is $result")
-    result
   }
 
 
