@@ -10,9 +10,9 @@ def deploy_service_pattern = "query-coordinator"
 
 // Stage control variables to simplify stage selection by build cause
 def boolean stage_cut = false
-def boolean stage_build = false
-def boolean stage_dockerize = false
-def boolean stage_deploy = false
+def boolean stage_build = true
+def boolean stage_dockerize = true
+def boolean stage_deploy = true
 
 // Utility Libraries
 def sbtbuild = new com.socrata.SBTBuild(steps, service, project_wd)
