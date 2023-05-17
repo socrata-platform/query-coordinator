@@ -116,7 +116,10 @@ case class QueryResource(secondary: Secondary,
       final class QueryRetryState(retriesSoFar: Int, excludedSecondaryNames: Set[String]) {
         val chosenSecondaryName = secondary.chosenSecondaryName(forcedSecondaryName, dataset, copy, excludedSecondaryNames)
 
-        val secondaryMirrorNames = chosenSecondaryName.map(mirror.secondaryMirrors).getOrElse(Nil)
+        val secondaryMirrorNames = chosenSecondaryName
+          .map(mirror.secondaryMirrors).getOrElse(Nil)
+          .filter(secondary.isInSecondary(_, dataset, copy)
+            .getOrElse(false))
         log.debug(s"Selected Mirrors for ${chosenSecondaryName}: $secondaryMirrorNames")
 
         val second = secondary.serviceInstance(dataset, chosenSecondaryName) match {
