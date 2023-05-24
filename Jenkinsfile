@@ -1,7 +1,7 @@
 @Library('socrata-pipeline-library')
 
-def service = "query-coordinator"
-def project_wd = "query-coordinator"
+def service = 'query-coordinator'
+def project_wd = 'query-coordinator'
 def isPr = env.CHANGE_ID != null;
 
 // Utility Libraries
@@ -51,15 +51,14 @@ pipeline {
 
               echo sh(returnStdout: true, script: "echo y | sbt \"release with-defaults\"")
             }
-
-            echo 'Getting release tag'
-            release_tag = sh(returnStdout: true, script: "git describe --abbrev=0 --match \"v*\"").trim()
-            branchSpecifier = "refs/tags/${release_tag}"
-            echo branchSpecifier
-
-            // checkout the tag so we're performing subsequent actions on it
-            sh "git checkout ${branchSpecifier}"
           }
+          echo 'Getting release tag'
+          release_tag = sh(returnStdout: true, script: "git describe --abbrev=0 --match \"v*\"").trim()
+          branchSpecifier = "refs/tags/${release_tag}"
+          echo branchSpecifier
+
+          // checkout the tag so we're performing subsequent actions on it
+          sh "git checkout ${branchSpecifier}"
         }
       }
     }
