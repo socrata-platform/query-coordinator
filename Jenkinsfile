@@ -23,7 +23,6 @@ pipeline {
   }
   environment {
     SERVICE = 'query-coordinator'
-    SERVICE_SHA = "${env.GIT_COMMIT}"
   }
   stages {
     stage('Release Tag') {
@@ -60,9 +59,6 @@ pipeline {
 
           // checkout the tag so we're performing subsequent actions on it
           sh "git checkout ${branchSpecifier}"
-
-          // set the SERVICE_SHA to the current head because it might not be the same as env.GIT_COMMIT
-          env.SERVICE_SHA = sh(returnStdout: true, script: "git rev-parse HEAD").trim()
         }
       }
     }
@@ -74,8 +70,10 @@ pipeline {
           echo "Building sbt project..."
           sbtbuild.build()
 
-          // set build description
           env.SERVICE_VERSION = sbtbuild.getServiceVersion()
+          // set the SERVICE_SHA to the current head because it might not be the same as env.GIT_COMMIT
+          env.SERVICE_SHA = sh(returnStdout: true, script: "git rev-parse HEAD").trim()
+          // set build description to be the same as the docker deploy tag
           currentBuild.description = "${env.SERVICE}:${env.SERVICE_VERSION}_${env.BUILD_NUMBER}_${env.SERVICE_SHA.take(8)}"
         }
       }
