@@ -31,6 +31,7 @@ object Dependencies {
   val socrataHttpClient = "com.socrata" %% "socrata-http-client" % versions.socrataHttpVersion
   val socrataHttpCuratorBroker = "com.socrata" %% "socrata-http-curator-broker" % versions.socrataHttpVersion exclude("org.slf4j", "slf4j-simple") exclude ("org.jboss.netty", "netty" /* see ZOOKEEPER-1681 */)
   val socrataHttpJetty = "com.socrata" %% "socrata-http-jetty" % versions.socrataHttpVersion
+  val socrataHttpServerExt = "com.socrata" %% "socrata-http-server-ext" % versions.socrataHttpVersion
   val socrataCuratorUtils = "com.socrata" %% "socrata-curator-utils" % versions.socrataCuratorUtils
   val socrataThirdpartyUtils = "com.socrata" %% "socrata-thirdparty-utils" % versions.socrataThirdpartyUtils
   val socrataUtils = "com.socrata" %% "socrata-utils" % versions.socrataUtils
