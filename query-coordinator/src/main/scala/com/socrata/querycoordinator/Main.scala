@@ -15,7 +15,7 @@ import com.socrata.http.server.livenesscheck.LivenessCheckResponder
 import com.socrata.http.server.util.RequestId.ReqIdHeader
 import com.socrata.http.server.util.handlers.{ErrorCatcher, LoggingOptions, NewLoggingHandler, ThreadRenamingHandler}
 import com.socrata.querycoordinator.caching.Windower
-import com.socrata.querycoordinator.resources.{QueryResource, VersionResource}
+import com.socrata.querycoordinator.resources.{QueryResource, NewQueryResource, VersionResource}
 import com.socrata.querycoordinator.util.TeeToTempInputStream
 import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
 import com.socrata.soql.types.SoQLType
@@ -115,7 +115,12 @@ object Main extends App with DynamicPortMap {
       rollupInfoFetcher = new RollupInfoFetcher(httpClient)
     )
 
-    val handler = Service(queryResource, VersionResource())
+    val newQueryResource = new NewQueryResource(
+      httpClient = httpClient,
+      secondary = secondary
+    )
+
+    val handler = Service(queryResource, newQueryResource, VersionResource())
 
     def remapLivenessCheckInfo(lci: LivenessCheckInfo): LivenessCheckInfo =
       new LivenessCheckInfo(hostPort(lci.port), lci.response)

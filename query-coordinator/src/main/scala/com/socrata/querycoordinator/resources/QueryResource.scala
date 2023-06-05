@@ -344,7 +344,7 @@ case class QueryResource(secondary: Secondary,
             (analyzedQuery, Seq.empty)
           } else {
             queryRewriter.possiblyRewriteOneAnalysisInQuery(
-              dataset, schema, analyzedQuery, ruMapOpt, fetchRollupInfo, getSchemaByTableName, debug
+              dataset, schema, analyzedQuery, ruMapOpt, fetchRollupInfo _, getSchemaByTableName, debug
             )
           }
         }

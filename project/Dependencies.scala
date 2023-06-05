@@ -5,12 +5,12 @@ object Dependencies {
   object versions {
     val postgresql = "42.2.5"
     val c3p0 = "0.9.5.2"
-    val socrataHttpVersion = "3.15.0"
+    val socrataHttpVersion = "3.16.0"
     val rojomaJson = "3.13.0"
     val socrataCuratorUtils = "1.2.0"
     val socrataThirdpartyUtils = "5.0.0"
     val socrataUtils = "0.11.0"
-    val soqlStdlib = "4.12.8"
+    val soqlStdlib = "4.12.11"
     val protobuf = "2.4.1"
     val trove4j = "3.0.3"
     val sprayCaching = "1.2.2"
@@ -31,6 +31,7 @@ object Dependencies {
   val socrataHttpClient = "com.socrata" %% "socrata-http-client" % versions.socrataHttpVersion
   val socrataHttpCuratorBroker = "com.socrata" %% "socrata-http-curator-broker" % versions.socrataHttpVersion exclude("org.slf4j", "slf4j-simple") exclude ("org.jboss.netty", "netty" /* see ZOOKEEPER-1681 */)
   val socrataHttpJetty = "com.socrata" %% "socrata-http-jetty" % versions.socrataHttpVersion
+  val socrataHttpServerExt = "com.socrata" %% "socrata-http-server-ext" % versions.socrataHttpVersion
   val socrataCuratorUtils = "com.socrata" %% "socrata-curator-utils" % versions.socrataCuratorUtils
   val socrataThirdpartyUtils = "com.socrata" %% "socrata-thirdparty-utils" % versions.socrataThirdpartyUtils
   val socrataUtils = "com.socrata" %% "socrata-utils" % versions.socrataUtils

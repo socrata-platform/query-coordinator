@@ -14,6 +14,7 @@ libraryDependencies ++= Seq(
   socrataHttpClient,
   socrataHttpCuratorBroker,
   socrataHttpJetty,
+  socrataHttpServerExt,
   socrataCuratorUtils,
   socrataThirdpartyUtils,
   socrataUtils,
