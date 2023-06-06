@@ -5,7 +5,7 @@ object Dependencies {
   object versions {
     val postgresql = "42.2.5"
     val c3p0 = "0.9.5.2"
-    val socrataHttpVersion = "3.16.0"
+    val socrataHttpVersion = "3.16.1"
     val rojomaJson = "3.13.0"
     val socrataCuratorUtils = "1.2.0"
     val socrataThirdpartyUtils = "5.0.0"
