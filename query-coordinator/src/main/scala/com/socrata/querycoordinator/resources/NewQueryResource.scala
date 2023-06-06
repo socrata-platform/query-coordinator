@@ -13,7 +13,8 @@ import org.joda.time.{DateTime, LocalDateTime}
 
 import com.socrata.http.client.HttpClient
 import com.socrata.http.server.{HttpRequest, HttpResponse}
-import com.socrata.http.server.ext.{ResourceExt, Json, HeaderMap, HeaderName}
+import com.socrata.http.server.ext.{ResourceExt, Json, HeaderMap, HeaderName, RequestId}
+import com.socrata.http.server.util.RequestId.ReqIdHeader
 import com.socrata.soql.analyzer2.{MetaTypes, FoundTables, SoQLAnalyzer, UserParameters, DatabaseTableName, SoQLAnalysis, CanonicalName}
 import com.socrata.soql.analyzer2.rewrite.Pass
 import com.socrata.soql.environment.HoleName
@@ -86,7 +87,7 @@ class NewQueryResource(
     rewritePasses: Seq[Seq[Pass]]
   )
 
-  def doit(rs: ResourceScope, headers: HeaderMap, json: Json[Body]): HttpResponse = {
+  def doit(rs: ResourceScope, headers: HeaderMap, reqId: RequestId, json: Json[Body]): HttpResponse = {
     val Json(
       reqData@Body(
         foundTables,
@@ -134,6 +135,7 @@ class NewQueryResource(
           val req = secondary.reqBuilder(instance)
             .p("new-query")
             .addHeaders(additionalHeaders)
+            .addHeader(ReqIdHeader, reqId.toString)
             .blob(new ByteArrayInputStream(serialized))
           val resp = httpClient.execute(req, rs)
 
