@@ -15,12 +15,12 @@ import com.socrata.http.client.HttpClient
 import com.socrata.http.server.{HttpRequest, HttpResponse}
 import com.socrata.http.server.ext.{ResourceExt, Json, HeaderMap, HeaderName, RequestId}
 import com.socrata.http.server.util.RequestId.ReqIdHeader
-import com.socrata.soql.analyzer2.{MetaTypes, FoundTables, SoQLAnalyzer, UserParameters, DatabaseTableName, SoQLAnalysis, CanonicalName}
+import com.socrata.soql.analyzer2.{MetaTypes, FoundTables, SoQLAnalyzer, UserParameters, DatabaseTableName, SoQLAnalysis, CanonicalName, AggregateFunctionCall, FuncallPositionInfo}
 import com.socrata.soql.analyzer2.rewrite.Pass
-import com.socrata.soql.environment.HoleName
+import com.socrata.soql.environment.{HoleName, ColumnName}
 import com.socrata.soql.serialize.{WriteBuffer, Writable}
 import com.socrata.soql.types.{SoQLType, SoQLValue, SoQLFixedTimestamp, SoQLFloatingTimestamp}
-import com.socrata.soql.functions.{SoQLTypeInfo, SoQLFunctionInfo}
+import com.socrata.soql.functions.{MonomorphicFunction, SoQLTypeInfo, SoQLFunctionInfo, SoQLFunctions}
 import com.socrata.soql.stdlib.analyzer2.Context
 
 import com.socrata.querycoordinator.Secondary
@@ -64,7 +64,22 @@ class NewQueryResource(
     override type DatabaseColumnNameImpl = ColumnId
   }
 
+  val standardSystemColumns = Set(":id", ":version", ":created_at", ":updated_at").map(ColumnName)
+
   val analyzer = new SoQLAnalyzer[MT](SoQLTypeInfo, SoQLFunctionInfo)
+  val systemColumnPreservingAnalyzer = analyzer
+    .preserveSystemColumns { (columnName, expr) =>
+      if(standardSystemColumns(columnName)) {
+        Some(AggregateFunctionCall[MT](
+          MonomorphicFunction(SoQLFunctions.Max, Map("a" -> expr.typ)),
+          Seq(expr),
+          false,
+          None
+        )(FuncallPositionInfo.None))
+      } else {
+        None
+      }
+    }
 
   private case class Request(analysis: SoQLAnalysis[MT], systemContext: Map[String, String], rewritePasses: Seq[Seq[Pass]])
   private object Request {
@@ -84,7 +99,9 @@ class NewQueryResource(
     @AllowMissing("Context.empty")
     context: Context,
     @AllowMissing("Nil")
-    rewritePasses: Seq[Seq[Pass]]
+    rewritePasses: Seq[Seq[Pass]],
+    @AllowMissing("false")
+    preserveSystemColumns: Boolean
   )
 
   def doit(rs: ResourceScope, headers: HeaderMap, reqId: RequestId, json: Json[Body]): HttpResponse = {
@@ -92,13 +109,18 @@ class NewQueryResource(
       reqData@Body(
         foundTables,
         context,
-        rewritePasses
+        rewritePasses,
+        preserveSystemColumns
       )
     ) = json
 
     log.debug("Received request {}", Lazy(JsonUtil.renderJson(reqData)))
 
-    analyzer(foundTables, context.user.toUserParameters) match {
+    val effectiveAnalyzer =
+      if(preserveSystemColumns) systemColumnPreservingAnalyzer
+      else analyzer
+
+    effectiveAnalyzer(foundTables, context.user.toUserParameters) match {
       case Right(analysis) =>
         val serialized = WriteBuffer.asBytes(Request(analysis, context.system, rewritePasses))
 
