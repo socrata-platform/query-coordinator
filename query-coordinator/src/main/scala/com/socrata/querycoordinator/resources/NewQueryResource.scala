@@ -22,6 +22,7 @@ import com.socrata.soql.serialize.{WriteBuffer, Writable}
 import com.socrata.soql.types.{SoQLType, SoQLValue, SoQLFixedTimestamp, SoQLFloatingTimestamp}
 import com.socrata.soql.functions.{MonomorphicFunction, SoQLTypeInfo, SoQLFunctionInfo, SoQLFunctions}
 import com.socrata.soql.stdlib.analyzer2.Context
+import com.socrata.soql.sql.Debug
 
 import com.socrata.querycoordinator.Secondary
 import com.socrata.querycoordinator.util.Lazy
@@ -81,7 +82,12 @@ class NewQueryResource(
       }
     }
 
-  private case class Request(analysis: SoQLAnalysis[MT], systemContext: Map[String, String], rewritePasses: Seq[Seq[Pass]])
+  private case class Request(
+    analysis: SoQLAnalysis[MT],
+    systemContext: Map[String, String],
+    rewritePasses: Seq[Seq[Pass]],
+    debug: Option[Debug]
+  )
   private object Request {
     implicit def serialize(implicit ev: Writable[SoQLAnalysis[MT]]) = new Writable[Request] {
       def writeTo(buffer: WriteBuffer, req: Request): Unit = {
@@ -89,6 +95,7 @@ class NewQueryResource(
         buffer.write(req.analysis)
         buffer.write(req.systemContext)
         buffer.write(req.rewritePasses)
+        buffer.write(req.debug)
       }
     }
   }
@@ -101,7 +108,8 @@ class NewQueryResource(
     @AllowMissing("Nil")
     rewritePasses: Seq[Seq[Pass]],
     @AllowMissing("false")
-    preserveSystemColumns: Boolean
+    preserveSystemColumns: Boolean,
+    debug: Option[Debug]
   )
 
   def doit(rs: ResourceScope, headers: HeaderMap, reqId: RequestId, json: Json[Body]): HttpResponse = {
@@ -110,7 +118,8 @@ class NewQueryResource(
         foundTables,
         context,
         rewritePasses,
-        preserveSystemColumns
+        preserveSystemColumns,
+        debug
       )
     ) = json
 
@@ -122,7 +131,7 @@ class NewQueryResource(
 
     effectiveAnalyzer(foundTables, context.user.toUserParameters) match {
       case Right(analysis) =>
-        val serialized = WriteBuffer.asBytes(Request(analysis, context.system, rewritePasses))
+        val serialized = WriteBuffer.asBytes(Request(analysis, context.system, rewritePasses, debug))
 
         log.debug("Serialized analysis as:\n{}", Lazy(locally {
           val baos = new ByteArrayOutputStream

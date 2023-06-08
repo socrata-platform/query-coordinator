@@ -19,6 +19,7 @@ libraryDependencies ++= Seq(
   socrataThirdpartyUtils,
   socrataUtils,
   soqlStdlib,
+  soqlUtils,
   protobuf, // these are optional dependencies of
   trove4j,  // soql-analysis
   typesafeConfig,
