@@ -10,7 +10,7 @@ object Dependencies {
     val socrataCuratorUtils = "1.2.0"
     val socrataThirdpartyUtils = "5.0.0"
     val socrataUtils = "0.11.0"
-    val soqlStdlib = "4.12.11"
+    val soqlStdlib = "4.12.12"
     val protobuf = "2.4.1"
     val trove4j = "3.0.3"
     val sprayCaching = "1.2.2"
@@ -37,6 +37,7 @@ object Dependencies {
   val socrataUtils = "com.socrata" %% "socrata-utils" % versions.socrataUtils
 
   val soqlStdlib = "com.socrata" %% "soql-stdlib" % versions.soqlStdlib exclude ("javax.media", "jai_core")
+  val soqlUtils = "com.socrata" %% "soql-utils" % versions.soqlStdlib exclude ("javax.media", "jai_core")
   val protobuf = "com.google.protobuf" % "protobuf-java" % versions.protobuf  // these are optional deps
   val trove4j = "net.sf.trove4j" % "trove4j" % versions.trove4j               // of soql-analysis
 
