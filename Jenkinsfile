@@ -85,6 +85,8 @@ pipeline {
       steps {
         script {
           echo "Building docker container..."
+          echo sbtbuild.getDockerPath()
+          echo sbtbuild.getDockerArtifact()
           dockerize.docker_build(sbtbuild.getServiceVersion(), env.SERVICE_SHA, sbtbuild.getDockerPath(), sbtbuild.getDockerArtifact())
           env.DOCKER_TAG = dockerize.getDeployTag()
         }
