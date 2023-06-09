@@ -79,9 +79,6 @@ pipeline {
       }
     }
     stage('Dockerize') {
-      when {
-        not { expression { isPr } }
-      }
       steps {
         script {
           echo "Building docker container..."
