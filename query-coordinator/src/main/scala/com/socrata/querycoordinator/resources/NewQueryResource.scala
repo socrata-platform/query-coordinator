@@ -3,7 +3,7 @@ package com.socrata.querycoordinator.resources
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.nio.charset.StandardCharsets
 
-import com.rojoma.json.v3.ast.{JString, JValue}
+import com.rojoma.json.v3.ast.{JString, JValue, JNull}
 import com.rojoma.json.v3.codec.{JsonEncode, JsonDecode, DecodeError}
 import com.rojoma.json.v3.util.{WrapperJsonCodec, AutomaticJsonCodec, NullForNone, AllowMissing, SimpleHierarchyCodecBuilder, InternalTag, AutomaticJsonCodecBuilder, JsonUtil}
 import com.rojoma.simplearm.v2.ResourceScope
@@ -15,7 +15,7 @@ import com.socrata.http.client.HttpClient
 import com.socrata.http.server.{HttpRequest, HttpResponse}
 import com.socrata.http.server.ext.{ResourceExt, Json, HeaderMap, HeaderName, RequestId}
 import com.socrata.http.server.util.RequestId.ReqIdHeader
-import com.socrata.soql.analyzer2.{MetaTypes, FoundTables, SoQLAnalyzer, UserParameters, DatabaseTableName, SoQLAnalysis, CanonicalName, AggregateFunctionCall, FuncallPositionInfo}
+import com.socrata.soql.analyzer2.{MetaTypes, FoundTables, SoQLAnalyzer, UserParameters, DatabaseTableName, DatabaseColumnName, SoQLAnalysis, CanonicalName, AggregateFunctionCall, FuncallPositionInfo, types}
 import com.socrata.soql.analyzer2.rewrite.Pass
 import com.socrata.soql.environment.{HoleName, ColumnName}
 import com.socrata.soql.serialize.{WriteBuffer, Writable}
@@ -84,6 +84,7 @@ class NewQueryResource(
 
   private case class Request(
     analysis: SoQLAnalysis[MT],
+    locationSubcolumns: Map[types.DatabaseTableName[MT], Map[types.DatabaseColumnName[MT], Seq[Option[types.DatabaseColumnName[MT]]]]],
     systemContext: Map[String, String],
     rewritePasses: Seq[Seq[Pass]],
     debug: Option[Debug]
@@ -93,6 +94,7 @@ class NewQueryResource(
       def writeTo(buffer: WriteBuffer, req: Request): Unit = {
         buffer.write(0)
         buffer.write(req.analysis)
+        buffer.write(req.locationSubcolumns)
         buffer.write(req.systemContext)
         buffer.write(req.rewritePasses)
         buffer.write(req.debug)
@@ -103,6 +105,8 @@ class NewQueryResource(
   @AutomaticJsonCodec
   case class Body(
     foundTables: FoundTables[MT],
+    @AllowMissing("Nil")
+    locationSubcolumns: Seq[(types.DatabaseTableName[MT], Seq[(types.DatabaseColumnName[MT], Seq[Either[JNull, types.DatabaseColumnName[MT]]])])],
     @AllowMissing("Context.empty")
     context: Context,
     @AllowMissing("Nil")
@@ -116,6 +120,7 @@ class NewQueryResource(
     val Json(
       reqData@Body(
         foundTables,
+        locationSubcolumns,
         context,
         rewritePasses,
         preserveSystemColumns,
@@ -123,7 +128,16 @@ class NewQueryResource(
       )
     ) = json
 
-    log.debug("Received request {}", Lazy(JsonUtil.renderJson(reqData)))
+    log.debug("Received request {}", Lazy(JsonUtil.renderJson(reqData, pretty = true)))
+
+    val mapifiedLocationSubcolumns = locationSubcolumns.iterator.map { case (dtn, submap) =>
+      dtn -> submap.iterator.map { case (dcn, cols) =>
+        dcn -> cols.map {
+          case Left(JNull) => None
+          case Right(dcn2) => Some(dcn2)
+        }
+      }.toMap
+    }.toMap
 
     val effectiveAnalyzer =
       if(preserveSystemColumns) systemColumnPreservingAnalyzer
@@ -131,7 +145,7 @@ class NewQueryResource(
 
     effectiveAnalyzer(foundTables, context.user.toUserParameters) match {
       case Right(analysis) =>
-        val serialized = WriteBuffer.asBytes(Request(analysis, context.system, rewritePasses, debug))
+        val serialized = WriteBuffer.asBytes(Request(analysis, mapifiedLocationSubcolumns, context.system, rewritePasses, debug))
 
         log.debug("Serialized analysis as:\n{}", Lazy(locally {
           val baos = new ByteArrayOutputStream
