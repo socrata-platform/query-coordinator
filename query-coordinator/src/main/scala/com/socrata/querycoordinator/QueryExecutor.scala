@@ -478,7 +478,7 @@ class QueryExecutor(httpClient: HttpClient,
 
     val route = if(explain) "info" else "query"
 
-    def sendRequest(base: RequestBuilder) =
+    def sendRequest(base: RequestBuilder, resourceScope: ResourceScope) =
       using(IOUtils.toInputStream(serializedAnalyses, StandardCharsets.UTF_8.name)) { queryInputStream =>
           val request = base.p(route).
             addHeaders(PreconditionRenderer(precondition) ++ ifModifiedSince.map("If-Modified-Since" -> _.toHttpDate)).
@@ -493,7 +493,9 @@ class QueryExecutor(httpClient: HttpClient,
         try {
           mirrors.foreach { req =>
             log.debug(s"Sending mirror query ${req.url} to mirror base query ${base.url}")
-            sendRequest(req)
+            using(new ResourceScope) { rs =>
+              sendRequest(req, rs)
+            }
           }
         } catch {
           case e: Throwable =>
@@ -504,7 +506,7 @@ class QueryExecutor(httpClient: HttpClient,
 
     try {
       Timing.TimedResultReturningTransformed{
-        sendRequest(base)
+        sendRequest(base, resourceScope)
       }{ (result,duration)=>
         result.resultCode match {
           case HttpServletResponse.SC_NOT_FOUND =>
