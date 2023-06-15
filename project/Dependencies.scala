@@ -21,7 +21,7 @@ object Dependencies {
     val slf4j =  "1.7.7"
     val scalaTest = "3.0.8"
     val scalaCheck = "1.14.0"
-    val simpleArm = "2.3.1"
+    val simpleArm = "2.3.3"
     val rollupMetrics = "3.5"
   }
 
