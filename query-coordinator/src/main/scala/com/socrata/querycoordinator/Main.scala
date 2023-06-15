@@ -33,7 +33,6 @@ import org.slf4j.LoggerFactory
 final abstract class Main
 
 object Main extends App with DynamicPortMap {
-
   def withDefaultAddress(config: Config): Config = {
     val ifaces = ServiceInstanceBuilder.getAllLocalIPs
     if (ifaces.isEmpty) {
@@ -56,6 +55,14 @@ object Main extends App with DynamicPortMap {
 
   PropertyConfigurator.configure(Propertizer("log4j", config.log4j))
   val log = org.slf4j.LoggerFactory.getLogger(classOf[Main])
+
+  ResourceScope.onLeak { rs =>
+    try {
+      log.warn("Resource scope {} leaked!", rs.name)
+    } finally {
+      rs.close()
+    }
+  }
 
   val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
   def typeSerializer(typ: SoQLType): String = typ.name.name

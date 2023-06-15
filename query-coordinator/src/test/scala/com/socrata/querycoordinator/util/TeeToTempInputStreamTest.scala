@@ -2,7 +2,7 @@ package com.socrata.querycoordinator.util
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, InputStream}
 
-import com.rojoma.simplearm.util._
+import com.rojoma.simplearm.v2._
 import org.scalatestplus.scalacheck.ScalaCheckPropertyChecks
 import org.scalatest.{FunSuite, MustMatchers}
 
