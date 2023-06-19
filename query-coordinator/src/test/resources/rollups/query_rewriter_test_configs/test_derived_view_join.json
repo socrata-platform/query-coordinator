@@ -1,0 +1,65 @@
+{
+  "schemas": {
+    "_": {
+      "a169-1263": ["number", "unique_id"],
+      "a180-1274": ["floating_timestamp", "last_change"],
+      "a165-1259": ["text", "jur"],
+      "a176-1270": ["text", "parid"],
+      "a159-1253": ["number", "taxyr"],
+      "a157-1251": ["text", "nbhd"],
+      "a168-1262": ["text", "nbhd_desc"],
+      "a154-1248": ["number", "subkey"],
+      "a171-1265": ["text", "heartyp"],
+      "a173-1267": ["text", "own1"],
+      "a178-1272": ["text", "addr1"],
+      "a160-1254": ["text", "addr3"],
+      "a177-1271": ["floating_timestamp", "application_date"],
+      "a164-1258": ["text", "hearing_date"],
+      "a166-1260": ["number", "county_value"],
+      "a167-1261": ["text", "taxpayer_opinion_value"],
+      "a162-1256": ["text", "total_under_dispute"],
+      "a183-1277": ["text", "agent"],
+      "a161-1255": ["text", "attorney"],
+      "a172-1266": ["text", "case_status_code"],
+      "a158-1252": ["text", "case_status"],
+      "a184-1278": ["text", "reason_for_appeal_code"],
+      "a179-1273": ["text", "reason_for_appeal"],
+      "a175-1269": ["floating_timestamp", "decision_date"],
+      "a156-1250": ["text", "noticedate"],
+      "a174-1268": ["text", "decision_value"],
+      "a155-1249": ["number", "luc"],
+      "a185-1279": ["text", "class"],
+      "a153-1247": ["text", "class_desc"],
+      "a181-1275": ["text", "xcoord"],
+      "a170-1264": ["text", "ycoord"],
+      "a163-1257": ["text", "location"],
+      "a182-1276": ["text", "Gispin"]
+    },
+    "_ge78-zdn5": {
+      "a124-1315": ["text", "loc_id"],
+      "a125-1316": ["point", "centroid"]
+    },
+    "_7ecp-3dim": {
+      "a124-1315": ["text", "loc_id"],
+      "a125-1316": ["point", "centroid"]
+    }
+  },
+  "rollups": {
+    "p1": "SELECT unique_id, @s0.centroid LEFT OUTER JOIN @ge78-zdn5 as s0 on @s0.loc_id=gispin",
+    "p2": "SELECT `unique_id`, `last_change`, `jur`, `parid`, `taxyr`, `nbhd`, `nbhd_desc`, `subkey`, `heartyp`, `own1`, `addr1`, `addr3`, `application_date`, `hearing_date`, `county_value`, `taxpayer_opinion_value`, `total_under_dispute`, `agent`, `attorney`, `case_status_code`, `case_status`, `reason_for_appeal_code`, `reason_for_appeal`, `decision_date`, `noticedate`, `decision_value`, `luc`, `class`, `class_desc`, `xcoord`, `ycoord`, `location`, `gispin` |> SELECT `unique_id`, @s0.`centroid` LEFT OUTER JOIN (SELECT `loc_id`, `centroid` FROM @7ecp-3dim |> SELECT `loc_id`, `centroid`) as @s0 ON @s0.`loc_id` = `gispin`"
+  },
+  "tests": [
+    {
+      "query": "SELECT unique_id, @s0.centroid LEFT OUTER JOIN @ge78-zdn5 as s0 on @s0.loc_id=gispin",
+      "rewrites": {
+        "p1": "SELECT c1 AS unique_id, c2 AS centroid"
+      }
+    },
+    {
+      "query": "SELECT `unique_id`, `last_change`, `jur`, `parid`, `taxyr`, `nbhd`, `nbhd_desc`, `subkey`, `heartyp`, `own1`, `addr1`, `addr3`, `application_date`, `hearing_date`, `county_value`, `taxpayer_opinion_value`, `total_under_dispute`, `agent`, `attorney`, `case_status_code`, `case_status`, `reason_for_appeal_code`, `reason_for_appeal`, `decision_date`, `noticedate`, `decision_value`, `luc`, `class`, `class_desc`, `xcoord`, `ycoord`, `location`, `gispin` |> SELECT `unique_id`, @s0.`centroid` LEFT OUTER JOIN (SELECT `loc_id`, `centroid` FROM @7ecp-3dim |> SELECT `loc_id`, `centroid`) as @s0 ON @s0.`loc_id` = `gispin`",
+      "rewrites": {
+        "p2": "SELECT c1 AS unique_id, c2 AS centroid"
+      }
+    }
+  ]
+}

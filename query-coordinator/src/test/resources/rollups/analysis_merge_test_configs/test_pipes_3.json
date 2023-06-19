@@ -1,0 +1,52 @@
+{
+  "schemas": {
+    "_": {
+      "a169-1263": ["number", "unique_id"],
+      "a180-1274": ["floating_timestamp", "last_change"],
+      "a165-1259": ["text", "jur"],
+      "a176-1270": ["text", "parid"],
+      "a159-1253": ["number", "taxyr"],
+      "a157-1251": ["text", "nbhd"],
+      "a168-1262": ["text", "nbhd_desc"],
+      "a154-1248": ["number", "subkey"],
+      "a171-1265": ["text", "heartyp"],
+      "a173-1267": ["text", "own1"],
+      "a178-1272": ["text", "addr1"],
+      "a160-1254": ["text", "addr3"],
+      "a177-1271": ["floating_timestamp", "application_date"],
+      "a164-1258": ["text", "hearing_date"],
+      "a166-1260": ["number", "county_value"],
+      "a167-1261": ["text", "taxpayer_opinion_value"],
+      "a162-1256": ["text", "total_under_dispute"],
+      "a183-1277": ["text", "agent"],
+      "a161-1255": ["text", "attorney"],
+      "a172-1266": ["text", "case_status_code"],
+      "a158-1252": ["text", "case_status"],
+      "a184-1278": ["text", "reason_for_appeal_code"],
+      "a179-1273": ["text", "reason_for_appeal"],
+      "a175-1269": ["floating_timestamp", "decision_date"],
+      "a156-1250": ["text", "noticedate"],
+      "a174-1268": ["text", "decision_value"],
+      "a155-1249": ["number", "luc"],
+      "a185-1279": ["text", "class"],
+      "a153-1247": ["text", "class_desc"],
+      "a181-1275": ["text", "xcoord"],
+      "a170-1264": ["text", "ycoord"],
+      "a163-1257": ["text", "location"],
+      "a182-1276": ["text", "gispin"]
+    },
+    "_7ecp-3dim": {
+      "b100-b100": ["text", "loc_id"],
+      "b101-b101": ["point", "centroid"]
+    }
+  },
+  "pipes": {
+    "p1": "SELECT `_a169-1263` AS `unique_id`, `_a180-1274` AS `last_change`, `_a165-1259` AS `jur`, `_a176-1270` AS `parid`, `_a159-1253` AS `taxyr`, `_a157-1251` AS `nbhd`, `_a168-1262` AS `nbhd_desc`, `_a154-1248` AS `subkey`, `_a171-1265` AS `heartyp`, `_a173-1267` AS `own1`, `_a178-1272` AS `addr1`, `_a160-1254` AS `addr3`, `_a177-1271` AS `application_date`, `_a164-1258` AS `hearing_date`, `_a166-1260` AS `county_value`, `_a167-1261` AS `taxpayer_opinion_value`, `_a162-1256` AS `total_under_dispute`, `_a183-1277` AS `agent`, `_a161-1255` AS `attorney`, `_a172-1266` AS `case_status_code`, `_a158-1252` AS `case_status`, `_a184-1278` AS `reason_for_appeal_code`, `_a179-1273` AS `reason_for_appeal`, `_a175-1269` AS `decision_date`, `_a156-1250` AS `noticedate`, `_a174-1268` AS `decision_value`, `_a155-1249` AS `luc`, `_a185-1279` AS `class`, `_a153-1247` AS `class_desc`, `_a181-1275` AS `xcoord`, `_a170-1264` AS `ycoord`, `_a163-1257` AS `location`, `_a182-1276` AS `gispin` |> SELECT `unique_id`, `last_change`, `jur`, `parid`, `taxyr`, `nbhd`, `nbhd_desc`, `subkey`, `heartyp`, `own1`, `addr1`, `addr3`, `application_date`, `hearing_date`, `county_value`, `taxpayer_opinion_value`, `total_under_dispute`, `agent`, `attorney`, `case_status_code`, `case_status`, `reason_for_appeal_code`, `reason_for_appeal`, `decision_date`, `noticedate`, `decision_value`, `luc`, `class`, `class_desc`, `xcoord`, `ycoord`, `location`, `gispin` |> SELECT `unique_id`, `last_change`, `jur`, `parid`, `taxyr`, `nbhd`, `nbhd_desc`, `subkey`, `heartyp`, `own1`, `addr1`, `addr3`, `application_date`, `hearing_date`, `county_value`, `taxpayer_opinion_value`, `total_under_dispute`, `agent`, `attorney`, `case_status_code`, `case_status`, `reason_for_appeal_code`, `reason_for_appeal`, `decision_date`, `noticedate`, `decision_value`, `luc`, `class`, `class_desc`, `xcoord`, `ycoord`, `location`, `gispin`, @s0.`centroid` LEFT OUTER JOIN (SELECT `_b100-b100` AS `loc_id`, `_b101-b101` AS `centroid` FROM @7ecp-3dim |> SELECT `loc_id`, `centroid`) AS @s0 ON @s0.`loc_id` = `gispin`"
+  },
+  "merges": {
+    "p1": "SELECT ListMap(unique_id -> a169-1263 :: number, last_change -> a180-1274 :: floating_timestamp, jur -> a165-1259 :: text, parid -> a176-1270 :: text, taxyr -> a159-1253 :: number, nbhd -> a157-1251 :: text, nbhd_desc -> a168-1262 :: text, subkey -> a154-1248 :: number, heartyp -> a171-1265 :: text, own1 -> a173-1267 :: text, addr1 -> a178-1272 :: text, addr3 -> a160-1254 :: text, application_date -> a177-1271 :: floating_timestamp, hearing_date -> a164-1258 :: text, county_value -> a166-1260 :: number, taxpayer_opinion_value -> a167-1261 :: text, total_under_dispute -> a162-1256 :: text, agent -> a183-1277 :: text, attorney -> a161-1255 :: text, case_status_code -> a172-1266 :: text, case_status -> a158-1252 :: text, reason_for_appeal_code -> a184-1278 :: text, reason_for_appeal -> a179-1273 :: text, decision_date -> a175-1269 :: floating_timestamp, noticedate -> a156-1250 :: text, decision_value -> a174-1268 :: text, luc -> a155-1249 :: number, class -> a185-1279 :: text, class_desc -> a153-1247 :: text, xcoord -> a181-1275 :: text, ycoord -> a170-1264 :: text, location -> a163-1257 :: text, gispin -> a182-1276 :: text, centroid -> _s0.centroid :: point) LEFT OUTER JOIN (SELECT ListMap(loc_id -> b100-b100 :: text, centroid -> b101-b101 :: point) FROM @7ecp-3dim) AS @s0 ON op$=(_s0.loc_id :: text,a182-1276 :: text) :: boolean"
+  }
+}
+
+
+

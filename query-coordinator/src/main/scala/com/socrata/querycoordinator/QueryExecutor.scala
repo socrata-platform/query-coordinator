@@ -3,7 +3,6 @@ package com.socrata.querycoordinator
 import java.io._
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.Semaphore
-
 import javax.servlet.http.HttpServletResponse
 import com.socrata.http.common.util.HttpUtils
 import com.socrata.querycoordinator.caching.cache.noop.NoopCacheSessionProvider
@@ -19,6 +18,7 @@ import com.socrata.http.client.exceptions.{ConnectFailed, ConnectTimeout, HttpCl
 import com.socrata.http.client.{HttpClient, RequestBuilder, Response}
 import com.socrata.http.server.implicits._
 import com.socrata.http.server.util._
+import com.socrata.metrics.{Metric, QueryHit}
 import com.socrata.querycoordinator.QueryExecutor.{SchemaHashMismatch, ToForward, _}
 import com.socrata.querycoordinator.util.{BinaryTreeHelper, TeeToTempInputStream}
 import com.socrata.querycoordinator.caching.cache.{CacheSession, CacheSessionProvider, ValueRef}
@@ -28,11 +28,14 @@ import com.socrata.soql.typed.FunctionCall
 import com.socrata.util.io.SplitStream
 import com.socrata.soql.types.SoQLType
 import com.socrata.soql.{AnalysisSerializer, BinaryTree, Leaf, SoQLAnalysis}
+import com.socrata.util.Timing
 import org.apache.commons.io.IOUtils
 import org.joda.time.DateTime
 import org.slf4j.{LoggerFactory, MDC}
 
+import java.time.{LocalDateTime, ZoneOffset}
 import scala.annotation.tailrec
+import scala.concurrent.duration.{Duration, MILLISECONDS}
 
 class QueryExecutor(httpClient: HttpClient,
                     analysisSerializer: AnalysisSerializer[String, SoQLType],
@@ -82,6 +85,7 @@ class QueryExecutor(httpClient: HttpClient,
    */
   def apply(base: RequestBuilder, // scalastyle:ignore parameter.number method.length cyclomatic.complexity
             dataset: String,
+            mirrors: Set[RequestBuilder],
             analyses: BinaryTree[SoQLAnalysis[String, SoQLType]],
             schema: Schema,
             precondition: Precondition,
@@ -111,7 +115,7 @@ class QueryExecutor(httpClient: HttpClient,
     }
 
     def go(theAnalyses: BinaryTree[SoQLAnalysis[String, SoQLType]] = analyses): Result =
-      reallyApply(base = base, dataset = dataset, analyses = theAnalyses, context = context, schema = schema, precondition = precondition, ifModifiedSince = ifModifiedSince, rowCount = rowCount, copy = copy,
+      reallyApply(base = base, mirrors = mirrors, dataset = dataset, analyses = theAnalyses, context = context, schema = schema, precondition = precondition, ifModifiedSince = ifModifiedSince, rowCount = rowCount, copy = copy,
                   rollupName = rollupName, obfuscateId = obfuscateId, extraHeaders = extraHeaders, resourceScope = rs, queryTimeoutSeconds = queryTimeoutSeconds, debug = debug, explain = explain)
 
     if(explain ||
@@ -355,12 +359,12 @@ class QueryExecutor(httpClient: HttpClient,
     // It is normal that queries whether group by or not to return no rows.
     // But let's be paranoid!  The worst that happens is that we'll fail to cache something.
     if(firstBlock.isEmpty) {
-      log.info(s"Empty block!  Not caching. ${queryTimeMs}ms $startWindow $endWindow ${offsetLimitInfo(relimitedAnalyses)}" )
+      log.debug(s"Empty block! Not caching. ${queryTimeMs}ms $startWindow $endWindow ${offsetLimitInfo(relimitedAnalyses)}" )
       return false
     }
 
     if(cacheSessionProvider.shouldSkip(queryTimeMs)) {
-      log.info(s"Query does not take long!  Not caching. ${queryTimeMs}ms $startWindow $endWindow ${offsetLimitInfo(relimitedAnalyses)}" )
+      log.debug(s"Query does not take long!  Not caching. ${queryTimeMs}ms $startWindow $endWindow ${offsetLimitInfo(relimitedAnalyses)}" )
       return false
     }
 
@@ -438,6 +442,7 @@ class QueryExecutor(httpClient: HttpClient,
   }
 
   private def reallyApply(base: RequestBuilder, // scalastyle:ignore parameter.number method.length cyclomatic.complexity
+                          mirrors: Set[RequestBuilder],
                           dataset: String,
                           analyses: BinaryTree[SoQLAnalysis[String, SoQLType]],
                           context: Context,
@@ -473,32 +478,56 @@ class QueryExecutor(httpClient: HttpClient,
 
     val route = if(explain) "info" else "query"
 
-    try {
-      val result = using(IOUtils.toInputStream(serializedAnalyses, StandardCharsets.UTF_8.name)) { queryInputStream =>
-        val request = base.p(route).
-          addHeaders(PreconditionRenderer(precondition) ++ ifModifiedSince.map("If-Modified-Since" -> _.toHttpDate)).
-          addHeaders(extraHeaders).
-          addParameters(params).
-          blob(queryInputStream, "application/octet-stream") // blob implies POST
-        httpClient.execute(request, resourceScope)
-      }
-      result.resultCode match {
-        case HttpServletResponse.SC_NOT_FOUND =>
-          resourceScope.close(result)
-          NotFound
-        case HttpServletResponse.SC_CONFLICT =>
-          readSchemaHashMismatch(result, resourceScope) match {
-            case Right(newSchema) =>
-              resourceScope.close(result)
-              SchemaHashMismatch(newSchema)
-            case Left(newStream) => try {
-              forward(result, newStream)
-            } finally {
-              newStream.close()
+    def sendRequest(base: RequestBuilder, resourceScope: ResourceScope) =
+      using(IOUtils.toInputStream(serializedAnalyses, StandardCharsets.UTF_8.name)) { queryInputStream =>
+          val request = base.p(route).
+            addHeaders(PreconditionRenderer(precondition) ++ ifModifiedSince.map("If-Modified-Since" -> _.toHttpDate)).
+            addHeaders(extraHeaders).
+            addParameters(params).
+            blob(queryInputStream, "application/octet-stream") // blob implies POST
+          httpClient.execute(request, resourceScope)
+        }
+
+    new Thread {
+      override def run(): Unit = {
+        try {
+          mirrors.foreach { req =>
+            log.debug(s"Sending mirror query ${req.url} to mirror base query ${base.url}")
+            using(new ResourceScope) { rs =>
+              sendRequest(req, rs)
             }
           }
-        case _ =>
-          forward(result, resourceScope.openUnmanaged(result.inputStream(), transitiveClose = List(result)))
+        } catch {
+          case e: Throwable =>
+            log.error("Exception while executing against mirrors", e)
+        }
+      }
+    }.start()
+
+    try {
+      Timing.TimedResultReturningTransformed{
+        sendRequest(base, resourceScope)
+      }{ (result,duration)=>
+        result.resultCode match {
+          case HttpServletResponse.SC_NOT_FOUND =>
+            resourceScope.close(result)
+            NotFound
+          case HttpServletResponse.SC_CONFLICT =>
+            readSchemaHashMismatch(result, resourceScope) match {
+              case Right(newSchema) =>
+                resourceScope.close(result)
+                SchemaHashMismatch(newSchema)
+              case Left(newStream) => try {
+                Metric.digest(QueryHit(dataset,analyses.toString,rollupName,duration,LocalDateTime.now(ZoneOffset.UTC)))
+                forward(result, newStream)
+              } finally {
+                newStream.close()
+              }
+            }
+          case _ =>
+            Metric.digest(QueryHit(dataset,analyses.toString,rollupName,duration,LocalDateTime.now(ZoneOffset.UTC)))
+            forward(result, resourceScope.openUnmanaged(result.inputStream(), transitiveClose = List(result)))
+        }
       }
     } catch {
       case e: ConnectTimeout => Retry

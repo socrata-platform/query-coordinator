@@ -1,0 +1,20 @@
+{
+  "schemas": {
+    "_": {
+      "a115-2115": ["number", "incident_id"],
+      "a116-2116": ["text", "incident"],
+      "a117-2117": ["number", "case_id"],
+      "a118-2118": ["text", "case_status"],
+      "a119-2119": ["text", "case_description"],
+      "a120-2120": ["date", "case_date"],
+      "a121-2121": ["point", "location"],
+      "a122-2122": ["date", "incident_date"]
+    }
+  },
+  "pipes": {
+    "p1": "SELECT `_a115-2115` AS `incident_id`, `_a116-2116` AS `incident` WHERE `_a118-2118` = 'Open' |> SELECT `incident_id`, `incident` WHERE (contains(lower(`incident`), 'robbery')) |> SELECT `incident_id` GROUP BY `incident_id`"
+  },
+  "merges": {
+    "p1": "SELECT ListMap(incident_id -> a115-2115 :: number) WHERE op$and(op$=(a118-2118 :: text,\"Open\" :: text) :: boolean,contains(lower(a116-2116 :: text) :: text,\"robbery\" :: text) :: boolean) :: boolean GROUP BY a115-2115 :: number"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "schemas": {
+    "_": {
+      "a001-a001": ["number", "field"],
+      "dxyz-txt1": ["text", "timezone"],
+      "dxyz-txt2": ["text", "timezone2"]
+    }
+  },
+  "pipes": {
+    "p1": "SELECT `_dxyz-txt1` as timezone, count(*) GROUP BY timezone |> SELECT count(*) as ct",
+    "p2": "SELECT `_dxyz-txt1` as timezone, `_dxyz-txt2` as timezone2, count(*) GROUP BY timezone, timezone2 |> SELECT count(*) as ct2 GROUP BY timezone2 |> SELECT count(*)"
+  },
+  "merges": {
+    "p1": "SELECT ListMap(timezone -> dxyz-txt1 :: text, count -> count/*() :: number) GROUP BY dxyz-txt1 :: text |> SELECT ListMap(ct -> count/*() :: number)",
+    "p2": "SELECT ListMap(timezone -> dxyz-txt1 :: text, timezone2 -> dxyz-txt2 :: text, count -> count/*() :: number) GROUP BY dxyz-txt1 :: text, dxyz-txt2 :: text |> SELECT ListMap(ct2 -> count/*() :: number) GROUP BY timezone2 :: text |> SELECT ListMap(count -> count/*() :: number)"
+  }
+}
+
+
+
+
+
+

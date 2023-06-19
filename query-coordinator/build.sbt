@@ -14,10 +14,12 @@ libraryDependencies ++= Seq(
   socrataHttpClient,
   socrataHttpCuratorBroker,
   socrataHttpJetty,
+  socrataHttpServerExt,
   socrataCuratorUtils,
   socrataThirdpartyUtils,
   socrataUtils,
   soqlStdlib,
+  soqlUtils,
   protobuf, // these are optional dependencies of
   trove4j,  // soql-analysis
   typesafeConfig,
@@ -28,7 +30,8 @@ libraryDependencies ++= Seq(
   slf4jLog4j12,
   scalaLogging,
   scalaTest,
-  scalaCheck
+  scalaCheck,
+  rollupMetrics
 )
 
 addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.full)

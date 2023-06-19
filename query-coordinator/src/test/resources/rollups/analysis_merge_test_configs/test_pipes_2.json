@@ -1,0 +1,18 @@
+{
+  "schemas": {
+    "_": {
+      "dxyz-num1": ["number", "number1"],
+      "wido-ward": ["number", "ward"],
+      "crim-typ3": ["text", "crime_type"],
+      "dont-roll": ["text", "dont_create_rollups"],
+      "crim-date": ["floating_timestamp", "crime_date"],
+      "some-date": ["floating_timestamp", "some_date"]
+    }
+  },
+  "pipes": {
+    "p1": "SELECT `_wido-ward` as ward, `_crim-typ3` as crime_type, `_dxyz-num1` as number1 WHERE number1='0' |> SELECT ward, crime_type WHERE crime_type='traffic'"
+  },
+  "merges": {
+    "p1": "SELECT ListMap(ward -> wido-ward :: number, crime_type -> crim-typ3 :: text) WHERE op$and(op$=(dxyz-num1 :: number,cast$number(\"0\" :: text) :: number) :: boolean,op$=(crim-typ3 :: text,\"traffic\" :: text) :: boolean) :: boolean"
+  }
+}

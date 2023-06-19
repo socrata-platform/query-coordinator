@@ -61,7 +61,7 @@ class TestRollupQueryRewriter extends BaseConfigurableRollupTest {
   // System Under Test
   //
   val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
-  val rewriter: QueryRewriter = new QueryRewriterWithJoinEnabled(analyzer)
+  val rewriter: QueryRewriterWithJoinEnabled = new QueryRewriterWithJoinEnabled(analyzer)
 
   //
   //  Helper methods
@@ -170,7 +170,8 @@ class TestRollupQueryRewriter extends BaseConfigurableRollupTest {
     loadAndRunTests("rollups/query_rewriter_test_configs/test_query_rewriter.json")
   }
 
-  test("rollup rewriter union rollup") {
+// Unions in rollup definition are not supported
+  ignore("rollup rewriter union rollup") {
     loadAndRunTests("rollups/query_rewriter_test_configs/test_union.json")
   }
 
@@ -212,6 +213,14 @@ class TestRollupQueryRewriter extends BaseConfigurableRollupTest {
 
   test("self aggregatable aggregate") {
     loadAndRunTests("rollups/query_rewriter_test_configs/test_self_aggregatable_aggregate.json")
+  }
+
+  test("derived view join") {
+    loadAndRunTests("rollups/query_rewriter_test_configs/test_derived_view_join.json")
+  }
+
+  test("filtering") {
+    loadAndRunTests("rollups/query_rewriter_test_configs/test_filtering.json")
   }
 
 }

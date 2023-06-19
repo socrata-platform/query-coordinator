@@ -27,14 +27,20 @@ class Secondary(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
     }
   }
 
+  def arbitrarySecondary(): String = {
+    secondaryInstance.arbitraryInstance()
+  }
 
-  def serviceInstance(dataset: String, instanceName: Option[String]): Option[ServiceInstance[AuxiliaryData]] = {
+  def unassociatedServiceInstance(instanceName: String): Option[ServiceInstance[AuxiliaryData]] =
+    Option(secondaryProvider.provider(instanceName).getInstance())
+
+  def serviceInstance(dataset: String, instanceName: Option[String], markBrokenOnUnknown: Boolean = true): Option[ServiceInstance[AuxiliaryData]] = {
     val instance = for {
       name <- instanceName
       instance <- Option(secondaryProvider.provider(name).getInstance())
     } yield instance
 
-    if (instance.isEmpty) {
+    if (markBrokenOnUnknown && instance.isEmpty) {
       instanceName.foreach { n => secondaryInstance.flagError(dataset, n) }
     }
 

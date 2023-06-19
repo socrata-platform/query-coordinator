@@ -15,13 +15,13 @@ import com.socrata.http.server.livenesscheck.LivenessCheckResponder
 import com.socrata.http.server.util.RequestId.ReqIdHeader
 import com.socrata.http.server.util.handlers.{ErrorCatcher, LoggingOptions, NewLoggingHandler, ThreadRenamingHandler}
 import com.socrata.querycoordinator.caching.Windower
-import com.socrata.querycoordinator.resources.{QueryResource, VersionResource}
+import com.socrata.querycoordinator.resources.{QueryResource, NewQueryResource, VersionResource}
 import com.socrata.querycoordinator.util.TeeToTempInputStream
 import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
 import com.socrata.soql.types.SoQLType
 import com.socrata.soql.{AnalysisSerializer, SoQLAnalyzer}
 import com.socrata.curator.{ConfigWatch, CuratorFromConfig, DiscoveryFromConfig}
-import com.socrata.querycoordinator.rollups.{QueryRewriter, QueryRewriterImplementation, RollupInfoFetcher}
+import com.socrata.querycoordinator.rollups.{CompoundQueryRewriter, RollupInfoFetcher}
 import com.socrata.thirdparty.metrics.{MetricsReporter, SocrataHttpSupport}
 import com.socrata.thirdparty.typesafeconfig.Propertizer
 import com.typesafe.config.{Config, ConfigFactory}
@@ -33,7 +33,6 @@ import org.slf4j.LoggerFactory
 final abstract class Main
 
 object Main extends App with DynamicPortMap {
-
   def withDefaultAddress(config: Config): Config = {
     val ifaces = ServiceInstanceBuilder.getAllLocalIPs
     if (ifaces.isEmpty) {
@@ -56,6 +55,14 @@ object Main extends App with DynamicPortMap {
 
   PropertyConfigurator.configure(Propertizer("log4j", config.log4j))
   val log = org.slf4j.LoggerFactory.getLogger(classOf[Main])
+
+  ResourceScope.onLeak { rs =>
+    try {
+      log.warn("Resource scope {} leaked!", rs.name)
+    } finally {
+      rs.close()
+    }
+  }
 
   val analyzer = new SoQLAnalyzer(SoQLTypeInfo, SoQLFunctionInfo)
   def typeSerializer(typ: SoQLType): String = typ.name.name
@@ -94,11 +101,14 @@ object Main extends App with DynamicPortMap {
       schemaTimeout = config.schemaTimeout
     )
 
+    val mirror = Mirror(config.mirrors)
+
     val windower = new Windower(config.cache.rowsPerWindow)
     val maxWindowCount = config.cache.maxWindows
     val schemaFetcher = SchemaFetcher(httpClient)
     val queryResource = QueryResource(
       secondary = secondary,
+      mirror = mirror,
       schemaFetcher = schemaFetcher,
       queryParser = new QueryParser(analyzer, schemaFetcher, config.maxRows, config.defaultRowsLimit),
       queryExecutor = new QueryExecutor(httpClient, analysisSerializer, teeStream, cacheSessionProvider, windower, maxWindowCount, config.maxDbQueryTimeout.toSeconds),
@@ -108,11 +118,16 @@ object Main extends App with DynamicPortMap {
       schemaCache = (_, _, _) => (),
       schemaDecache = (_, _) => None,
       secondaryInstance = secondaryInstanceSelector,
-      queryRewriter = new QueryRewriterImplementation(analyzer),
+      queryRewriter = new CompoundQueryRewriter(analyzer),
       rollupInfoFetcher = new RollupInfoFetcher(httpClient)
     )
 
-    val handler = Service(queryResource, VersionResource())
+    val newQueryResource = new NewQueryResource(
+      httpClient = httpClient,
+      secondary = secondary
+    )
+
+    val handler = Service(queryResource, newQueryResource, VersionResource())
 
     def remapLivenessCheckInfo(lci: LivenessCheckInfo): LivenessCheckInfo =
       new LivenessCheckInfo(hostPort(lci.port), lci.response)
