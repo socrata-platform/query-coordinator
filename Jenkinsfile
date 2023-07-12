@@ -69,15 +69,6 @@ pipeline {
           sbtbuild.setSubprojectName("queryCoordinator")
           echo "Building sbt project..."
           sbtbuild.build()
-
-          env.SERVICE_VERSION = sbtbuild.getServiceVersion()
-          // set the SERVICE_SHA to the current head because it might not be the same as env.GIT_COMMIT
-          env.SERVICE_SHA = sh(returnStdout: true, script: "git rev-parse HEAD").trim()
-          if (params.RELEASE_BUILD) {
-            env.REGISTRY_PUSH = 'all'
-          } else {
-            env.REGISTRY_PUSH = 'internal'
-          }
         }
       }
     }
@@ -87,6 +78,14 @@ pipeline {
       }
       steps {
         script {
+          if (params.RELEASE_BUILD) {
+            env.REGISTRY_PUSH = 'all'
+          } else {
+            env.REGISTRY_PUSH = 'internal'
+          }
+          env.SERVICE_VERSION = sbtbuild.getServiceVersion()
+          // set the SERVICE_SHA to the current head because it might not be the same as env.GIT_COMMIT
+          env.SERVICE_SHA = sh(returnStdout: true, script: "git rev-parse HEAD").trim()
           env.DOCKER_TAG = dockerize.docker_build(sbtbuild.getServiceVersion(), env.SERVICE_SHA, sbtbuild.getDockerPath(), sbtbuild.getDockerArtifact(), env.REGISTRY_PUSH)
           currentBuild.description = env.DOCKER_TAG
         }
