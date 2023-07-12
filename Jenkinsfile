@@ -67,6 +67,7 @@ pipeline {
         script {
           sbtbuild.setScalaVersion("2.12")
           sbtbuild.setSubprojectName("queryCoordinator")
+          echo "Building sbt project..."
           sbtbuild.build()
 
           env.SERVICE_VERSION = sbtbuild.getServiceVersion()
