@@ -69,12 +69,6 @@ pipeline {
           sbtbuild.setSubprojectName("queryCoordinator")
           echo "Building sbt project..."
           sbtbuild.build()
-
-          env.SERVICE_VERSION = sbtbuild.getServiceVersion()
-          // set the SERVICE_SHA to the current head because it might not be the same as env.GIT_COMMIT
-          env.SERVICE_SHA = sh(returnStdout: true, script: "git rev-parse HEAD").trim()
-          // set build description to be the same as the docker deploy tag
-          currentBuild.description = "${env.SERVICE}:${env.SERVICE_VERSION}_${env.BUILD_NUMBER}_${env.SERVICE_SHA.take(8)}"
         }
       }
     }
@@ -83,10 +77,13 @@ pipeline {
         not { expression { isPr } }
       }
       steps {
-        script {
-          echo "Building docker container..."
-          dockerize.docker_build(sbtbuild.getServiceVersion(), env.SERVICE_SHA, sbtbuild.getDockerPath(), sbtbuild.getDockerArtifact())
-          env.DOCKER_TAG = dockerize.getDeployTag()
+        script { 
+          env.REGISTRY_PUSH = (params.RELEASE_BUILD) ? 'all' : 'internal'
+          env.SERVICE_VERSION = sbtbuild.getServiceVersion()
+          // set the SERVICE_SHA to the current head because it might not be the same as env.GIT_COMMIT
+          env.SERVICE_SHA = sh(returnStdout: true, script: "git rev-parse HEAD").trim()
+          env.DOCKER_TAG = dockerize.docker_build(env.SERVICE_VERSION, env.SERVICE_SHA, sbtbuild.getDockerPath(), sbtbuild.getDockerArtifact(), env.REGISTRY_PUSH)
+          currentBuild.description = env.DOCKER_TAG
         }
       }
       post {
