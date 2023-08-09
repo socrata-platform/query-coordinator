@@ -1,12 +1,13 @@
 @Library('socrata-pipeline-library')
 
 def service = 'query-coordinator'
-def project_wd = 'query-coordinator'
+def project_wd = service
 def isPr = env.CHANGE_ID != null;
 
 // Utility Libraries
 def sbtbuild = new com.socrata.SBTBuild(steps, service, project_wd)
 def dockerize = new com.socrata.Dockerize(steps, service, BUILD_NUMBER)
+def releaseTag = new com.socrata.ReleaseTag(steps, service)
 
 pipeline {
   options {
@@ -15,6 +16,7 @@ pipeline {
   parameters {
     booleanParam(name: 'RELEASE_BUILD', defaultValue: false, description: 'Are we building a release candidate?')
     booleanParam(name: 'RELEASE_DRY_RUN', defaultValue: false, description: 'To test out the release build without creating a new tag.')
+    string(name: 'RELEASE_NAME', defaultValue: '', description: 'For release builds, the release name which is used for the git tag and the deploy tag.')
     string(name: 'AGENT', defaultValue: 'build-worker', description: 'Which build agent to use?')
     string(name: 'BRANCH_SPECIFIER', defaultValue: 'origin/main', description: 'Use this branch for building the artifact.')
   }
@@ -22,7 +24,7 @@ pipeline {
     label params.AGENT
   }
   environment {
-    SERVICE = 'query-coordinator'
+    SERVICE = service
   }
   stages {
     stage('Release Tag') {
@@ -35,30 +37,8 @@ pipeline {
             echo 'DRY RUN: Skipping release tag creation'
           }
           else {
-            // get a list of all files changes since the last tag
-            files = sh(returnStdout: true, script: "git diff --name-only HEAD `git describe --match \"v*\" --abbrev=0`").trim()
-            echo "Files changed:\n${files}"
-
-            // the release build process changes the version file, so it will always be changed
-            // if there are other files changed, increment the version and create a new tag
-            if (files != 'version.sbt') {
-              echo 'Running sbt-release'
-
-              // sbt release doesn't like running without these
-              sh(returnStdout: true, script: "git config remote.origin.fetch +refs/heads/*:refs/remotes/origin/*")
-              sh(returnStdout: true, script: "git config branch.main.remote origin")
-              sh(returnStdout: true, script: "git config branch.main.merge refs/heads/main")
-
-              echo sh(returnStdout: true, script: "echo y | sbt \"release with-defaults\"")
-            }
+            releaseTag.create(params.RELEASE_NAME)
           }
-          echo 'Getting release tag'
-          release_tag = sh(returnStdout: true, script: "git describe --abbrev=0 --match \"v*\"").trim()
-          branchSpecifier = "refs/tags/${release_tag}"
-          echo branchSpecifier
-
-          // checkout the tag so we're performing subsequent actions on it
-          sh "git checkout ${branchSpecifier}"
         }
       }
     }
@@ -77,19 +57,21 @@ pipeline {
         not { expression { isPr } }
       }
       steps {
-        script { 
-          env.REGISTRY_PUSH = (params.RELEASE_BUILD) ? 'all' : 'internal'
-          env.SERVICE_VERSION = sbtbuild.getServiceVersion()
-          // set the SERVICE_SHA to the current head because it might not be the same as env.GIT_COMMIT
-          env.SERVICE_SHA = sh(returnStdout: true, script: "git rev-parse HEAD").trim()
-          env.DOCKER_TAG = dockerize.docker_build(env.SERVICE_VERSION, env.SERVICE_SHA, sbtbuild.getDockerPath(), sbtbuild.getDockerArtifact(), env.REGISTRY_PUSH)
+        script {
+          if (params.RELEASE_BUILD) {
+            env.REGISTRY_PUSH = (params.RELEASE_DRY_RUN) ? 'none' : 'all'
+            env.DOCKER_TAG = dockerize.docker_build_specify_tag_and_push(params.RELEASE_NAME, sbtbuild.getDockerPath(), sbtbuild.getDockerArtifact(), env.REGISTRY_PUSH)
+          } else {
+            env.REGISTRY_PUSH = 'internal'
+            env.DOCKER_TAG = dockerize.docker_build('STAGING', env.GIT_COMMIT, sbtbuild.getDockerPath(), sbtbuild.getDockerArtifact(), env.REGISTRY_PUSH)
+          }
           currentBuild.description = env.DOCKER_TAG
         }
       }
       post {
         success {
           script {
-            if (params.RELEASE_BUILD){
+            if (params.RELEASE_BUILD && !params.RELEASE_DRY_RUN){
               echo env.DOCKER_TAG // For now, just print the deploy tag in the console output -- later, communicate to release metadata service
             }
           }
