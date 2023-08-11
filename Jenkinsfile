@@ -24,7 +24,7 @@ pipeline {
     label params.AGENT
   }
   environment {
-    SERVICE = service
+    SERVICE = "${service}"
   }
   stages {
     stage('Release Tag') {
