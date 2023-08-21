@@ -67,6 +67,7 @@ pipeline {
         script {
           sbtbuild.setScalaVersion("2.12")
           sbtbuild.setSubprojectName("queryCoordinator")
+          sbtbuild.setSrcJar("query-coordinator/target/query-coordinator-assembly.jar")
           echo "Building sbt project..."
           sbtbuild.build()
         }
