@@ -147,6 +147,14 @@ object Main extends App with DynamicPortMap {
     val serv = new SocrataServerJetty(
       ThreadRenamingHandler(NewLoggingHandler(logOptions)(ErrorCatcher(handler))),
       SocrataServerJetty.defaultOptions.
+                         withGzipOptions(
+                           Some(
+                             SocrataServerJetty.Gzip.defaultOptions.
+                               withExcludedMimeTypes(
+                                 Set("application/x-socrata-gzipped-cjson")
+                               )
+                           )
+                         ).
                          withPort(config.network.port).
                          withExtraHandlers(List(SocrataHttpSupport.getHandler(config.metrics))).
                          withPoolOptions(SocrataServerJetty.Pool(config.threadpool)).
