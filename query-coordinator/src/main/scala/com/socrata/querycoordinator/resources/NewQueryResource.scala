@@ -17,7 +17,7 @@ import com.socrata.http.server.ext.{ResourceExt, Json, HeaderMap, HeaderName, Re
 import com.socrata.http.server.util.RequestId.ReqIdHeader
 import com.socrata.soql.analyzer2.{MetaTypes, FoundTables, SoQLAnalyzer, UserParameters, DatabaseTableName, DatabaseColumnName, SoQLAnalysis, CanonicalName, AggregateFunctionCall, FuncallPositionInfo, types}
 import com.socrata.soql.analyzer2.rewrite.Pass
-import com.socrata.soql.environment.{HoleName, ColumnName}
+import com.socrata.soql.environment.{HoleName, ColumnName, Provenance}
 import com.socrata.soql.serialize.{WriteBuffer, Writable}
 import com.socrata.soql.types.{SoQLType, SoQLValue, SoQLFixedTimestamp, SoQLFloatingTimestamp}
 import com.socrata.soql.functions.{MonomorphicFunction, SoQLTypeInfo, SoQLFunctionInfo, SoQLFunctions}
@@ -65,9 +65,17 @@ class NewQueryResource(
     override type DatabaseColumnNameImpl = ColumnId
   }
 
+  object MT {
+    object ToProvenance extends types.ToProvenance[MT] {
+      // This serialization must be decodable on the other side
+      override def toProvenance(dtn: types.DatabaseTableName[MT]) =
+        Provenance(JsonUtil.renderJson(dtn.name, pretty = false))
+    }
+  }
+
   val standardSystemColumns = Set(":id", ":version", ":created_at", ":updated_at").map(ColumnName)
 
-  val analyzer = new SoQLAnalyzer[MT](SoQLTypeInfo, SoQLFunctionInfo)
+  val analyzer = new SoQLAnalyzer[MT](SoQLTypeInfo, SoQLFunctionInfo, MT.ToProvenance)
   val systemColumnPreservingAnalyzer = analyzer
     .preserveSystemColumns { (columnName, expr) =>
       if(standardSystemColumns(columnName)) {
