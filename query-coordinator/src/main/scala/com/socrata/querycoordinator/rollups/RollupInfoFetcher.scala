@@ -20,7 +20,7 @@ class RollupInfoFetcher(httpClient: HttpClient) {
     def processResponse(response: Response): Result = response.resultCode match {
       case HttpServletResponse.SC_OK =>
         try {
-          Successful(response.array[RollupInfo]().toList)
+          Successful(response.array[RollupInfo]().toList.filterNot(_.isNewAnalyzer))
         } catch {
           case e@(_: JsonReaderException | _: ElementDecodeException) =>
             NonRollupInfoResponse
