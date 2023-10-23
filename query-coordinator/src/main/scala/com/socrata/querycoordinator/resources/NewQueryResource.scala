@@ -1,5 +1,7 @@
 package com.socrata.querycoordinator.resources
 
+import scala.concurrent.duration._
+
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.nio.charset.StandardCharsets
 
@@ -95,7 +97,8 @@ class NewQueryResource(
     locationSubcolumns: Map[types.DatabaseTableName[MT], Map[types.DatabaseColumnName[MT], Seq[Option[types.DatabaseColumnName[MT]]]]],
     systemContext: Map[String, String],
     rewritePasses: Seq[Seq[Pass]],
-    debug: Option[Debug]
+    debug: Option[Debug],
+    queryTimeout: Option[FiniteDuration]
   )
   private object Request {
     implicit def serialize(implicit ev: Writable[SoQLAnalysis[MT]]) = new Writable[Request] {
@@ -106,6 +109,7 @@ class NewQueryResource(
         buffer.write(req.systemContext)
         buffer.write(req.rewritePasses)
         buffer.write(req.debug)
+        buffer.write(req.queryTimeout.map(_.toMillis))
       }
     }
   }
@@ -121,7 +125,8 @@ class NewQueryResource(
     rewritePasses: Seq[Seq[Pass]],
     @AllowMissing("false")
     preserveSystemColumns: Boolean,
-    debug: Option[Debug]
+    debug: Option[Debug],
+    queryTimeoutMS: Option[Long]
   )
 
   def doit(rs: ResourceScope, headers: HeaderMap, reqId: RequestId, json: Json[Body]): HttpResponse = {
@@ -132,7 +137,8 @@ class NewQueryResource(
         context,
         rewritePasses,
         preserveSystemColumns,
-        debug
+        debug,
+        queryTimeoutMS
       )
     ) = json
 
@@ -153,7 +159,7 @@ class NewQueryResource(
 
     effectiveAnalyzer(foundTables, context.user.toUserParameters) match {
       case Right(analysis) =>
-        val serialized = WriteBuffer.asBytes(Request(analysis, mapifiedLocationSubcolumns, context.system, rewritePasses, debug))
+        val serialized = WriteBuffer.asBytes(Request(analysis, mapifiedLocationSubcolumns, context.system, rewritePasses, debug, queryTimeoutMS.map(_.milliseconds)))
 
         log.debug("Serialized analysis as:\n{}", Lazy(locally {
           val baos = new ByteArrayOutputStream
