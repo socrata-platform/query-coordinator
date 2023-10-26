@@ -77,7 +77,7 @@ class NewQueryResource(
 
   val standardSystemColumns = Set(":id", ":version", ":created_at", ":updated_at").map(ColumnName)
 
-  val analyzer = new SoQLAnalyzer[MT](SoQLTypeInfo, SoQLFunctionInfo, MT.ToProvenance)
+  val analyzer = new SoQLAnalyzer[MT](SoQLTypeInfo.soqlTypeInfo2, SoQLFunctionInfo, MT.ToProvenance)
   val systemColumnPreservingAnalyzer = analyzer
     .preserveSystemColumns { (columnName, expr) =>
       if(standardSystemColumns(columnName)) {
