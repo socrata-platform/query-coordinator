@@ -17,7 +17,9 @@ import com.socrata.http.client.HttpClient
 import com.socrata.http.server.{HttpRequest, HttpResponse}
 import com.socrata.http.server.ext.{ResourceExt, Json, HeaderMap, HeaderName, RequestId}
 import com.socrata.http.server.util.RequestId.ReqIdHeader
-import com.socrata.soql.analyzer2.{MetaTypes, FoundTables, SoQLAnalyzer, UserParameters, DatabaseTableName, DatabaseColumnName, SoQLAnalysis, CanonicalName, AggregateFunctionCall, FuncallPositionInfo, types}
+import com.socrata.http.server.responses.{Stream => StreamBytes, Json => JsonResp, _}
+import com.socrata.http.server.implicits._
+import com.socrata.soql.analyzer2.{MetaTypes, FoundTables, SoQLAnalyzer, UserParameters, DatabaseTableName, DatabaseColumnName, SoQLAnalysis, CanonicalName, AggregateFunctionCall, FuncallPositionInfo, SoQLAnalyzerError, types}
 import com.socrata.soql.analyzer2.rewrite.Pass
 import com.socrata.soql.environment.{HoleName, ColumnName, Provenance}
 import com.socrata.soql.serialize.{WriteBuffer, Writable}
@@ -25,6 +27,7 @@ import com.socrata.soql.types.{SoQLType, SoQLValue, SoQLFixedTimestamp, SoQLFloa
 import com.socrata.soql.functions.{MonomorphicFunction, SoQLTypeInfo, SoQLFunctionInfo, SoQLFunctions}
 import com.socrata.soql.stdlib.analyzer2.Context
 import com.socrata.soql.sql.Debug
+import com.socrata.soql.util.GenericSoQLError
 
 import com.socrata.querycoordinator.Secondary
 import com.socrata.querycoordinator.util.Lazy
@@ -91,6 +94,10 @@ class NewQueryResource(
         None
       }
     }
+
+  implicit val analyzerErrorCodecs =
+    SoQLAnalyzerError.errorCodecs[MT#ResourceNameScope, SoQLAnalyzerError[MT#ResourceNameScope]]().
+      build
 
   private case class Request(
     analysis: SoQLAnalysis[MT],
@@ -199,38 +206,25 @@ class NewQueryResource(
           val resp = httpClient.execute(req, rs)
 
           return resp.resultCode match {
-            case 200 =>
-              import com.socrata.http.server.responses._
-              import com.socrata.http.server.implicits._
-
-              val base = Seq("content-type", "etag", "last-modified").foldLeft[HttpResponse](OK) { (acc, hdrName) =>
+            case code@(200 | 304) =>
+              Seq("content-type", "etag", "last-modified").foldLeft[HttpResponse](Status(code)) { (acc, hdrName) =>
                 resp.headers(hdrName).foldLeft(acc) { (acc, value) =>
                   acc ~> Header(hdrName, value)
                 }
-              }
-
-              base ~> Stream(resp.inputStream())
-
-            case 304 =>
-              import com.socrata.http.server.responses._
-              import com.socrata.http.server.implicits._
-
-              val base = Seq("content-type", "etag", "last-modified").foldLeft[HttpResponse](NotModified) { (acc, hdrName) =>
-                resp.headers(hdrName).foldLeft(acc) { (acc, value) =>
-                  acc ~> Header(hdrName, value)
-                }
-              }
-
-              base ~> Stream(resp.inputStream())
+              } ~> StreamBytes(resp.inputStream())
 
             case other =>
-              throw new Exception("Unexpected result code " + other)
+              val error = resp.value[GenericSoQLError[MT#ResourceNameScope]]() match {
+                case Right(value) => value
+                case Left(err) => throw new Exception("Invalid error response: " + err.english)
+              }
+              Status(other) ~> JsonResp(error)
           }
         }
 
         throw new Exception("Failed to find a secondary") // TODO
       case Left(err) =>
-        throw new Exception("Compiler error: " + err) // TODO: compiler error
+        BadRequest ~> JsonResp(err)
     }
   }
 
