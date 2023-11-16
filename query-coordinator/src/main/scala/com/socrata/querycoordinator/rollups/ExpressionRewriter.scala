@@ -167,9 +167,12 @@ class ExpressionRewriter(val rollupColumnId: (Int) => String,
       val simplifiedRwFilter = simplifyAndTrue(rwFilter)
       val newSumCol = typed.ColumnRef(NoQualifier, rollupColumnId(sumIdx), SoQLNumber.t)(fc.position)
       val newCountCol = typed.ColumnRef(NoQualifier, rollupColumnId(countIdx), SoQLNumber.t)(fc.position)
+      // this is doing the merge, so to produce the rolled-up average
+      // we need to divide the sum of the sums by the _sum_ of the
+      // counts
       typed.FunctionCall(DivNumber,
         Seq(typed.FunctionCall(SumNumber, Seq(newSumCol), simplifiedRwFilter, window)(fc.position, fc.position),
-          typed.FunctionCall(CountNumber, Seq(newCountCol), simplifiedRwFilter, window)(fc.position, fc.position)),
+          typed.FunctionCall(SumNumber, Seq(newCountCol), simplifiedRwFilter, window)(fc.position, fc.position)),
         None, window)(fc.position, fc.position)
     }
   }
