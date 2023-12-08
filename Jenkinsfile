@@ -2,7 +2,8 @@
 
 def service = 'query-coordinator'
 def project_wd = service
-def isPr = env.CHANGE_ID != null;
+def isPr = env.CHANGE_ID != null
+def lastStage
 
 // Utility Libraries
 def sbtbuild = new com.socrata.SBTBuild(steps, service, project_wd)
@@ -25,6 +26,7 @@ pipeline {
   }
   environment {
     SERVICE = "${service}"
+    WEBHOOK_ID = 'WEBHOOK_IQ'
   }
   stages {
     stage('Release Tag') {
@@ -33,6 +35,7 @@ pipeline {
       }
       steps {
         script {
+          lastStage = env.STAGE_NAME
           if (params.RELEASE_DRY_RUN) {
             echo 'DRY RUN: Skipping release tag creation'
           }
@@ -45,6 +48,7 @@ pipeline {
     stage('Build') {
       steps {
         script {
+          lastStage = env.STAGE_NAME
           sbtbuild.setScalaVersion("2.12")
           sbtbuild.setSubprojectName("queryCoordinator")
           sbtbuild.setSrcJar("query-coordinator/target/query-coordinator-assembly.jar")
@@ -59,6 +63,7 @@ pipeline {
       }
       steps {
         script {
+          lastStage = env.STAGE_NAME
           if (params.RELEASE_BUILD) {
             env.REGISTRY_PUSH = (params.RELEASE_DRY_RUN) ? 'none' : 'all'
             env.DOCKER_TAG = dockerize.docker_build_specify_tag_and_push(params.RELEASE_NAME, sbtbuild.getDockerPath(), sbtbuild.getDockerArtifact(), env.REGISTRY_PUSH)
@@ -86,8 +91,18 @@ pipeline {
       }
       steps {
         script {
+          lastStage = env.STAGE_NAME
           // uses env.SERVICE and env.DOCKER_TAG, deploys to staging by default
           marathonDeploy()
+        }
+      }
+    }
+  }
+  post {
+    failure {
+      script {
+        if (!isPr) {
+          teamsMessage(message: "Build [${currentBuild.fullDisplayName}](${env.BUILD_URL}) has failed in stage ${lastStage}", webhookCredentialID: WEBHOOK_ID)
         }
       }
     }
