@@ -75,20 +75,13 @@ class QueryParser(analyzer: SoQLAnalyzer[SoQLType, SoQLValue], schemaFetcher: Sc
 
   private def limitRows(analyses: BinaryTree[SoQLAnalysis[ColumnName, SoQLType]])
     : Either[Result, BinaryTree[SoQLAnalysis[ColumnName, SoQLType]]] = {
-    val last = analyses.outputSchema.leaf
+    val last: SoQLAnalysis[ColumnName, SoQLType] = BinaryTreeHelper.outerMostAnalyses(analyses).last
     last.limit match {
       case Some(lim) =>
         val actualMax = BigInt(maxRows.map(_.toLong).getOrElse(Long.MaxValue))
         if (lim <= actualMax) { Right(analyses) }
         else { Left(RowLimitExceeded(actualMax)) }
       case None =>
-        val outermostAnalyses: Seq[SoQLAnalysis[ColumnName, SoQLType]] = BinaryTreeHelper.outerMostAnalyses(analyses)
-        val last: SoQLAnalysis[ColumnName, SoQLType] = outermostAnalyses match {
-          case Seq(one) =>
-            one
-          case moreThanOne: Seq[_] =>
-            moreThanOne.last
-        }
         val lastWithLimit = last.copy(limit = Some(defaultRowsLimit))
         Right(BinaryTreeHelper.replace(analyses, last, lastWithLimit))
     }
