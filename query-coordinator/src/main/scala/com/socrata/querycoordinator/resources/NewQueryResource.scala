@@ -89,7 +89,7 @@ class NewQueryResource(
           Seq(expr),
           false,
           None
-        )(FuncallPositionInfo.None))
+        )(FuncallPositionInfo.Synthetic))
       } else {
         None
       }
