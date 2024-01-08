@@ -80,21 +80,6 @@ class NewQueryResource(
 
   val standardSystemColumns = Set(":id", ":version", ":created_at", ":updated_at").map(ColumnName)
 
-  val analyzer = new SoQLAnalyzer[MT](SoQLTypeInfo.soqlTypeInfo2, SoQLFunctionInfo, MT.ToProvenance)
-  val systemColumnPreservingAnalyzer = analyzer
-    .preserveSystemColumns { (columnName, expr) =>
-      if(standardSystemColumns(columnName)) {
-        Some(AggregateFunctionCall[MT](
-          MonomorphicFunction(SoQLFunctions.Max, Map("a" -> expr.typ)),
-          Seq(expr),
-          false,
-          None
-        )(FuncallPositionInfo.Synthetic))
-      } else {
-        None
-      }
-    }
-
   implicit val analyzerErrorCodecs =
     SoQLAnalyzerError.errorCodecs[MT#ResourceNameScope, SoQLAnalyzerError[MT#ResourceNameScope]]().
       build
@@ -105,18 +90,20 @@ class NewQueryResource(
     systemContext: Map[String, String],
     rewritePasses: Seq[Seq[Pass]],
     debug: Option[Debug],
-    queryTimeout: Option[FiniteDuration]
+    queryTimeout: Option[FiniteDuration],
+    noObfuscateRowIds: Boolean
   )
   private object Request {
     implicit def serialize(implicit ev: Writable[SoQLAnalysis[MT]]) = new Writable[Request] {
       def writeTo(buffer: WriteBuffer, req: Request): Unit = {
-        buffer.write(0)
+        buffer.write(1)
         buffer.write(req.analysis)
         buffer.write(req.locationSubcolumns)
         buffer.write(req.systemContext)
         buffer.write(req.rewritePasses)
         buffer.write(req.debug)
         buffer.write(req.queryTimeout.map(_.toMillis))
+        buffer.write(req.noObfuscateRowIds)
       }
     }
   }
@@ -133,7 +120,9 @@ class NewQueryResource(
     @AllowMissing("false")
     preserveSystemColumns: Boolean,
     debug: Option[Debug],
-    queryTimeoutMS: Option[Long]
+    queryTimeoutMS: Option[Long],
+    @AllowMissing("false")
+    noObfuscateRowIds: Boolean
   )
 
   def doit(rs: ResourceScope, headers: HeaderMap, reqId: RequestId, json: Json[Body]): HttpResponse = {
@@ -145,7 +134,8 @@ class NewQueryResource(
         rewritePasses,
         preserveSystemColumns,
         debug,
-        queryTimeoutMS
+        queryTimeoutMS,
+        noObfuscateRowIds
       )
     ) = json
 
@@ -160,13 +150,27 @@ class NewQueryResource(
       }.toMap
     }.toMap
 
+    val analyzer = new SoQLAnalyzer[MT](SoQLTypeInfo.soqlTypeInfo2(numericRowIdLiterals = noObfuscateRowIds), SoQLFunctionInfo, MT.ToProvenance)
+
     val effectiveAnalyzer =
-      if(preserveSystemColumns) systemColumnPreservingAnalyzer
-      else analyzer
+      if(preserveSystemColumns) {
+        analyzer.preserveSystemColumns { (columnName, expr) =>
+          if(standardSystemColumns(columnName)) {
+            Some(AggregateFunctionCall[MT](
+                   MonomorphicFunction(SoQLFunctions.Max, Map("a" -> expr.typ)),
+                   Seq(expr),
+                   false,
+                   None
+                 )(FuncallPositionInfo.Synthetic))
+          } else {
+            None
+          }
+        }
+      } else analyzer
 
     effectiveAnalyzer(foundTables, context.user.toUserParameters) match {
       case Right(analysis) =>
-        val serialized = WriteBuffer.asBytes(Request(analysis, mapifiedLocationSubcolumns, context.system, rewritePasses, debug, queryTimeoutMS.map(_.milliseconds)))
+        val serialized = WriteBuffer.asBytes(Request(analysis, mapifiedLocationSubcolumns, context.system, rewritePasses, debug, queryTimeoutMS.map(_.milliseconds), noObfuscateRowIds))
 
         log.debug("Serialized analysis as:\n{}", Lazy(locally {
           val baos = new ByteArrayOutputStream
