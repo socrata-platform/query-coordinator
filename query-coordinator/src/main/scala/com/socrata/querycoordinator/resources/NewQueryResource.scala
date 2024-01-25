@@ -104,17 +104,19 @@ class NewQueryResource(
     locationSubcolumns: Map[types.DatabaseTableName[MT], Map[types.DatabaseColumnName[MT], Seq[Option[types.DatabaseColumnName[MT]]]]],
     systemContext: Map[String, String],
     rewritePasses: Seq[Seq[Pass]],
+    allowRollups: Boolean,
     debug: Option[Debug],
     queryTimeout: Option[FiniteDuration]
   )
   private object Request {
     implicit def serialize(implicit ev: Writable[SoQLAnalysis[MT]]) = new Writable[Request] {
       def writeTo(buffer: WriteBuffer, req: Request): Unit = {
-        buffer.write(0)
+        buffer.write(1)
         buffer.write(req.analysis)
         buffer.write(req.locationSubcolumns)
         buffer.write(req.systemContext)
         buffer.write(req.rewritePasses)
+        buffer.write(req.allowRollups)
         buffer.write(req.debug)
         buffer.write(req.queryTimeout.map(_.toMillis))
       }
@@ -130,6 +132,8 @@ class NewQueryResource(
     context: Context,
     @AllowMissing("Nil")
     rewritePasses: Seq[Seq[Pass]],
+    @AllowMissing("true")
+    allowRollups: Boolean,
     @AllowMissing("false")
     preserveSystemColumns: Boolean,
     debug: Option[Debug],
@@ -143,6 +147,7 @@ class NewQueryResource(
         locationSubcolumns,
         context,
         rewritePasses,
+        allowRollups,
         preserveSystemColumns,
         debug,
         queryTimeoutMS
@@ -166,7 +171,7 @@ class NewQueryResource(
 
     effectiveAnalyzer(foundTables, context.user.toUserParameters) match {
       case Right(analysis) =>
-        val serialized = WriteBuffer.asBytes(Request(analysis, mapifiedLocationSubcolumns, context.system, rewritePasses, debug, queryTimeoutMS.map(_.milliseconds)))
+        val serialized = WriteBuffer.asBytes(Request(analysis, mapifiedLocationSubcolumns, context.system, rewritePasses, allowRollups, debug, queryTimeoutMS.map(_.milliseconds)))
 
         log.debug("Serialized analysis as:\n{}", Lazy(locally {
           val baos = new ByteArrayOutputStream
