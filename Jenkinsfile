@@ -1,9 +1,12 @@
 @Library('socrata-pipeline-library')
 
-def service = 'query-coordinator'
-def project_wd = service
-def isPr = env.CHANGE_ID != null
-def lastStage
+import com.socrata.ReleaseMetadataService
+def rmsSupportedEnvironment = com.socrata.ReleaseMetadataService.SupportedEnvironment
+
+String service = 'query-coordinator'
+String project_wd = service
+boolean isPr = env.CHANGE_ID != null
+boolean lastStage
 
 // Utility Libraries
 def sbtbuild = new com.socrata.SBTBuild(steps, service, project_wd)
@@ -25,7 +28,6 @@ pipeline {
     label params.AGENT
   }
   environment {
-    SERVICE = "${service}"
     WEBHOOK_ID = 'WEBHOOK_IQ'
   }
   stages {
@@ -40,7 +42,7 @@ pipeline {
             echo 'DRY RUN: Skipping release tag creation'
           }
           else {
-            releaseTag.create(params.RELEASE_NAME)
+            env.GIT_TAG = releaseTag.create(params.RELEASE_NAME)
           }
         }
       }
@@ -78,7 +80,16 @@ pipeline {
         success {
           script {
             if (params.RELEASE_BUILD && !params.RELEASE_DRY_RUN){
-              echo env.DOCKER_TAG // For now, just print the deploy tag in the console output -- later, communicate to release metadata service
+              Map buildInfo = [
+                "project_id": service,
+                "build_id": env.DOCKER_TAG,
+                "release_id": params.RELEASE_NAME,
+                "git_tag": env.GIT_TAG,
+              ]
+              createBuild(
+                buildInfo,
+                rmsSupportedEnvironment.staging // change to production before merging
+              )
             }
           }
         }
@@ -92,8 +103,8 @@ pipeline {
       steps {
         script {
           lastStage = env.STAGE_NAME
-          // uses env.SERVICE and env.DOCKER_TAG, deploys to staging by default
-          marathonDeploy()
+          // uses env.DOCKER_TAG and deploys to staging by default
+          marathonDeploy(serviceName: service)
         }
       }
     }
