@@ -137,7 +137,8 @@ class NewQueryResource(
     @AllowMissing("false")
     preserveSystemColumns: Boolean,
     debug: Option[Debug],
-    queryTimeoutMS: Option[Long]
+    queryTimeoutMS: Option[Long],
+    store: Option[String]
   )
 
   def doit(rs: ResourceScope, headers: HeaderMap, reqId: RequestId, json: Json[Body]): HttpResponse = {
@@ -150,7 +151,8 @@ class NewQueryResource(
         allowRollups,
         preserveSystemColumns,
         debug,
-        queryTimeoutMS
+        queryTimeoutMS,
+        store
       )
     ) = json
 
@@ -180,14 +182,20 @@ class NewQueryResource(
         }))
 
         var allSecondaries: Stream[Option[String]] =
-          analysis.statement.allTables.toStream.scanLeft((Option.empty[String], Set.empty[String])) { (acc, dss) =>
-            val (_, alreadySeen) = acc
-            val DatabaseTableName((DatasetInternalName(n), Stage(s))) = dss
-            secondary.chosenSecondaryName(None, n, Some(s), alreadySeen) match {
-              case Some(secondary) => (Some(secondary), alreadySeen + secondary)
-              case None => (None, alreadySeen)
-            }
-          }.map(_._1).tail
+          store match {
+            case None =>
+              analysis.statement.allTables.toStream.scanLeft((Option.empty[String], Set.empty[String])) { (acc, dss) =>
+                val (_, alreadySeen) = acc
+                val DatabaseTableName((DatasetInternalName(n), Stage(s))) = dss
+                secondary.chosenSecondaryName(None, n, Some(s), alreadySeen) match {
+                  case Some(secondary) => (Some(secondary), alreadySeen + secondary)
+                  case None => (None, alreadySeen)
+                }
+              }.map(_._1).tail
+            case Some(store) =>
+              log.info("Forcing secondary to {}", JString(store))
+              Stream(Some(store))
+          }
 
         // ok so it's possible that allTables is empty, in which case
         // we don't care what secondary we're sending this to.
@@ -210,9 +218,11 @@ class NewQueryResource(
             .blob(new ByteArrayInputStream(serialized))
           val resp = httpClient.execute(req, rs)
 
+          val base = Status(resp.resultCode) ~> Header("x-soda2-secondary", chosenSecondary)
+
           return resp.resultCode match {
             case code@(200 | 304) =>
-              Seq("content-type", "etag", "last-modified").foldLeft[HttpResponse](Status(code)) { (acc, hdrName) =>
+              Seq("content-type", "etag", "last-modified").foldLeft[HttpResponse](base) { (acc, hdrName) =>
                 resp.headers(hdrName).foldLeft(acc) { (acc, value) =>
                   acc ~> Header(hdrName, value)
                 }
@@ -223,7 +233,7 @@ class NewQueryResource(
                 case Right(value) => value
                 case Left(err) => throw new Exception("Invalid error response: " + err.english)
               }
-              Status(other) ~> JsonResp(error)
+              base~> JsonResp(error)
           }
         }
 
