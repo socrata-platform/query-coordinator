@@ -233,7 +233,7 @@ class NewQueryResource(
                 case Right(value) => value
                 case Left(err) => throw new Exception("Invalid error response: " + err.english)
               }
-              base~> JsonResp(error)
+              base ~> JsonResp(error)
           }
         }
 
