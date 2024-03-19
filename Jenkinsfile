@@ -60,9 +60,6 @@ pipeline {
       }
     }
     stage('Dockerize') {
-      when {
-        not { expression { isPr } }
-      }
       steps {
         script {
           lastStage = env.STAGE_NAME
