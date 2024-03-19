@@ -37,11 +37,11 @@ class Secondary(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
   def serviceInstance(dataset: String, instanceName: Option[String], markBrokenOnUnknown: Boolean = true): Option[ServiceInstance[AuxiliaryData]] = {
     val instance = for {
       name <- instanceName
+      _ =     log.info(s"${dataset}: ${secondaryProvider.provider(name)}")
+      _ =     log.info(s"${dataset}: ${secondaryProvider.provider(name).getInstance()}")
       instance <- Option(secondaryProvider.provider(name).getInstance())
     } yield instance
 
-    log.info(s"${dataset}: ${secondaryProvider.provider(name)}")
-    log.info(s"${dataset}: ${secondaryProvider.provider(name).getInstance()}")
     log.info(s"${dataset}: Found instance ${instance} for ${instanceName}. markBroken is ${markBrokenOnUnknown}. Allowed instances are ${secondaryProvider.providers}")
 
     if (markBrokenOnUnknown && instance.isEmpty) {
