@@ -66,13 +66,8 @@ pipeline {
       steps {
         script {
           lastStage = env.STAGE_NAME
-          if (params.RELEASE_BUILD) {
-            env.REGISTRY_PUSH = (params.RELEASE_DRY_RUN) ? 'none' : 'all'
-            env.DOCKER_TAG = dockerize.docker_build_specify_tag_and_push(params.RELEASE_NAME, sbtbuild.getDockerPath(), sbtbuild.getDockerArtifact(), env.REGISTRY_PUSH)
-          } else {
-            env.REGISTRY_PUSH = 'internal'
-            env.DOCKER_TAG = dockerize.docker_build('STAGING', env.GIT_COMMIT, sbtbuild.getDockerPath(), sbtbuild.getDockerArtifact(), env.REGISTRY_PUSH)
-          }
+          env.REGISTRY_PUSH = 'internal'
+          env.DOCKER_TAG = dockerize.docker_build('STAGING', env.GIT_COMMIT, sbtbuild.getDockerPath(), sbtbuild.getDockerArtifact(), env.REGISTRY_PUSH)
           currentBuild.description = env.DOCKER_TAG
         }
       }
