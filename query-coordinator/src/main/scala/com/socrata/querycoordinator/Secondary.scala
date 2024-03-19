@@ -40,6 +40,7 @@ class Secondary(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
       instance <- Option(secondaryProvider.provider(name).getInstance())
     } yield instance
 
+    log.info(s"${dataset}: ${secondaryProvider.provider(name)}")
     log.info(s"${dataset}: Found instance ${instance} for ${instanceName}. markBroken is ${markBrokenOnUnknown}. Allowed instances are ${secondaryProvider.providers}")
 
     if (markBrokenOnUnknown && instance.isEmpty) {
