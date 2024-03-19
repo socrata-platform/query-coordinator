@@ -41,6 +41,7 @@ class Secondary(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
     } yield instance
 
     log.info(s"${dataset}: ${secondaryProvider.provider(name)}")
+    log.info(s"${dataset}: ${secondaryProvider.provider(name).getInstance()}")
     log.info(s"${dataset}: Found instance ${instance} for ${instanceName}. markBroken is ${markBrokenOnUnknown}. Allowed instances are ${secondaryProvider.providers}")
 
     if (markBrokenOnUnknown && instance.isEmpty) {
