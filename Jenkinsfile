@@ -88,10 +88,6 @@ pipeline {
       }
     }
     stage('Deploy') {
-      when {
-        not { expression { isPr } }
-        not { expression { return params.RELEASE_BUILD } }
-      }
       steps {
         script {
           lastStage = env.STAGE_NAME
