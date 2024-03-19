@@ -9,7 +9,7 @@ import scala.collection.JavaConverters._
 
 class ServiceProviderProvider[T](serviceDiscovery: ServiceDiscovery[T],
                                  providerStrategy: ProviderStrategy[T]) extends Closeable {
-  private val providers = new ConcurrentHashMap[String, ServiceProvider[T]]
+  val providers = new ConcurrentHashMap[String, ServiceProvider[T]]
   private var closed = false
 
   private def maybeCreateProvider(instance: String): ServiceProvider[T] = synchronized {
