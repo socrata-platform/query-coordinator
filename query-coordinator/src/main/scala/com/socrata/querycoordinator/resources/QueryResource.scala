@@ -61,7 +61,6 @@ case class QueryResource(secondary: Secondary,
 
 
   private def process(req: HttpRequest): HttpResponse = { // scalastyle:ignore cyclomatic.complexity method.length
-    log.info("processing")
     val originalThreadName = Thread.currentThread.getName
     val servReq = req.servletRequest
     try {
@@ -149,7 +148,6 @@ case class QueryResource(secondary: Secondary,
         }
 
         def analyzeRequest(schemaWithFieldNames: Versioned[SchemaWithFieldName], isFresh: Boolean): Either[QueryRetryState, Versioned[(Schema, BinaryTree[SoQLAnalysis[String, SoQLType]])]] = {
-          log.info("analyzing request")
 
           val schema0 = stripFieldNamesFromSchema(schemaWithFieldNames.payload)
           val schema =
@@ -214,7 +212,6 @@ case class QueryResource(secondary: Secondary,
                          resourceScope: ResourceScope,
                          explain: Boolean,
                          analyze: Boolean): Either[QueryRetryState, HttpResponse] = {
-          log.info("executing query")
           // Only pass in the primary rollup (associated with the primary table) to query server which does not know how to handle other rollups
           // not associated with the primary table when it is passed in the request header.  Other rollups are only embedded inside analyses
           // But when a query with any rollup fails, always retry without rollup.
@@ -302,7 +299,6 @@ case class QueryResource(secondary: Secondary,
         }
 
         def getSchemaByTableName(tableName: TableName): SchemaWithFieldName = {
-          log.info("getting schema by table name")
           val TableName(name, _) = tableName
           val schemaResult = schemaFetcher(base, name, None, useResourceName = true)
           schemaResult match {
@@ -320,7 +316,6 @@ case class QueryResource(secondary: Secondary,
         }
 
         def fetchRollupInfo(): Seq[RollupInfo] = rollupInfoFetcher(base.receiveTimeoutMS(schemaTimeout.toMillis.toInt), Left(dataset), copy) match {
-          log.info("fetching rollup information")
           case RollupInfoFetcher.Successful(rollups) =>
             rollups
           case RollupInfoFetcher.NoSuchDatasetInSecondary =>
@@ -362,7 +357,6 @@ case class QueryResource(secondary: Secondary,
         }
 
         def getSchema(dataset: String, copy: Option[String]): Either[QueryRetryState, Versioned[SchemaWithFieldName]] = {
-          log.info("getting schema")
           schemaFetcher(
             base.receiveTimeoutMS(schemaTimeout.toMillis.toInt).connectTimeoutMS(connectTimeout.toMillis.toInt),
             dataset,
@@ -385,7 +379,6 @@ case class QueryResource(secondary: Secondary,
         }
 
         def go(): Either[QueryRetryState, HttpResponse] = {
-          log.info("going")
           getSchema(dataset, copy).right.flatMap(analyzeRequest(_, true)).right.flatMap { versionInfo =>
             val (finalSchema, analyses) = versionInfo.payload
             val (rewrittenAnalyses, rollupName) = possiblyRewriteOneAnalysisInQuery(finalSchema, analyses)
@@ -396,7 +389,6 @@ case class QueryResource(secondary: Secondary,
               case _ =>
                 (versionInfo.lastModified, context)
             }
-            log.info("about to execute query")
             executeQuery(versionInfo.copy(payload = finalSchema, lastModified = largestLastModified),
               rewrittenAnalyses, analyses, contextWithNow, rollupName,
               requestId, req.header(headerSocrataResource), req.resourceScope, explain, analyze)
@@ -436,7 +428,6 @@ case class QueryResource(secondary: Secondary,
 
 
   private def storeInCache(schema: Option[Schema], dataset: String, copy: Option[String]): Option[Schema] = {
-    log.info("storing in cache")
     schema match {
       case s@Some(trueSchema) =>
         schemaCache(dataset, copy, trueSchema)
