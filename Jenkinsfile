@@ -6,6 +6,8 @@ def rmsSupportedEnvironment = com.socrata.ReleaseMetadataService.SupportedEnviro
 String service = 'query-coordinator'
 String project_wd = service
 boolean isPr = env.CHANGE_ID != null
+boolean isHotfix = isHotfixBranch(env.BRANCH_NAME)
+boolean skip = false
 boolean lastStage
 
 // Utility Libraries
@@ -34,7 +36,28 @@ pipeline {
     WEBHOOK_ID = 'WEBHOOK_IQ'
   }
   stages {
+    stage('Hotfix Tag') {
+      when {
+        expression { isHotfix }
+      }
+      steps {
+        script {
+          lastStage = env.STAGE_NAME
+          if (releaseTag.noCommitsOnHotfixBranch(env.BRANCH_NAME)) {
+            skip = true
+            echo "SKIP: Skipping the rest of the build because there are no commits on the hotfix branch yet"
+            return
+          }
+          env.CURRENT_RELEASE_NAME = releaseTag.getReleaseName(env.BRANCH_NAME)
+          env.HOTFIX_NAME = releaseTag.getHotfixName(env.CURRENT_RELEASE_NAME)
+          env.GIT_TAG = releaseTag.create(env.HOTFIX_NAME)
+        }
+      }
+    }
     stage('Build') {
+      when {
+        not { expression { skip } }
+      }
       steps {
         script {
           lastStage = env.STAGE_NAME
@@ -47,14 +70,18 @@ pipeline {
     }
     stage('Docker Build') {
       when {
-        not { expression { isPr } }
+        allOf {
+          not { expression { isPr } }
+          not { expression { skip } }
+        }
       }
       steps {
         script {
           lastStage = env.STAGE_NAME
-          if (params.RELEASE_BUILD) {
+          if (params.RELEASE_BUILD || isHotfix) {
+            env.VERSION = (isHotfix) ? env.HOTFIX_NAME : params.RELEASE_NAME
             env.DOCKER_TAG = dockerize.dockerBuildWithSpecificTag(
-              tag: params.RELEASE_NAME,
+              tag: env.VERSION,
               path: sbtbuild.getDockerPath(),
               artifacts: [sbtbuild.getDockerArtifact()]
             )
@@ -92,13 +119,14 @@ pipeline {
       when {
         allOf {
           not { expression { isPr } }
+          not { expression { skip } }
           not { expression { return params.RELEASE_BUILD && params.RELEASE_DRY_RUN } }
         }
       }
       steps {
         script {
           lastStage = env.STAGE_NAME
-          if (params.RELEASE_BUILD) {
+          if (isHotfix || params.RELEASE_BUILD) {
             env.BUILD_ID = dockerize.publish(sourceTag: env.DOCKER_TAG)
           } else {
             env.BUILD_ID = dockerize.publish(
@@ -112,16 +140,19 @@ pipeline {
       post {
         success {
           script {
-            if (params.RELEASE_BUILD){
+            if (isHotfix || params.RELEASE_BUILD) {
+              env.PURPOSE = (isHotfix) ? 'hotfix' : 'initial'
+              env.RELEASE_ID = (isHotfix) ? env.CURRENT_RELEASE_NAME : params.RELEASE_NAME
               Map buildInfo = [
                 "project_id": service,
                 "build_id": env.BUILD_ID,
-                "release_id": params.RELEASE_NAME,
+                "release_id": env.RELEASE_ID,
                 "git_tag": env.GIT_TAG,
+                "purpose": env.PURPOSE,
               ]
               createBuild(
                 buildInfo,
-                rmsSupportedEnvironment.production
+                rmsSupportedEnvironment.staging // production - for testing
               )
             }
           }
@@ -131,16 +162,34 @@ pipeline {
     stage('Deploy') {
       when {
         not { expression { isPr } }
+        not { expression { skip } }
         not { expression { return params.RELEASE_BUILD } }
       }
       steps {
         script {
           lastStage = env.STAGE_NAME
+          env.ENVIRONMENT = (isHotfix) ? 'rc' : 'staging'
           marathonDeploy(
             serviceName: service,
             tag: env.BUILD_ID,
-            enviroment: 'staging'
+            enviroment: env.ENVIRONMENT
           )
+        }
+      }
+      post {
+        success {
+          script {
+            if (isHotfix) {
+              Map deployInfo = [
+                "build_id": env.BUILD_ID,
+                "environment": env.ENVIRONMENT,
+              ]
+              createDeployment(
+                deployInfo,
+                rmsSupportedEnvironment.staging // production - for testing
+              )
+            }
+          }
         }
       }
     }
