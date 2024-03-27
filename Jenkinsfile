@@ -118,7 +118,7 @@ pipeline {
             if (requiresBuild && !buildBypassed) {
               env.PURPOSE = (isHotfix) ? 'hotfix' : 'initial'
               env.RELEASE_ID = (isHotfix) ? env.CURRENT_RELEASE_NAME : params.RELEASE_NAME
-              Map buildInfoServer = [
+              Map buildInfo = [
                 "project_id": service,
                 "build_id": env.DOCKER_TAG,
                 "release_id": env.RELEASE_ID,
