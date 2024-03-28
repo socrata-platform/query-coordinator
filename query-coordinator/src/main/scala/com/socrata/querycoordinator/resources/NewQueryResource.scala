@@ -99,9 +99,53 @@ class NewQueryResource(
     SoQLAnalyzerError.errorCodecs[MT#ResourceNameScope, SoQLAnalyzerError[MT#ResourceNameScope]]().
       build
 
+
+  case class AuxTableData(
+    locationSubcolumns: Map[types.DatabaseColumnName[MT], Seq[Option[types.DatabaseColumnName[MT]]]],
+    sfResourceName: String,
+    truthDataVersion: Long
+  )
+  object AuxTableData {
+    implicit val serialize = new Writable[AuxTableData] {
+      def writeTo(buffer: WriteBuffer, atd: AuxTableData): Unit = {
+        buffer.write(0)
+        buffer.write(atd.locationSubcolumns)
+        buffer.write(atd.sfResourceName)
+        buffer.write(atd.truthDataVersion)
+      }
+    }
+
+    implicit val jCodec = new JsonEncode[AuxTableData] with JsonDecode[AuxTableData] {
+      @AutomaticJsonCodec
+      case class AuxTableDataRaw(
+        locationSubcolumns: Seq[(types.DatabaseColumnName[MT], Seq[Either[JNull, types.DatabaseColumnName[MT]]])],
+        sfResourceName: String,
+        truthDataVersion: Long
+      )
+
+      def encode(v: AuxTableData) =
+        JsonEncode.toJValue(
+          AuxTableDataRaw(
+            v.locationSubcolumns.mapValues(_.map(_.toRight(JNull))).toSeq,
+            v.sfResourceName,
+            v.truthDataVersion
+          )
+        )
+
+      def decode(v: JValue) =
+        JsonDecode.fromJValue[AuxTableDataRaw](v).map { v =>
+          AuxTableData(
+            v.locationSubcolumns.toMap.mapValues(_.map { case Right(cid) => Some(cid); case Left(JNull) => None }),
+            v.sfResourceName,
+            v.truthDataVersion
+          )
+        }
+    }
+  }
+
   private case class Request(
     analysis: SoQLAnalysis[MT],
-    locationSubcolumns: Map[types.DatabaseTableName[MT], Map[types.DatabaseColumnName[MT], Seq[Option[types.DatabaseColumnName[MT]]]]],
+    auxTableData: Map[types.DatabaseTableName[MT], AuxTableData],
     systemContext: Map[String, String],
     rewritePasses: Seq[Seq[Pass]],
     allowRollups: Boolean,
@@ -111,9 +155,9 @@ class NewQueryResource(
   private object Request {
     implicit def serialize(implicit ev: Writable[SoQLAnalysis[MT]]) = new Writable[Request] {
       def writeTo(buffer: WriteBuffer, req: Request): Unit = {
-        buffer.write(1)
+        buffer.write(2)
         buffer.write(req.analysis)
-        buffer.write(req.locationSubcolumns)
+        buffer.write(req.auxTableData)
         buffer.write(req.systemContext)
         buffer.write(req.rewritePasses)
         buffer.write(req.allowRollups)
@@ -126,8 +170,13 @@ class NewQueryResource(
   @AutomaticJsonCodec
   case class Body(
     foundTables: FoundTables[MT],
+    // Release migration: accept a top-level locationSubcolumns if
+    // it's provided; once this and SF are released, this field can go
+    // away.
     @AllowMissing("Nil")
     locationSubcolumns: Seq[(types.DatabaseTableName[MT], Seq[(types.DatabaseColumnName[MT], Seq[Either[JNull, types.DatabaseColumnName[MT]]])])],
+    @AllowMissing("Nil")
+    auxTableData: Seq[(types.DatabaseTableName[MT], AuxTableData)],
     @AllowMissing("Context.empty")
     context: Context,
     @AllowMissing("Nil")
@@ -145,7 +194,8 @@ class NewQueryResource(
     val Json(
       reqData@Body(
         foundTables,
-        locationSubcolumns,
+        locationSubcolumnsRaw,
+        auxTableDataRaw,
         context,
         rewritePasses,
         allowRollups,
@@ -158,14 +208,14 @@ class NewQueryResource(
 
     log.debug("Received request {}", Lazy(JsonUtil.renderJson(reqData, pretty = true)))
 
-    val mapifiedLocationSubcolumns = locationSubcolumns.iterator.map { case (dtn, submap) =>
-      dtn -> submap.iterator.map { case (dcn, cols) =>
-        dcn -> cols.map {
-          case Left(JNull) => None
-          case Right(dcn2) => Some(dcn2)
+    val auxTableData =
+      if(auxTableDataRaw.nonEmpty) {
+        auxTableDataRaw.toMap
+      } else {
+        locationSubcolumnsRaw.toMap.mapValues { locs =>
+          AuxTableData(locs.toMap.mapValues(_.map { case Right(cid) => Some(cid); case Left(JNull) => None }), "", -1)
         }
-      }.toMap
-    }.toMap
+      }
 
     val effectiveAnalyzer =
       if(preserveSystemColumns) systemColumnPreservingAnalyzer
@@ -173,7 +223,7 @@ class NewQueryResource(
 
     effectiveAnalyzer(foundTables, context.user.toUserParameters) match {
       case Right(analysis) =>
-        val serialized = WriteBuffer.asBytes(Request(analysis, mapifiedLocationSubcolumns, context.system, rewritePasses, allowRollups, debug, queryTimeoutMS.map(_.milliseconds)))
+        val serialized = WriteBuffer.asBytes(Request(analysis, auxTableData, context.system, rewritePasses, allowRollups, debug, queryTimeoutMS.map(_.milliseconds)))
 
         log.debug("Serialized analysis as:\n{}", Lazy(locally {
           val baos = new ByteArrayOutputStream
@@ -222,7 +272,7 @@ class NewQueryResource(
 
           return resp.resultCode match {
             case code@(200 | 304) =>
-              Seq("content-type", "etag", "last-modified").foldLeft[HttpResponse](base) { (acc, hdrName) =>
+              Seq("content-type", "etag", "last-modified", "x-soda2-data-out-of-date").foldLeft[HttpResponse](base) { (acc, hdrName) =>
                 resp.headers(hdrName).foldLeft(acc) { (acc, value) =>
                   acc ~> Header(hdrName, value)
                 }
