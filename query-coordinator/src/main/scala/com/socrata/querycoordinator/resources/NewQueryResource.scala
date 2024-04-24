@@ -25,7 +25,7 @@ import com.socrata.soql.environment.{HoleName, ColumnName, Provenance}
 import com.socrata.soql.serialize.{WriteBuffer, Writable}
 import com.socrata.soql.types.{SoQLType, SoQLValue, SoQLFixedTimestamp, SoQLFloatingTimestamp}
 import com.socrata.soql.functions.{MonomorphicFunction, SoQLTypeInfo, SoQLFunctionInfo, SoQLFunctions}
-import com.socrata.soql.stdlib.analyzer2.Context
+import com.socrata.soql.stdlib.analyzer2.{Context, PreserveSystemColumnsAggregateMerger}
 import com.socrata.soql.sql.Debug
 import com.socrata.soql.util.GenericSoQLError
 
@@ -78,22 +78,9 @@ class NewQueryResource(
     }
   }
 
-  val standardSystemColumns = Set(":id", ":version", ":created_at", ":updated_at").map(ColumnName)
-
   val analyzer = new SoQLAnalyzer[MT](SoQLTypeInfo.soqlTypeInfo2, SoQLFunctionInfo, MT.ToProvenance)
   val systemColumnPreservingAnalyzer = analyzer
-    .preserveSystemColumns { (columnName, expr) =>
-      if(standardSystemColumns(columnName)) {
-        Some(AggregateFunctionCall[MT](
-          MonomorphicFunction(SoQLFunctions.Max, Map("a" -> expr.typ)),
-          Seq(expr),
-          false,
-          None
-        )(FuncallPositionInfo.Synthetic))
-      } else {
-        None
-      }
-    }
+    .preserveSystemColumns(PreserveSystemColumnsAggregateMerger())
 
   implicit val analyzerErrorCodecs =
     SoQLAnalyzerError.errorCodecs[MT#ResourceNameScope, SoQLAnalyzerError[MT#ResourceNameScope]]().
