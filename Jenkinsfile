@@ -153,7 +153,7 @@ pipeline {
               ]
               createBuild(
                 buildInfo,
-                rmsSupportedEnvironment.staging // production - for testing
+                rmsSupportedEnvironment.production
               )
             }
           }
@@ -187,7 +187,7 @@ pipeline {
               ]
               createDeployment(
                 deployInfo,
-                rmsSupportedEnvironment.staging // production - for testing
+                rmsSupportedEnvironment.production
               )
             }
           }
