@@ -50,7 +50,6 @@ pipeline {
           }
           env.CURRENT_RELEASE_NAME = releaseTag.getReleaseName(env.BRANCH_NAME)
           env.HOTFIX_NAME = releaseTag.getHotfixName(env.CURRENT_RELEASE_NAME)
-          env.GIT_TAG = releaseTag.create(env.HOTFIX_NAME)
         }
       }
     }
@@ -98,7 +97,9 @@ pipeline {
       post {
         success {
           script {
-            if (params.RELEASE_BUILD) {
+            if (isHotfix) {
+              env.GIT_TAG = releaseTag.create(env.HOTFIX_NAME)
+            } else if (params.RELEASE_BUILD) {
               env.GIT_TAG = releaseTag.getFormattedTag(params.RELEASE_NAME)
               if (releaseTag.doesReleaseTagExist(params.RELEASE_NAME)) {
                 echo "REBUILD: Tag ${env.GIT_TAG} already exists"
@@ -172,7 +173,7 @@ pipeline {
           marathonDeploy(
             serviceName: service,
             tag: env.BUILD_ID,
-            enviroment: env.ENVIRONMENT
+            environment: env.ENVIRONMENT
           )
         }
       }
@@ -197,9 +198,10 @@ pipeline {
   post {
     failure {
       script {
-        if (env.JOB_NAME.contains("${service}/main")) {
+        boolean buildingMain = (env.JOB_NAME.contains("${service}/main"))
+        if (buildingMain) {
           teamsMessage(
-            message: "Build [${currentBuild.fullDisplayName}](${env.BUILD_URL}) has failed in stage ${lastStage}",
+            message: "[${currentBuild.fullDisplayName}](${env.BUILD_URL}) has failed in stage ${lastStage}",
             webhookCredentialID: WEBHOOK_ID
           )
         }
