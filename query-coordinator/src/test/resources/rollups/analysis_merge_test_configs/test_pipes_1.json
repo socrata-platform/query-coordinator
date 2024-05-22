@@ -6,9 +6,9 @@
       "a117-2117": ["number", "case_id"],
       "a118-2118": ["text", "case_status"],
       "a119-2119": ["text", "case_description"],
-      "a120-2120": ["date", "case_date"],
+      "a120-2120": ["datestamp", "case_date"],
       "a121-2121": ["point", "location"],
-      "a122-2122": ["date", "incident_date"]
+      "a122-2122": ["datestamp", "incident_date"]
     }
   },
   "pipes": {

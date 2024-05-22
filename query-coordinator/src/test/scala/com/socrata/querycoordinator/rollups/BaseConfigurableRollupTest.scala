@@ -15,7 +15,10 @@ abstract class BaseConfigurableRollupTest extends TestBase {
   type SchemaConfig = Map[String, (SoQLType, String)]
   def getConfig[T:JsonDecode](configFile: String): T = {
     val resource = Source.fromResource(configFile)
-    JsonUtil.readJson[T](resource.reader()).right.get
+    JsonUtil.readJson[T](resource.reader()) match {
+      case Right(config) => config
+      case Left(err) => fail(s"${configFile}: ${err.english}")
+    }
   }
 
   def getContext(schemas: Map[String, SchemaConfig]): AnalysisContext[SoQLType, SoQLValue] = {
