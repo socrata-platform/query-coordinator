@@ -7,6 +7,15 @@ if [ -e $CREDSFILE ]; then
     . $CREDSFILE
 fi
 
+if [ -d /mnt/mesos/sandbox ]; then
+    export HEAPDUMP="-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/mnt/mesos/sandbox/query-coordinator-oom.hprof"
+    # the sandbox is owned by root and not accessible by socrata, so
+    # make it thus accessible...
+    chmod o+wrx /mnt/mesos/sandbox
+else
+    export HEAPDUMP=""
+fi
+
 if [ -z "$MARATHON_APP_ID" ]; then
     echo "Not running in marathon, so I will not compile the config template file!"
     echo "If you want to force config template compilation, set the \$MARATHON_APP_ID env var."
@@ -26,6 +35,5 @@ exec su socrata -c '/usr/bin/java \
     -Dcom.sun.management.jmxremote.authenticate=false \
     -Djava.rmi.server.hostname=${ARK_HOST:-localhost} \
     -XX:MaxMetaspaceSize=${JAVA_MAX_METASPACE} \
-    -XX:+HeapDumpOnOutOfMemoryError \
-    -XX:HeapDumpPath=/mnt/mesos/sandbox/query-coordinator-oom.hprof \
+    ${HEAPDUMP} \
     -jar $SERVER_ARTIFACT'
