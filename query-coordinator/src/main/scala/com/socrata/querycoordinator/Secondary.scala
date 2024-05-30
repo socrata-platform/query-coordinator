@@ -31,6 +31,10 @@ class Secondary(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
     secondaryInstance.arbitraryInstance()
   }
 
+  def allSecondaries(): Seq[String] = {
+    secondaryInstance.allInstances()
+  }
+
   def unassociatedServiceInstance(instanceName: String): Option[ServiceInstance[AuxiliaryData]] =
     Option(secondaryProvider.provider(instanceName).getInstance())
 

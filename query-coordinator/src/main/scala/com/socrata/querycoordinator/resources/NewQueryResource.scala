@@ -1,6 +1,7 @@
 package com.socrata.querycoordinator.resources
 
 import scala.concurrent.duration._
+import scala.util.Random
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.nio.charset.StandardCharsets
@@ -30,12 +31,9 @@ import com.socrata.soql.sql.Debug
 import com.socrata.soql.util.GenericSoQLError
 
 import com.socrata.querycoordinator.Secondary
-import com.socrata.querycoordinator.util.Lazy
+import com.socrata.querycoordinator.util.{Lazy, NewQueryError}
 
-class NewQueryResource(
-  httpClient: HttpClient,
-  secondary: Secondary
-) extends QCResource with ResourceExt {
+object NewQueryResource {
   val log = LoggerFactory.getLogger(classOf[NewQueryResource])
 
   case class DatasetInternalName(underlying: String)
@@ -177,6 +175,16 @@ class NewQueryResource(
     store: Option[String]
   )
 
+  private implicit lazy val errorCodecs =
+    NewQueryError.errorCodecs[MT#ResourceNameScope, NewQueryError[MT#ResourceNameScope]]().build
+}
+
+class NewQueryResource(
+  httpClient: HttpClient,
+  secondary: Secondary
+) extends QCResource with ResourceExt {
+  import NewQueryResource._
+
   def doit(rs: ResourceScope, headers: HeaderMap, reqId: RequestId, json: Json[Body]): HttpResponse = {
     val Json(
       reqData@Body(
@@ -218,63 +226,81 @@ class NewQueryResource(
           new String(baos.toByteArray, StandardCharsets.ISO_8859_1)
         }))
 
-        var allSecondaries: Stream[Option[String]] =
+        def allSecondariesFor(dtn: types.DatabaseTableName[MT]): Set[String] = {
+          val DatabaseTableName((DatasetInternalName(n), Stage(s))) = dtn
+          var acc = Set.empty[String]
+          def loop() {
+            secondary.chosenSecondaryName(None, n, Some(s), acc) match {
+              case Some(secondary) =>
+                acc += secondary
+                loop
+              case None =>
+                // done
+            }
+          }
+          loop()
+          acc
+        }
+
+        def bail(err: NewQueryError[MT#ResourceNameScope]) = BadRequest ~> JsonResp(err)
+
+        val chosenSecondaries: Seq[String] =
           store match {
             case None =>
-              analysis.statement.allTables.toStream.scanLeft((Option.empty[String], Set.empty[String])) { (acc, dss) =>
-                val (_, alreadySeen) = acc
-                val DatabaseTableName((DatasetInternalName(n), Stage(s))) = dss
-                secondary.chosenSecondaryName(None, n, Some(s), alreadySeen) match {
-                  case Some(secondary) => (Some(secondary), alreadySeen + secondary)
-                  case None => (None, alreadySeen)
+              val secondaries = analysis.statement.allTables.map { n =>
+                val candidates = allSecondariesFor(n)
+                if(candidates.isEmpty) {
+                  return bail(NewQueryError.SecondarySelectionError.NoSecondariesForDataset(foundTables.tableMap.byDatabaseTableName(n).head))
                 }
-              }.map(_._1).tail
+                candidates
+              }
+              if(secondaries.isEmpty) { // no tables involved, so we don't care what secondary we use!
+                secondary.allSecondaries()
+              } else {
+                val candidates = secondaries.reduceLeft { (a, b) => a.intersect(b) }.toVector
+                if(candidates.isEmpty) {
+                  return bail(NewQueryError.SecondarySelectionError.NoSecondariesForAllDatasets())
+                }
+                Random.shuffle(candidates)
+              }
             case Some(store) =>
               log.info("Forcing secondary to {}", JString(store))
-              Stream(Some(store))
+              Seq(store)
           }
-
-        // ok so it's possible that allTables is empty, in which case
-        // we don't care what secondary we're sending this to.
-        if(allSecondaries.isEmpty) {
-          allSecondaries = Stream(Some(secondary.arbitrarySecondary()))
-        }
 
         val additionalHeaders = Seq("if-none-match", "if-match", "if-modified-since").flatMap { h =>
           headers.lookup(HeaderName(h)).map { v => h -> v.underlying }
         }
 
-        for {
-          chosenSecondary <- allSecondaries.takeWhile(_.isDefined).map(_.get)
-          instance <- secondary.unassociatedServiceInstance(chosenSecondary)
-        } {
-          val req = secondary.reqBuilder(instance)
-            .p("new-query")
-            .addHeaders(additionalHeaders)
-            .addHeader(ReqIdHeader, reqId.toString)
-            .blob(new ByteArrayInputStream(serialized))
-          val resp = httpClient.execute(req, rs)
-
-          val base = Status(resp.resultCode) ~> Header("x-soda2-secondary", chosenSecondary)
-
-          return resp.resultCode match {
-            case code@(200 | 304) =>
-              Seq("content-type", "etag", "last-modified", "x-soda2-data-out-of-date").foldLeft[HttpResponse](base) { (acc, hdrName) =>
-                resp.headers(hdrName).foldLeft(acc) { (acc, value) =>
-                  acc ~> Header(hdrName, value)
-                }
-              } ~> StreamBytes(resp.inputStream())
-
-            case other =>
-              val error = resp.value[GenericSoQLError[MT#ResourceNameScope]]() match {
-                case Right(value) => value
-                case Left(err) => throw new Exception("Invalid error response: " + err.english)
-              }
-              base ~> JsonResp(error)
-          }
+        val (chosenSecondary, instance) = chosenSecondaries.toStream.flatMap { name =>
+          secondary.unassociatedServiceInstance(name).map((name, _))
+        }.headOption.getOrElse {
+          throw new Exception(s"None of ${chosenSecondaries} seems to be available?") // this genuinely is an internal error
         }
+        val req = secondary.reqBuilder(instance)
+          .p("new-query")
+          .addHeaders(additionalHeaders)
+          .addHeader(ReqIdHeader, reqId.toString)
+          .blob(new ByteArrayInputStream(serialized))
+        val resp = httpClient.execute(req, rs)
 
-        throw new Exception("Failed to find a secondary") // TODO
+        val base = Status(resp.resultCode) ~> Header("x-soda2-secondary", chosenSecondary)
+
+        return resp.resultCode match {
+          case code@(200 | 304) =>
+            Seq("content-type", "etag", "last-modified", "x-soda2-data-out-of-date").foldLeft[HttpResponse](base) { (acc, hdrName) =>
+              resp.headers(hdrName).foldLeft(acc) { (acc, value) =>
+                acc ~> Header(hdrName, value)
+              }
+            } ~> StreamBytes(resp.inputStream())
+
+          case other =>
+            val error = resp.value[GenericSoQLError[MT#ResourceNameScope]]() match {
+              case Right(value) => value
+              case Left(err) => throw new Exception("Invalid error response: " + err.english)
+            }
+            base ~> JsonResp(error)
+        }
       case Left(err) =>
         BadRequest ~> JsonResp(err)
     }
