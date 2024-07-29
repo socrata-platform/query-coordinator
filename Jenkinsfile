@@ -8,7 +8,7 @@ String project_wd = service
 boolean isPr = env.CHANGE_ID != null
 boolean isHotfix = isHotfixBranch(env.BRANCH_NAME)
 boolean skip = false
-boolean lastStage
+String lastStage
 
 // Utility Libraries
 def sbtbuild = new com.socrata.SBTBuild(steps, service, project_wd)
@@ -33,7 +33,7 @@ pipeline {
     label params.AGENT
   }
   environment {
-    WEBHOOK_ID = 'WEBHOOK_IQ'
+    WEBHOOK_ID = 'WORKFLOW_IQ'
   }
   stages {
     stage('Hotfix') {
@@ -200,9 +200,9 @@ pipeline {
       script {
         boolean buildingMain = (env.JOB_NAME.contains("${service}/main"))
         if (buildingMain) {
-          teamsMessage(
+          teamsWorkflowMessage(
             message: "[${currentBuild.fullDisplayName}](${env.BUILD_URL}) has failed in stage ${lastStage}",
-            webhookCredentialID: WEBHOOK_ID
+            workflowCredentialID: WEBHOOK_ID
           )
         }
       }
