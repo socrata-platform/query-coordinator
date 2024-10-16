@@ -71,7 +71,7 @@ class TestExpressionRewriter extends BaseConfigurableRollupTest {
         allQualifiedColumnNameToIColumnId
       )
 
-      val rewrite = expressionRewriter(expression, remappedAnalysis, rollupColIdx)
+      val rewrite = expressionRewriter(expression, remappedAnalysis, rollupColIdx, isInAggregate = false)
 
       rewrite match {
         case Some(expr) => test.rewrite should equal(Some(expr.toString()))

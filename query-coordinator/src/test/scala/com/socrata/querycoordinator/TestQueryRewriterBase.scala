@@ -119,7 +119,7 @@ abstract class TestQueryRewriterBase extends TestBase with TestCompoundQueryRewr
   def rewriteExpr(rewriter: BaseQueryRewriter, e: Expr, q: Analysis, rollups: Map[RollupName, Analysis]): Map[RollupName, Option[Expr]] = {
     rollups.mapValues { case r =>
       val rollupColIdx = r.selection.values.zipWithIndex.toMap
-      rewriter.rewriteExpr(e, r, rollupColIdx)
+      rewriter.rewriteExpr(e, r, rollupColIdx, isInAggregate = false)
     }
   }
 }

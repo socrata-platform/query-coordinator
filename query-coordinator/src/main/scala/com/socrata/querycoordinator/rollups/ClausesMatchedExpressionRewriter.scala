@@ -19,7 +19,7 @@ class ClausesMatchedExpressionRewriter(override val rollupColumnId: (Int) => Str
     * Note that every case here needs to ensure to map every expression recursively
     * to ensure it is either a literal or mapped to the rollup.
     */
-  override def apply(e: Expr, r: Analysis, rollupColIdx: Map[Expr, Int]): Option[Expr] = {
+  override def apply(e: Expr, r: Analysis, rollupColIdx: Map[Expr, Int], isInAggregate: Boolean): Option[Expr] = {
     e match {
       //At this point our where/groupby/having clauses match.
       //We are trying to do an exact rewrite, but only if there is a window function while all clauses match.
@@ -27,9 +27,9 @@ class ClausesMatchedExpressionRewriter(override val rollupColumnId: (Int) => Str
       case fc: FunctionCall if extractFunctionCallChain(fc).exists(_.window.nonEmpty) =>
         //and try to rewrite it at the coarsest level
         rollupColIdx.get(fc).map(cid => typed.ColumnRef(NoQualifier, rollupColumnId(cid), fc.typ)(fc.position))
-          .orElse(super.apply(e, r, rollupColIdx))
+          .orElse(super.apply(e, r, rollupColIdx, isInAggregate))
       case _ =>
-        super.apply(e, r, rollupColIdx)
+        super.apply(e, r, rollupColIdx, isInAggregate)
     }
   }
 

@@ -25,13 +25,13 @@ class ExpressionRewriter(val rollupColumnId: (Int) => String,
     * Note that every case here needs to ensure to map every expression recursively
     * to ensure it is either a literal or mapped to the rollup.
     */
-  def apply(e: Expr, r: Analysis, rollupColIdx: Map[Expr, Int]): Option[Expr] = {
+  def apply(e: Expr, r: Analysis, rollupColIdx: Map[Expr, Int], isInAggregate: Boolean): Option[Expr] = {
     log.trace("Attempting to match expr: {}", e)
     e match {
       case literal: typed.TypedLiteral[_] =>
         Some(literal) // This is literally a literal, so so literal.
       // for a column reference we just need to map the column id
-      case cr: ColumnRef =>
+      case cr: ColumnRef if !isInAggregate =>
         for {idx <- rollupColIdx.get(cr)} yield cr.copy(qualifier = None, column = rollupColumnId(idx))
       // window functions run after where / group by / having so can't be rewritten in isolation.  We could
       // still rewrite a query with a window function in if the other clauses all match, however that requires
@@ -55,7 +55,7 @@ class ExpressionRewriter(val rollupColumnId: (Int) => String,
         if (fc.function.function == Between || fc.function.function == NotBetween) &&
           fc.function.bindings.values.forall(_ == SoQLFloatingTimestamp) &&
           fc.function.bindings.values.tail.forall(dateTruncHierarchy contains _) =>
-        rewriteDateTruncBetween(r, rollupColIdx, fc)
+        rewriteDateTruncBetween(r, rollupColIdx, fc, isInAggregate)
       // If it is a >= or < with floating timestamp arguments, see if we can rewrite to date_trunc_xxx
       case fc@typed.FunctionCall(MonomorphicFunction(fnType, bindings), _, _, _)
         if (fnType == Gte || fnType == Lt) &&
@@ -307,7 +307,7 @@ class ExpressionRewriter(val rollupColumnId: (Int) => String,
     *
     * @param fc A NOT BETWEEN or BETWEEN function call.
     */
-  private def rewriteDateTruncBetween(r: Analysis, rollupColIdx: Map[Expr, Int], fc: FunctionCall): Option[Expr] = {
+  private def rewriteDateTruncBetween(r: Analysis, rollupColIdx: Map[Expr, Int], fc: FunctionCall, isInAggregate: Boolean): Option[Expr] = {
     assert(fc.function.function == Between || fc.function.function == NotBetween)
     val maybeColRef +: lower +: upper +: _ = fc.parameters
     val commonTruncFunction = commonDateTrunc(lower, upper)
@@ -332,8 +332,8 @@ class ExpressionRewriter(val rollupColumnId: (Int) => String,
         // ie. 'foo_date BETWEEN date_trunc_y("2014/01/01") AND date_trunc_y("2019/05/05")'
         // just has to replace foo_date with rollup column "c<n>"
         for {
-          lowerRewrite <- apply(lower, r, rollupColIdx)
-          upperRewrite <- apply(upper, r, rollupColIdx)
+          lowerRewrite <- apply(lower, r, rollupColIdx, isInAggregate)
+          upperRewrite <- apply(upper, r, rollupColIdx, isInAggregate)
           newParams <- Some(Seq(
             typed.ColumnRef(NoQualifier, rollupColumnId(idx), SoQLFloatingTimestamp.t)(fc.position),
             lowerRewrite,
@@ -419,7 +419,7 @@ class ExpressionRewriter(val rollupColumnId: (Int) => String,
 
   private def rewriteParameters(r: Analysis, rollupColIdx: Map[Expr, Int],
                                 fc: FunctionCall): Option[typed.CoreExpr[ColumnId, SoQLType] with Serializable] = {
-    val mapped = fc.parameters.map(fe => apply(fe, r, rollupColIdx))
+    val mapped = fc.parameters.map(fe => apply(fe, r, rollupColIdx, fc.function.isAggregate))
     log.trace("mapped expr params {} {} -> {}", "", fc.parameters, mapped)
     if (mapped.forall(fe => fe.isDefined)) {
       log.trace("expr params all defined")
