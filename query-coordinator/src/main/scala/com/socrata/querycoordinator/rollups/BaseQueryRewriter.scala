@@ -61,7 +61,7 @@ abstract class BaseQueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) {
       //Does not map window functions
       rewriteExpr
     }
-    val mapped: OrderedMap[ColumnName, Option[Expr]] = q.mapValues(e => expressionRewriter(e, r, rollupColIdx))
+    val mapped: OrderedMap[ColumnName, Option[Expr]] = q.mapValues(e => expressionRewriter(e, r, rollupColIdx, isInAggregate = false))
 
     if (mapped.values.forall(c => c.isDefined)) {
       Some(mapped.mapValues { v => v.get })
@@ -118,7 +118,7 @@ abstract class BaseQueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) {
       // The analysis already validated there are no un-grouped columns in the selection
       // that aren't in the group by.
       case (q, _) if q.nonEmpty =>
-        val grouped = q.map { expr => rewriteExpr(expr, r, rollupColIdx) }
+        val grouped = q.map { expr => rewriteExpr(expr, r, rollupColIdx, isInAggregate = false) }
 
         if (grouped.forall(_.isDefined)) {
           Some(grouped.flatten)
@@ -138,13 +138,13 @@ abstract class BaseQueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) {
       // To allow rollups with where clauses, validate that r.where is contained in q.where (top level and).
       case (Some(qe), Some(re)) if (topLevelAndContain(re, qe)) =>
         val strippedQe = stripExprInTopLevelAnd(re, qe)
-        rewriteExpr(strippedQe, r, rollupColIdx).map(Some(_))
+        rewriteExpr(strippedQe, r, rollupColIdx, isInAggregate = false).map(Some(_))
       case (_, Some(_)) =>
         None
       // no where on query or rollup, so good!  No work to do.
       case (None, None) => Some(None)
       // have a where on query so try to map recursively
-      case (Some(qe), None) => rewriteExpr(qe, r, rollupColIdx).map(Some(_))
+      case (Some(qe), None) => rewriteExpr(qe, r, rollupColIdx, isInAggregate = false).map(Some(_))
     }
     rw.map(simplifyAndTrue)
   }
@@ -162,13 +162,13 @@ abstract class BaseQueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) {
       // they have the same group by.
       case (Some(qe), Some(re)) if (topLevelAndContain(re, qe) && qbs.toSet == r.groupBys.toSet) =>
         val strippedQe = stripExprInTopLevelAnd(re, qe)
-        rewriteExpr(strippedQe, r, rollupColIdx).map(Some(_))
+        rewriteExpr(strippedQe, r, rollupColIdx, isInAggregate = false).map(Some(_))
       case (_, Some(_)) =>
         None
       // no having on query or rollup, so good!  No work to do.
       case (None, None) => Some(None)
       // have a having on query so try to map recursively
-      case (Some(qe), None) => rewriteExpr(qe, r, rollupColIdx).map(Some(_))
+      case (Some(qe), None) => rewriteExpr(qe, r, rollupColIdx, isInAggregate = false).map(Some(_))
     }
     rw.map(simplifyAndTrue)
   }
@@ -181,7 +181,7 @@ abstract class BaseQueryRewriter(analyzer: SoQLAnalyzer[SoQLType, SoQLValue]) {
       case Nil => Some(Nil)
       case obs =>
         val mapped = obs.map { ob =>
-          rewriteExpr(ob.expression, r, rollupColIdx) match {
+          rewriteExpr(ob.expression, r, rollupColIdx, isInAggregate = false) match {
             case Some(e) => Some(ob.copy(expression = e))
             case None => None
           }

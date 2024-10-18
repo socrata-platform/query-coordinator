@@ -1,0 +1,17 @@
+{
+  "schemas": {
+    "_": {
+      "aaaa-aaaa": ["text", "text"],
+      "bbbb-bbbb": ["number", "num"]
+    }
+  },
+  "rollups": {
+    "r1": "select `_aaaa-aaaa`, `_bbbb-bbbb` group by `_aaaa-aaaa`, `_bbbb-bbbb`"
+  },
+  "tests": [
+    {
+      "query": "select sum(num)",
+      "rewrites": {}
+    }
+  ]
+}

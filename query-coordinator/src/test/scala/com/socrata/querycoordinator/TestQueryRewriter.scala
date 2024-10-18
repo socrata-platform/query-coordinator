@@ -327,9 +327,7 @@ class TestQueryRewriter extends TestBase with TestCompoundQueryRewriterBase {
     rewrites should contain key "r7"
     rewrites.get("r7").get should equal(rewrittenQueryAnalysis)
 
-    rewrites should contain key("r4")
-
-    rewrites should have size 2
+    rewrites should have size 1
   }
 
   test("map query ward, avg(number1)") {
@@ -381,13 +379,7 @@ class TestQueryRewriter extends TestBase with TestCompoundQueryRewriterBase {
     rewrites should contain key "r7"
     rewrites.get("r7").get should equal(rewrittenQueryAnalysis)
 
-    // ToDo: confirm matching r4
-    val rewrittenQuery4 = "SELECT min(c4) as minn, max(c4) as maxn WHERE c1 = 7"
-    val rewrittenQueryAnalysis4 = analyzeRewrittenCompoundQuery(rewrittenQuery4, rollups("r4")).outputSchema.leaf
-    rewrites should contain key "r4"
-    rewrites.get("r4").get should equal(rewrittenQueryAnalysis4)
-
-    rewrites should have size 2
+    rewrites should have size 1
   }
 
   test("don't map query 'select ward' to grouped rollups") {
