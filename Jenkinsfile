@@ -1,4 +1,4 @@
-@Library('socrata-pipeline-library@test_templates')
+@Library('socrata-pipeline-library')
 
 Map pipelineParams = [
   projectName: 'query-coordinator',
