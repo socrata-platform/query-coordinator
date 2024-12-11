@@ -25,7 +25,7 @@ class QueryParserFuseTest extends TestBase {
       ColumnName("a") -> ColumnRef(NoQualifier, "ai", SoQLText)(NoPosition),
       ColumnName("b") -> ColumnRef(NoQualifier, "bi", SoQLText)(NoPosition),
       ColumnName("location") -> locationFc,
-      ColumnName("phone") -> phoneFc
+      ColumnName("url") -> urlFc
     )
 
 
@@ -39,11 +39,11 @@ class QueryParserFuseTest extends TestBase {
     }
   }
 
-  test("SELECT * |> SELECT phone, phone_type") {
-    val query = "SELECT * |> SELECT phone, phone_type"
+  test("SELECT * |> SELECT url, url_description") {
+    val query = "SELECT * |> SELECT url, url_description"
 
     val expectedSelection = com.socrata.soql.collection.OrderedMap(
-      ColumnName("phone") -> phoneFc
+      ColumnName("url") -> urlFc
     )
 
     val actual = qp.apply(query, truthColumns, schema, fakeRequestBuilder, fuseMap = fuse) match {
@@ -56,11 +56,11 @@ class QueryParserFuseTest extends TestBase {
     }
   }
 
-  test("SELECT phone, phone_type |> SELECT * LIMIT 100000000") {
-    val query = "SELECT phone, phone_type, a |> SELECT * LIMIT 100000000"
+  test("SELECT url, url_description |> SELECT * LIMIT 100000000") {
+    val query = "SELECT url, url_description, a |> SELECT * LIMIT 100000000"
 
     val expectedSelection = com.socrata.soql.collection.OrderedMap(
-      ColumnName("phone") -> phoneFc,
+      ColumnName("url") -> urlFc,
       ColumnName("a") -> ColumnRef(NoQualifier, "ai", SoQLText)(NoPosition)
     )
 
@@ -75,12 +75,12 @@ class QueryParserFuseTest extends TestBase {
     }
   }
 
-  test("SELECT :*, * | SELECT phone, phone_type, :id -- no fusing") {
-    val query = "SELECT :*, * |> SELECT phone, phone_type, :id"
+  test("SELECT :*, * | SELECT url, url_description, :id -- no fusing") {
+    val query = "SELECT :*, * |> SELECT url, url_description, :id"
 
     val expectedSelection = com.socrata.soql.collection.OrderedMap(
-      ColumnName("phone") -> ColumnRef(NoQualifier, "phone", SoQLText)(NoPosition),
-      ColumnName("phone_type") -> ColumnRef(NoQualifier, "phone_type", SoQLText)(NoPosition),
+      ColumnName("url") -> ColumnRef(NoQualifier, "url", SoQLText)(NoPosition),
+      ColumnName("url_description") -> ColumnRef(NoQualifier, "url_description", SoQLText)(NoPosition),
       ColumnName(":id") -> ColumnRef(NoQualifier, ":id", SoQLID)(NoPosition)
     )
 
@@ -129,8 +129,8 @@ object QueryParserFuseTest {
     ColumnName("location_city") -> "location_city",
     ColumnName("location_state") -> "location_state",
     ColumnName("location_zip") -> "location_zip",
-    ColumnName("phone") -> "phone",
-    ColumnName("phone_type") -> "phone_type"
+    ColumnName("url") -> "url",
+    ColumnName("url_description") -> "url_description"
   )
 
   val schema = Map[String, SoQLType](
@@ -142,8 +142,8 @@ object QueryParserFuseTest {
     "location_city" -> SoQLText,
     "location_state" -> SoQLText,
     "location_zip" -> SoQLText,
-    "phone" -> SoQLText,
-    "phone_type" -> SoQLText
+    "url" -> SoQLText,
+    "url_description" -> SoQLText
   )
 
   val locationFc = FunctionCall(SoQLFunctions.Location.monomorphic.get, Seq(
@@ -154,9 +154,9 @@ object QueryParserFuseTest {
     ColumnRef(NoQualifier, "location_zip", SoQLText.t)(NoPosition)
   ), None, None)(NoPosition, NoPosition)
 
-  val phoneFc = FunctionCall(SoQLFunctions.Phone.monomorphic.get, Seq(
-    ColumnRef(NoQualifier, "phone", SoQLText.t)(NoPosition),
-    ColumnRef(NoQualifier, "phone_type", SoQLText.t)(NoPosition)
+  val urlFc = FunctionCall(SoQLFunctions.Url.monomorphic.get, Seq(
+    ColumnRef(NoQualifier, "url", SoQLText.t)(NoPosition),
+    ColumnRef(NoQualifier, "url_description", SoQLText.t)(NoPosition)
   ), None, None)(NoPosition, NoPosition)
 
   val eqBindings = SoQLFunctions.Eq.parameters.map {
@@ -169,5 +169,5 @@ object QueryParserFuseTest {
   val ptlFc = FunctionCall(SoQLFunctions.PointToLatitude.monomorphic.get,
     Seq(ColumnRef(NoQualifier, "location", SoQLPoint.t)(NoPosition)), None, None)(NoPosition, NoPosition)
 
-  val fuse = Map("location" -> "location", "phone" -> "phone")
+  val fuse = Map("location" -> "location", "url" -> "url")
 }

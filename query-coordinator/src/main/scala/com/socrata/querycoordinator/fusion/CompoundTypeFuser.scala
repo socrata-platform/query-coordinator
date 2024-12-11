@@ -8,7 +8,7 @@ import com.socrata.soql.collection.OrderedSet
 import com.socrata.soql.environment.{ColumnName, UntypedDatasetContext}
 import com.socrata.soql.functions.SoQLFunctions
 import com.socrata.soql.exceptions.NoSuchFunction
-import com.socrata.soql.types.{SoQLLocation, SoQLPhone, SoQLType, SoQLUrl}
+import com.socrata.soql.types.{SoQLLocation, SoQLType, SoQLUrl}
 import com.typesafe.scalalogging.Logger
 
 import scala.util.parsing.input.NoPosition
@@ -16,7 +16,6 @@ import scala.util.parsing.input.NoPosition
 sealed trait FuseType
 
 case object FTLocation extends FuseType
-case object FTPhone extends FuseType
 case object FTUrl extends FuseType
 case object FTRemove extends FuseType
 
@@ -71,9 +70,6 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite {
                    s"${name}_city" -> FTRemove,
                    s"${name}_state" -> FTRemove,
                    s"${name}_zip" -> FTRemove)
-      case (name, "phone") =>
-        acc ++ Map(name -> FTPhone,
-                   s"${name}_type" -> FTRemove)
       case (name, "url") =>
         acc ++ Map(name -> FTUrl,
                    s"${name}_description" -> FTRemove)
@@ -203,11 +199,6 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite {
             val args = Seq(baseColumn, address, city, state, zip)
             val fc = FunctionCall(SoQLFunctions.Location.name, args, None)(NoPosition, NoPosition)
             Some(fc)
-          case Some(FTPhone) =>
-            val phoneType = ColumnOrAliasRef(NoQualifier, ColumnName(s"${name.name}_type"))(NoPosition)
-            var args = Seq(baseColumn, phoneType)
-            val fc = FunctionCall(SoQLFunctions.Phone.name, args, None)(NoPosition, NoPosition)
-            Some(fc)
           case Some(FTUrl) =>
             val urlDescription = ColumnOrAliasRef(NoQualifier, ColumnName(s"${name.name}_description"))(NoPosition)
             var args = Seq(baseColumn, urlDescription)
@@ -237,15 +228,6 @@ class CompoundTypeFuser(fuseBase: Map[String, String]) extends SoQLRewrite {
                 Some(FunctionCall(SoQLFunctions.HumanAddress.name, args, filter, window)(NoPosition, NoPosition))
               case _ =>
                 throw NoSuchFunction(SpecialFunctions.Field(SoQLLocation.name, prop), 1, fc.position)
-            }
-          case Some(FTPhone) =>
-            prop match {
-              case "phone_number" =>
-                Some(ColumnOrAliasRef(NoQualifier, ColumnName(name.name))(NoPosition))
-              case "phone_type" =>
-                Some(ColumnOrAliasRef(NoQualifier, ColumnName(s"${name.name}_type"))(NoPosition))
-              case _ =>
-                throw NoSuchFunction(SpecialFunctions.Field(SoQLPhone.name, prop), 1, fc.position)
             }
           case Some(FTUrl) =>
             prop match {
