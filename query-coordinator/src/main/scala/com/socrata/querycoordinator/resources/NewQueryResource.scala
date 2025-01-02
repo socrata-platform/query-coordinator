@@ -288,7 +288,7 @@ class NewQueryResource(
 
         return resp.resultCode match {
           case code@(200 | 304) =>
-            Seq("content-type", "etag", "last-modified", "x-soda2-data-out-of-date").foldLeft[HttpResponse](base) { (acc, hdrName) =>
+            Seq("content-type", "etag", "last-modified", "x-soda2-data-out-of-date", "x-soda2-cached").foldLeft[HttpResponse](base) { (acc, hdrName) =>
               resp.headers(hdrName).foldLeft(acc) { (acc, value) =>
                 acc ~> Header(hdrName, value)
               }
