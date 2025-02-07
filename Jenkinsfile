@@ -1,6 +1,6 @@
-@Library('socrata-pipeline-library')
+@Library('socrata-pipeline-library@0.2.0') _
 
-Map pipelineParams = [
+commonServicePipeline(
   defaultBuildWorker: 'build-worker-pg13',
   deploymentEcosystem: 'marathon-mesos',
   language: 'scala',
@@ -11,6 +11,4 @@ Map pipelineParams = [
   teamsChannelWebhookId: 'WORKFLOW_IQ',
   scalaSrcJar: 'query-coordinator/target/query-coordinator-assembly.jar',
   scalaSubprojectName: 'queryCoordinator',
-]
-
-commonServicePipeline(pipelineParams)
+)
