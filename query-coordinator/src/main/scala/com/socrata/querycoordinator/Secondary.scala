@@ -48,7 +48,6 @@ class Secondary(
     instance
   }
 
-  // update this
   def isInSecondary(name: String, dataset: String, copy: Option[String]): Option[Boolean] = {
     // TODO we should either create a separate less expensive method for checking if a dataset
     // is in a secondary, or we should integrate this into schema caching if and when we
