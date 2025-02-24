@@ -95,7 +95,7 @@ object Main extends App with DynamicPortMap {
 
     val secondary = Secondary(
       secondaryProvider = dataCoordinatorProviderProvider,
-      schemaFetcher = SchemaFetcher(httpClient),
+      existenceChecker = ExistenceChecker(httpClient),
       secondaryInstance = secondaryInstanceSelector,
       connectTimeout = config.connectTimeout,
       schemaTimeout = config.schemaTimeout
