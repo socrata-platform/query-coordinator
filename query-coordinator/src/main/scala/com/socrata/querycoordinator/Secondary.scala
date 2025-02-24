@@ -8,8 +8,9 @@ import org.apache.curator.x.discovery.ServiceInstance
 
 import scala.concurrent.duration.FiniteDuration
 
-class Secondary(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
-                schemaFetcher: SchemaFetcher,
+class Secondary(
+  secondaryProvider: ServiceProviderProvider[AuxiliaryData],
+                existenceChecker: ExistenceChecker,
                 secondaryInstance: SecondaryInstanceSelector,
                 connectTimeout: FiniteDuration,
                 schemaTimeout: FiniteDuration) extends QueryService{
@@ -52,18 +53,13 @@ class Secondary(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
   }
 
   def isInSecondary(name: String, dataset: String, copy: Option[String]): Option[Boolean] = {
-    // TODO we should either create a separate less expensive method for checking if a dataset
-    // is in a secondary, or we should integrate this into schema caching if and when we
-    // build that.
     for {
       instance <- Option(secondaryProvider.provider(name).getInstance())
       base <- Some(reqBuilder(instance))
-      result <- schemaFetcher(base.receiveTimeoutMS(schemaTimeoutMillis), dataset, copy) match {
-        case SchemaFetcher.Successful(newSchema, _, _, _) =>
-          Some(true)
-        case SchemaFetcher.NoSuchDatasetInSecondary =>
-          Some(false)
-        case other: SchemaFetcher.Result =>
+      result <- existenceChecker(base.receiveTimeoutMS(schemaTimeoutMillis), dataset, copy) match {
+        case ExistenceChecker.Yes => Some(true)
+        case ExistenceChecker.No => Some(false)
+        case other: ExistenceChecker.Result =>
           log.warn(unexpectedError, other)
           None
       }
@@ -91,12 +87,12 @@ class Secondary(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
 }
 object Secondary {
   def apply(secondaryProvider: ServiceProviderProvider[AuxiliaryData],
-            schemaFetcher: SchemaFetcher,
+            existenceChecker: ExistenceChecker,
             secondaryInstance: SecondaryInstanceSelector,
             connectTimeout: FiniteDuration,
             schemaTimeout: FiniteDuration): Secondary = {
 
-    new Secondary(secondaryProvider, schemaFetcher, secondaryInstance, connectTimeout, schemaTimeout)
+    new Secondary(secondaryProvider, existenceChecker, secondaryInstance, connectTimeout, schemaTimeout)
   }
 
 }
