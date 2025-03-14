@@ -9,6 +9,7 @@ import com.socrata.querycoordinator.resources._
 
 class State() {
   var beDead = false
+  override def toString() = s"State(${beDead})"
 }
 
 object State {
