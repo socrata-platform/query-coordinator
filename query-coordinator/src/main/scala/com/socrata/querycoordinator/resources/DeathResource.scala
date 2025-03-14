@@ -8,23 +8,21 @@ import com.socrata.querycoordinator.BuildInfo
 import com.socrata.http.server.implicits._
 
 
-class VersionResource extends QCResource {
-
-  val version = JsonUtil.renderJson(JObject(BuildInfo.toMap.mapValues(v => JString(v.toString))))
+class DeathResource extends QCResource {
 
   override val get: HttpService = {
     _: HttpRequest => {
       val state = com.socrata.querycoordinator.State.state
-      while (state.beDead) {
-        println("i am dead")
-      }
-      OK ~> Content("application/json", version)
+      println(s"old state is $state")
+      state.beDead = !state.beDead
+      println(s"new state is $state")
+      OK ~> Content("application/text", s"The new state is ${state.beDead}\n")
     }
   }
 
 }
-object VersionResource {
-  def apply(): VersionResource = {
-    new VersionResource()
+object DeathResource {
+  def apply(): DeathResource = {
+    new DeathResource()
   }
 }

@@ -4,8 +4,16 @@ import com.socrata.http.server.implicits._
 import com.socrata.http.server.responses._
 import com.socrata.http.server.routing.SimpleRouteContext._
 import com.socrata.http.server.{HttpRequest, HttpResponse, HttpService}
-import com.socrata.querycoordinator.resources.{QueryResource, NewQueryResource, VersionResource}
+import com.socrata.querycoordinator.resources._
 
+
+class State() {
+  var beDead = false
+}
+
+object State {
+  val state: State = new State()
+}
 
 /**
  * Main HTTP resource servicing class
@@ -13,7 +21,8 @@ import com.socrata.querycoordinator.resources.{QueryResource, NewQueryResource, 
 class Service(
   queryResource: QueryResource,
   newQueryResource: NewQueryResource,
-  versionResource: VersionResource
+  versionResource: VersionResource,
+  deathService: DeathResource
 ) extends HttpService {
 
   val log = org.slf4j.LoggerFactory.getLogger(classOf[Service])
@@ -24,6 +33,7 @@ class Service(
     Route("/{String}/+", (_: Any, _: Any) => queryResource),
     Route("/{String}", (_: Any) => queryResource),
     Route("/new-query", newQueryResource),
+    Route("/death", deathService),
     Route("/version", versionResource)
   )
 
@@ -36,8 +46,8 @@ class Service(
 
 }
 object Service {
-  def apply(queryResource: QueryResource, newQueryResource: NewQueryResource, versionResource: VersionResource): Service = {
-    new Service(queryResource, newQueryResource, versionResource)
+  def apply(queryResource: QueryResource, newQueryResource: NewQueryResource, versionResource: VersionResource, deathService: DeathResource): Service = {
+    new Service(queryResource, newQueryResource, versionResource, deathService)
   }
 
 }
