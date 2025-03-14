@@ -19,7 +19,7 @@ class DeathResource extends QCResource {
       log.info(s"old state is $state")
       state.beDead = !state.beDead
       log.info(s"new state is $state")
-      OK ~> Content("application/text", s"The new state is ${state.beDead}\n")
+      OK ~> Content("text/plain", s"The new state is ${state.beDead}\n")
     }
   }
 
