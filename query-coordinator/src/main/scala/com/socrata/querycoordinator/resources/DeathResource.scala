@@ -6,16 +6,18 @@ import com.socrata.http.server._
 import com.socrata.http.server.responses._
 import com.socrata.querycoordinator.BuildInfo
 import com.socrata.http.server.implicits._
-
+import org.slf4j.LoggerFactory
 
 class DeathResource extends QCResource {
+  val log = LoggerFactory.getLogger(classOf[DeathResource])
+
 
   override val get: HttpService = {
     _: HttpRequest => {
       val state = com.socrata.querycoordinator.State.state
-      println(s"old state is $state")
+      log.info(s"old state is $state")
       state.beDead = !state.beDead
-      println(s"new state is $state")
+      log.info(s"new state is $state")
       OK ~> Content("application/text", s"The new state is ${state.beDead}\n")
     }
   }

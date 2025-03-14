@@ -22,7 +22,7 @@ class Service(
   queryResource: QueryResource,
   newQueryResource: NewQueryResource,
   versionResource: VersionResource,
-  deathService: DeathResource
+  deathResource: DeathResource
 ) extends HttpService {
 
   val log = org.slf4j.LoggerFactory.getLogger(classOf[Service])
@@ -33,7 +33,7 @@ class Service(
     Route("/{String}/+", (_: Any, _: Any) => queryResource),
     Route("/{String}", (_: Any) => queryResource),
     Route("/new-query", newQueryResource),
-    Route("/death", deathService),
+    Route("/death", deathResource),
     Route("/version", versionResource)
   )
 
@@ -46,8 +46,8 @@ class Service(
 
 }
 object Service {
-  def apply(queryResource: QueryResource, newQueryResource: NewQueryResource, versionResource: VersionResource, deathService: DeathResource): Service = {
-    new Service(queryResource, newQueryResource, versionResource, deathService)
+  def apply(queryResource: QueryResource, newQueryResource: NewQueryResource, versionResource: VersionResource, deathResource: DeathResource): Service = {
+    new Service(queryResource, newQueryResource, versionResource, deathResource)
   }
 
 }
