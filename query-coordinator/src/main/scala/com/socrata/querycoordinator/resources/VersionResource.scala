@@ -20,6 +20,7 @@ class VersionResource extends QCResource {
       val state = com.socrata.querycoordinator.State.state
       log.info(s"I am ${state.beDead}")
       while (state.beDead) {
+        Thread.sleep(2000)
         log.info("i am dead")
       }
       OK ~> Content("application/json", version)
