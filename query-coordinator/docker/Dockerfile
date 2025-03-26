@@ -5,6 +5,8 @@ EXPOSE 6031/udp
 ENV JMX_PORT 6039
 # EXPOSE 6039
 
+RUN apt-get -y update && apt-get -y install jq
+
 ENV SERVER_ROOT /srv/query-coordinator/
 # TODO sbt task to copy latest jar into docker/
 ENV SERVER_ARTIFACT query-coordinator-assembly.jar
