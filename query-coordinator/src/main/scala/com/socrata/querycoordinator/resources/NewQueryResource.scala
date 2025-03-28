@@ -12,6 +12,7 @@ import com.rojoma.json.v3.util.{WrapperJsonCodec, AutomaticJsonCodec, NullForNon
 import com.rojoma.simplearm.v2.ResourceScope
 import org.apache.commons.io.HexDump
 import org.slf4j.LoggerFactory
+
 import org.joda.time.{DateTime, LocalDateTime}
 
 import com.socrata.http.client.HttpClient
