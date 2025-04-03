@@ -16,3 +16,5 @@ val queryCoordinator = (project in file("query-coordinator")).
 disablePlugins(AssemblyPlugin)
 
 releaseProcess -= ReleaseTransformations.publishArtifacts
+
+assembly/assemblyJarName := s"${name.value}-assembly.jar"
