@@ -6,7 +6,7 @@ import scala.util.Random
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.nio.charset.StandardCharsets
 
-import com.rojoma.json.v3.ast.{JString, JValue, JNull}
+import com.rojoma.json.v3.ast.{JBoolean, JString, JValue, JNull}
 import com.rojoma.json.v3.codec.{JsonEncode, JsonDecode, DecodeError}
 import com.rojoma.json.v3.util.{WrapperJsonCodec, AutomaticJsonCodec, NullForNone, AllowMissing, SimpleHierarchyCodecBuilder, InternalTag, AutomaticJsonCodecBuilder, JsonUtil}
 import com.rojoma.simplearm.v2.ResourceScope
@@ -77,6 +77,7 @@ object NewQueryResource {
   }
 
   val analyzer = new SoQLAnalyzer[MT](SoQLTypeInfo.soqlTypeInfo2, SoQLFunctionInfo, MT.ToProvenance)
+  val systemColumnNonAggregatePreservingAnalyzer = analyzer.preserveSystemColumns((_, _) => None)
   val systemColumnPreservingAnalyzer = analyzer
     .preserveSystemColumns(PreserveSystemColumnsAggregateMerger())
 
@@ -152,6 +153,34 @@ object NewQueryResource {
     }
   }
 
+  sealed abstract class PreserveSystemColumns
+  object PreserveSystemColumns {
+    case object Never extends PreserveSystemColumns
+    case object NonAggregated extends PreserveSystemColumns
+    case object Always extends PreserveSystemColumns
+
+    implicit object jCodec extends JsonEncode[PreserveSystemColumns] with JsonDecode[PreserveSystemColumns] {
+      def encode(psc: PreserveSystemColumns) =
+        psc match {
+          case Never => JBoolean(false)
+          case NonAggregated => JString("non_aggregated")
+          case Always => JBoolean(true)
+        }
+      def decode(x: JValue) =
+        x match {
+          case JBoolean(false) | JString("never") => Right(Never)
+          case JBoolean(true) | JString("always") => Right(Always)
+          case JString("non_aggregated") => Right(NonAggregated)
+          case other@JString(_) => Left(DecodeError.InvalidValue(other))
+          case other => Left(DecodeError.join(
+                               List(
+                                 DecodeError.InvalidType(expected = JString, got = other.jsonType),
+                                 DecodeError.InvalidType(expected = JBoolean, got = other.jsonType)
+                               )))
+        }
+    }
+  }
+
   @AutomaticJsonCodec
   case class Body(
     foundTables: FoundTables[MT],
@@ -168,8 +197,8 @@ object NewQueryResource {
     rewritePasses: Seq[Seq[Pass]],
     @AllowMissing("true")
     allowRollups: Boolean,
-    @AllowMissing("false")
-    preserveSystemColumns: Boolean,
+    @AllowMissing("PreserveSystemColumns.Never")
+    preserveSystemColumns: PreserveSystemColumns,
     debug: Option[Debug],
     queryTimeoutMS: Option[Long],
     store: Option[String]
@@ -213,8 +242,11 @@ class NewQueryResource(
       }
 
     val effectiveAnalyzer =
-      if(preserveSystemColumns) systemColumnPreservingAnalyzer
-      else analyzer
+      preserveSystemColumns match {
+        case PreserveSystemColumns.Always => systemColumnPreservingAnalyzer
+        case PreserveSystemColumns.NonAggregated => systemColumnNonAggregatePreservingAnalyzer
+        case PreserveSystemColumns.Never => analyzer
+      }
 
     effectiveAnalyzer(foundTables, context.user.toUserParameters) match {
       case Right(analysis) =>
