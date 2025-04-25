@@ -43,4 +43,5 @@ exec su socrata -c 'exec /usr/bin/java \
     -Djava.rmi.server.hostname=${ARK_HOST:-localhost} \
     -XX:MaxMetaspaceSize=${JAVA_MAX_METASPACE} \
     ${HEAPDUMP} \
+    ${JAVA_GC_LOG_BEHAVIOR} \
     -jar $SERVER_ARTIFACT'
