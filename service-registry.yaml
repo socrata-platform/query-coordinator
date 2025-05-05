@@ -3,8 +3,8 @@ kind: Component
 metadata:
   name: query-coordinator
   description: |
-    Query Coordinator is a REST server analyzes SoQL queries and dispatches
-    them to an execution engine.
+    Query Coordinator is a REST server that analyzes SoQL queries and
+    dispatches them to an execution engine.
   links:
     - title: "Ops Doc"
       url: "https://socrata.atlassian.net/wiki/spaces/ONCALL/pages/2158985270/OpsDoc+-+SODA+Server+aka+NBE"
