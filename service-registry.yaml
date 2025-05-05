@@ -13,7 +13,7 @@ metadata:
     - title: "New Backend (NBE) Crash Course"
       url: "https://tylertech.sharepoint.com/:v:/r/sites/DataInsightsDivision/Shared%20Documents/Engineering/NewBackendCrashCourse.mov?csf=1&web=1&e=2NsXHJ"
   annotations:
-    github.com/project-slug: 'socrata/query-coordinator'
+    github.com/project-slug: 'socrata-platform/query-coordinator'
     backstage.io/techdocs-ref: dir:.
   tags:
     - scala
