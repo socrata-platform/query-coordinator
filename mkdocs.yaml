@@ -1,0 +1,5 @@
+site_name: 'query-coordinator'
+docs_dir: '.'
+nav:
+  - Home: README.md
+  - Docker: query-coordinator/docker/README.md
