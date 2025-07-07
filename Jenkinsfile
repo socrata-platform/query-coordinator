@@ -1,4 +1,4 @@
-@Library('socrata-pipeline-library@7.0.0') _
+@Library('socrata-pipeline-library@9.0.0') _
 
 commonPipeline(
   defaultBuildWorker: 'build-worker-pg13',
@@ -19,6 +19,5 @@ commonPipeline(
       ]
     ]
   ],
-  projectWorkingDirectory: 'query-coordinator',
-  teamsChannelWebhookId: 'WORKFLOW_IQ',
+  teamsChannelWebhookId: 'WORKFLOW_EGRESS_AUTOMATION',
 )
