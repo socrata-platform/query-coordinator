@@ -59,9 +59,11 @@ object ExistenceChecker {
 
   case object No extends Result
 
-  case object BadResponseFromSecondary extends Result
+  sealed abstract class Error extends Result
 
-  case object TimeoutFromSecondary extends Result
+  case object BadResponseFromSecondary extends Error
 
-  case object SecondaryConnectFailed extends Result
+  case object TimeoutFromSecondary extends Error
+
+  case object SecondaryConnectFailed extends Error
 }

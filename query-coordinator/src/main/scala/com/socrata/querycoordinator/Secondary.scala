@@ -1,5 +1,8 @@
 package com.socrata.querycoordinator
 
+import scala.annotation.tailrec
+import scala.util.control.ControlThrowable
+
 import com.socrata.http.client.RequestBuilder
 import com.socrata.http.common.AuxiliaryData
 import com.socrata.querycoordinator.resources.QueryService
@@ -53,17 +56,49 @@ class Secondary(
   }
 
   def isInSecondary(name: String, dataset: String, copy: Option[String]): Option[Boolean] = {
-    for {
-      instance <- Option(secondaryProvider.provider(name).getInstance())
-      base <- Some(reqBuilder(instance))
-      result <- existenceChecker(base.receiveTimeoutMS(schemaTimeoutMillis), dataset, copy) match {
-        case ExistenceChecker.Yes => Some(true)
-        case ExistenceChecker.No => Some(false)
-        case other: ExistenceChecker.Result =>
-          log.warn(unexpectedError, other)
-          None
+    class RetryState private (retries: Int, lastError: Option[ExistenceChecker.Error]) {
+      def this() = this(0, None)
+      def retry(error: ExistenceChecker.Error) = {
+        if(this.retries < 3) {
+          throw RetryPlease(new RetryState(retries + 1, Some(error)))
+        }
       }
-    } yield result
+    }
+
+    case class RetryPlease(newState: RetryState) extends Throwable with ControlThrowable
+
+    @tailrec
+    def loop(retryState: RetryState): Option[Boolean] = {
+      // This is written in an annoyingly convoluted way because you
+      // can't tailrec out of a catch block.
+
+      val possiblyRetry = try {
+        val result =
+          for {
+            instance <- Option(secondaryProvider.provider(name).getInstance())
+            base <- Some(reqBuilder(instance))
+            result <- existenceChecker(base.receiveTimeoutMS(schemaTimeoutMillis), dataset, copy) match {
+              case ExistenceChecker.Yes => Some(true)
+              case ExistenceChecker.No => Some(false)
+              case other: ExistenceChecker.Error =>
+                log.warn(unexpectedError, other)
+                retryState.retry(other)
+                None
+            }
+          } yield result
+        Right(result)
+      } catch {
+        case RetryPlease(newState) =>
+          Left(newState)
+      }
+
+      possiblyRetry match {
+        case Right(result) => result
+        case Left(newRetryState) => loop(newRetryState)
+      }
+    }
+
+    loop(new RetryState)
   }
 
 

@@ -1,5 +1,6 @@
 package com.socrata.querycoordinator.resources
 
+import scala.annotation.tailrec
 import scala.concurrent.duration._
 import scala.util.Random
 
@@ -14,7 +15,8 @@ import org.apache.commons.io.HexDump
 import org.slf4j.LoggerFactory
 import org.joda.time.{DateTime, LocalDateTime}
 
-import com.socrata.http.client.HttpClient
+import com.socrata.http.client.{HttpClient, Response}
+import com.socrata.http.client.exceptions.{ConnectTimeout, ConnectFailed}
 import com.socrata.http.server.{HttpRequest, HttpResponse}
 import com.socrata.http.server.ext.{ResourceExt, Json, HeaderMap, HeaderName, RequestId}
 import com.socrata.http.server.util.RequestId.ReqIdHeader
@@ -304,17 +306,33 @@ class NewQueryResource(
           headers.lookup(HeaderName(h)).map { v => h -> v.underlying }
         }
 
-        val (chosenSecondary, instance) = chosenSecondaries.toStream.flatMap { name =>
-          secondary.unassociatedServiceInstance(name).map((name, _))
-        }.headOption.getOrElse {
-          throw new Exception(s"None of ${chosenSecondaries} seems to be available?") // this genuinely is an internal error
+        @tailrec
+        def loop(retries: Int): (String, Response) = {
+          val (chosenSecondary, instance) = chosenSecondaries.toStream.flatMap { name =>
+            secondary.unassociatedServiceInstance(name).map((name, _))
+          }.headOption.getOrElse {
+            throw new Exception(s"None of ${chosenSecondaries} seems to be available?") // this genuinely is an internal error
+          }
+          val req = secondary.reqBuilder(instance)
+            .p("new-query")
+            .addHeaders(additionalHeaders)
+            .addHeader(ReqIdHeader, reqId.toString)
+            .blob(new ByteArrayInputStream(serialized))
+
+          val respOrRetriableError = try {
+            Right((chosenSecondary, httpClient.execute(req, rs)))
+          } catch {
+            case e: ConnectTimeout => Left(e)
+            case e: ConnectFailed => Left(e)
+          }
+
+          respOrRetriableError match {
+            case Right(result) => result
+            case Left(_) if retries < 3 => loop(retries + 1)
+            case Left(e) => throw e
+          }
         }
-        val req = secondary.reqBuilder(instance)
-          .p("new-query")
-          .addHeaders(additionalHeaders)
-          .addHeader(ReqIdHeader, reqId.toString)
-          .blob(new ByteArrayInputStream(serialized))
-        val resp = httpClient.execute(req, rs)
+        val (chosenSecondary, resp) = loop(0)
 
         val base = Status(resp.resultCode) ~> Header("x-soda2-secondary", chosenSecondary)
 
