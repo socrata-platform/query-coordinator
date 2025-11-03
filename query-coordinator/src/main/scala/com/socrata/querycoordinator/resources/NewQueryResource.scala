@@ -7,6 +7,7 @@ import scala.util.Random
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.nio.charset.StandardCharsets
+import java.net.SocketException
 
 import com.rojoma.json.v3.ast.{JBoolean, JString, JValue, JNull}
 import com.rojoma.json.v3.codec.{JsonEncode, JsonDecode, DecodeError}
@@ -330,6 +331,7 @@ class NewQueryResource(
               } catch {
                 case e: ConnectTimeout => Left(e)
                 case e: ConnectFailed => Left(e)
+                case e: SocketException => Left(e)
               }
 
               respOrRetriableError match {
