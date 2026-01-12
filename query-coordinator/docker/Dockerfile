@@ -1,4 +1,4 @@
-FROM socrata/java8-focal
+FROM socrata/java8-jammy
 
 EXPOSE 6030
 EXPOSE 6031/udp
