@@ -7,6 +7,7 @@ commonPipeline(
   languageOptions: [
       crossCompile: true,
   ],
+  lintCommitMessages: false,
   numberOfBuildsToKeep: 50,
   projects: [
     [
