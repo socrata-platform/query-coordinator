@@ -23,7 +23,7 @@ class Secondary(
   val schemaTimeoutMillis = schemaTimeout.toMillis.toInt
 
 
-  def chosenSecondaryName(forcedSecondaryName: Option[String],
+  def chosenSecondaryNamex(forcedSecondaryName: Option[String],
                           dataset: String, copy: Option[String],
                           excludedSecondaryNames: Set[String]): Option[String] = {
     forcedSecondaryName.orElse {

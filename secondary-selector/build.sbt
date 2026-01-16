@@ -3,6 +3,8 @@ import Dependencies._
 name := "secondary-selector"
 
 libraryDependencies ++= Seq(
+  rojomaJson,
+  simpleArm,
   socrataThirdpartyUtils,
   sprayCaching,
   typesafeConfig,
