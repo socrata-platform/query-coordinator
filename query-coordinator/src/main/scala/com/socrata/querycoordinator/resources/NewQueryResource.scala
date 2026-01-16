@@ -34,7 +34,7 @@ import com.socrata.soql.stdlib.analyzer2.{Context, PreserveSystemColumnsAggregat
 import com.socrata.soql.sql.Debug
 import com.socrata.soql.util.GenericSoQLError
 
-import com.socrata.querycoordinator.Secondary
+import com.socrata.querycoordinator.{Secondary, NewSecondaryInstanceSelector}
 import com.socrata.querycoordinator.util.{Lazy, NewQueryError}
 
 object NewQueryResource {
@@ -214,7 +214,8 @@ object NewQueryResource {
 
 class NewQueryResource(
   httpClient: HttpClient,
-  secondary: Secondary
+  secondarySelector: NewSecondaryInstanceSelector[NewQueryResource.DatasetInternalName, String],
+  secondaryFinder: String => Option[Instance]
 ) extends QCResource with ResourceExt {
   import NewQueryResource._
 
@@ -262,36 +263,20 @@ class NewQueryResource(
           new String(baos.toByteArray, StandardCharsets.ISO_8859_1)
         }))
 
-        def allSecondariesFor(dtn: types.DatabaseTableName[MT]): Set[String] = {
-          val DatabaseTableName((DatasetInternalName(n), Stage(s))) = dtn
-          var acc = Set.empty[String]
-          def loop() {
-            secondary.chosenSecondaryName(None, n, Some(s), acc) match {
-              case Some(secondary) =>
-                acc += secondary
-                loop
-              case None =>
-                // done
-            }
-          }
-          loop()
-          acc
-        }
-
         def bail(err: NewQueryError[MT#ResourceNameScope]) = BadRequest ~> JsonResp(err)
 
         val chosenSecondaries: Seq[String] =
           store match {
             case None =>
               val secondaries = analysis.statement.allTables.map { n =>
-                val candidates = allSecondariesFor(n)
+                val candidates = secondarySelector.whereis(n)
                 if(candidates.isEmpty) {
                   return bail(NewQueryError.SecondarySelectionError.NoSecondariesForDataset(foundTables.tableMap.byDatabaseTableName(n).head))
                 }
                 candidates
               }
               if(secondaries.isEmpty) { // no tables involved, so we don't care what secondary we use!
-                secondary.allSecondaries()
+                secondarySelector.allSecondaries
               } else {
                 val candidates = secondaries.reduceLeft { (a, b) => a.intersect(b) }.toVector
                 if(candidates.isEmpty) {
@@ -313,7 +298,7 @@ class NewQueryResource(
           val (chosenSecondary, remainingSecondaries) = secondaries.dequeueOption.getOrElse {
             throw new Exception(s"None of ${chosenSecondaries} seems to be available?") // this genuinely is an internal error
           }
-          secondary.unassociatedServiceInstance(chosenSecondary) match {
+          secondaryFinder(chosenSecondary) match {
             case None =>
               // there were no instances for the chosen secondary,
               // don't count this as a "retry", but also don't
@@ -354,6 +339,15 @@ class NewQueryResource(
             } ~> StreamBytes(resp.inputStream())
 
           case other =>
+            // This is where we'll want to invalidate the cache, which
+            // means that rewriteFrom in DatabaseMetaTypes over in
+            // soql-pg needs to actually grow proper errors upon
+            // failure-to-find.
+            //
+            // Even just returning a messageless 404 would be
+            // sufficient for this purpose since we won't be
+            // propagating the error upward; we'll be invalidating the
+            // cache and retrying here.
             val error = resp.value[GenericSoQLError[MT#ResourceNameScope]]() match {
               case Right(value) => value
               case Left(err) => throw new Exception("Invalid error response: " + err.english)
