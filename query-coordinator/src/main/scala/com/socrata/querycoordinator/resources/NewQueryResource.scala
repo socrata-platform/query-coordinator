@@ -14,11 +14,13 @@ import com.rojoma.json.v3.codec.{JsonEncode, JsonDecode, DecodeError}
 import com.rojoma.json.v3.util.{WrapperJsonCodec, AutomaticJsonCodec, NullForNone, AllowMissing, SimpleHierarchyCodecBuilder, InternalTag, AutomaticJsonCodecBuilder, JsonUtil}
 import com.rojoma.simplearm.v2.ResourceScope
 import org.apache.commons.io.HexDump
+import org.apache.curator.x.discovery.ServiceInstance
 import org.slf4j.LoggerFactory
 import org.joda.time.{DateTime, LocalDateTime}
 
 import com.socrata.http.client.{HttpClient, Response}
 import com.socrata.http.client.exceptions.{ConnectTimeout, ConnectFailed}
+import com.socrata.http.common.AuxiliaryData
 import com.socrata.http.server.{HttpRequest, HttpResponse}
 import com.socrata.http.server.ext.{ResourceExt, Json, HeaderMap, HeaderName, RequestId}
 import com.socrata.http.server.util.RequestId.ReqIdHeader
@@ -215,7 +217,8 @@ object NewQueryResource {
 class NewQueryResource(
   httpClient: HttpClient,
   secondarySelector: NewSecondaryInstanceSelector[NewQueryResource.DatasetInternalName, String],
-  secondaryFinder: String => Option[Instance]
+  secondaryFinder: String => Option[ServiceInstance[AuxiliaryData]],
+  secondary: Secondary
 ) extends QCResource with ResourceExt {
   import NewQueryResource._
 
@@ -265,36 +268,12 @@ class NewQueryResource(
 
         def bail(err: NewQueryError[MT#ResourceNameScope]) = BadRequest ~> JsonResp(err)
 
-        val chosenSecondaries: Seq[String] =
-          store match {
-            case None =>
-              val secondaries = analysis.statement.allTables.map { n =>
-                val candidates = secondarySelector.whereis(n)
-                if(candidates.isEmpty) {
-                  return bail(NewQueryError.SecondarySelectionError.NoSecondariesForDataset(foundTables.tableMap.byDatabaseTableName(n).head))
-                }
-                candidates
-              }
-              if(secondaries.isEmpty) { // no tables involved, so we don't care what secondary we use!
-                secondarySelector.allSecondaries
-              } else {
-                val candidates = secondaries.reduceLeft { (a, b) => a.intersect(b) }.toVector
-                if(candidates.isEmpty) {
-                  return bail(NewQueryError.SecondarySelectionError.NoSecondariesForAllDatasets())
-                }
-                Random.shuffle(candidates)
-              }
-            case Some(store) =>
-              log.info("Forcing secondary to {}", JString(store))
-              Seq(store)
-          }
-
         val additionalHeaders = Seq("if-none-match", "if-match", "if-modified-since").flatMap { h =>
           headers.lookup(HeaderName(h)).map { v => h -> v.underlying }
         }
 
         @tailrec
-        def loop(retries: Int, secondaries: Queue[String]): (String, Response) = {
+        def innerLoop(chosenSecondaries: Seq[String], retries: Int, secondaries: Queue[String]): (String, Response) = {
           val (chosenSecondary, remainingSecondaries) = secondaries.dequeueOption.getOrElse {
             throw new Exception(s"None of ${chosenSecondaries} seems to be available?") // this genuinely is an internal error
           }
@@ -303,7 +282,7 @@ class NewQueryResource(
               // there were no instances for the chosen secondary,
               // don't count this as a "retry", but also don't
               // re-enqueue the chosen secondary.
-              loop(retries, secondaries)
+              innerLoop(chosenSecondaries, retries, secondaries)
             case Some(instance) =>
               val req = secondary.reqBuilder(instance)
                 .p("new-query")
@@ -321,39 +300,77 @@ class NewQueryResource(
 
               respOrRetriableError match {
                 case Right(result) => result
-                case Left(_) if retries < 3 => loop(retries + 1, remainingSecondaries.enqueue(chosenSecondary))
+                case Left(_) if retries < 3 => innerLoop(chosenSecondaries, retries + 1, remainingSecondaries.enqueue(chosenSecondary))
                 case Left(e) => throw e
               }
           }
         }
-        val (chosenSecondary, resp) = loop(0, Queue(chosenSecondaries : _*))
 
-        val base = Status(resp.resultCode) ~> Header("x-soda2-secondary", chosenSecondary)
-
-        return resp.resultCode match {
-          case code@(200 | 304) =>
-            Seq("content-type", "etag", "last-modified", "x-soda2-data-out-of-date", "x-soda2-cached").foldLeft[HttpResponse](base) { (acc, hdrName) =>
-              resp.headers(hdrName).foldLeft(acc) { (acc, value) =>
-                acc ~> Header(hdrName, value)
+        def chooseSecondary(): Either[HttpResponse, Seq[String]] = {
+          store match {
+            case None =>
+              val secondaries = analysis.statement.allTables.map { n =>
+                val candidates = secondarySelector.whereis(n.name._1)
+                if(candidates.isEmpty) {
+                  return Left(bail(NewQueryError.SecondarySelectionError.NoSecondariesForDataset(foundTables.tableMap.byDatabaseTableName(n).head)))
+                }
+                candidates
               }
-            } ~> StreamBytes(resp.inputStream())
-
-          case other =>
-            // This is where we'll want to invalidate the cache, which
-            // means that rewriteFrom in DatabaseMetaTypes over in
-            // soql-pg needs to actually grow proper errors upon
-            // failure-to-find.
-            //
-            // Even just returning a messageless 404 would be
-            // sufficient for this purpose since we won't be
-            // propagating the error upward; we'll be invalidating the
-            // cache and retrying here.
-            val error = resp.value[GenericSoQLError[MT#ResourceNameScope]]() match {
-              case Right(value) => value
-              case Left(err) => throw new Exception("Invalid error response: " + err.english)
-            }
-            base ~> JsonResp(error)
+              if(secondaries.isEmpty) { // no tables involved, so we don't care what secondary we use!
+                Right(Random.shuffle(secondarySelector.allSecondaries.toSeq))
+              } else {
+                val candidates = secondaries.reduceLeft { (a, b) => a.intersect(b) }.toVector
+                if(candidates.isEmpty) {
+                  return Left(bail(NewQueryError.SecondarySelectionError.NoSecondariesForAllDatasets()))
+                }
+                Right(Random.shuffle(candidates))
+              }
+            case Some(store) =>
+              log.info("Forcing secondary to {}", JString(store))
+              Right(Seq(store))
+          }
         }
+
+        @tailrec
+        def outerLoop(retries: Int): HttpResponse = {
+          val chosenSecondaries: Seq[String] =
+            chooseSecondary() match {
+              case Right(cs) => cs
+              case Left(response) => return response
+            }
+
+          val (chosenSecondary, resp) = innerLoop(chosenSecondaries, 0, Queue(chosenSecondaries : _*))
+
+          val base = Status(resp.resultCode) ~> Header("x-soda2-secondary", chosenSecondary)
+
+          resp.resultCode match {
+            case code@(200 | 304) =>
+              Seq("content-type", "etag", "last-modified", "x-soda2-data-out-of-date", "x-soda2-cached").foldLeft[HttpResponse](base) { (acc, hdrName) =>
+                resp.headers(hdrName).foldLeft(acc) { (acc, value) =>
+                  acc ~> Header(hdrName, value)
+                }
+              } ~> StreamBytes(resp.inputStream())
+
+            case 404 if resp.headers("X-Socrata-Missing-Dataset").nonEmpty =>
+              if(retries >= 3) {
+                throw new Exception("Repeatedly got told a secondary contained tables but when we issued the query it didn't?")
+              }
+              rs.close(resp)
+              for(table <- analysis.statement.allTables) {
+                secondarySelector.invalidate(table.name._1, chosenSecondary)
+              }
+
+              outerLoop(retries + 1)
+            case other =>
+              val error = resp.value[GenericSoQLError[MT#ResourceNameScope]]() match {
+                case Right(value) => value
+                case Left(err) => throw new Exception("Invalid error response: " + err.english)
+              }
+              base ~> JsonResp(error)
+          }
+        }
+
+        outerLoop(0)
       case Left(err) =>
         BadRequest ~> JsonResp(err)
     }
