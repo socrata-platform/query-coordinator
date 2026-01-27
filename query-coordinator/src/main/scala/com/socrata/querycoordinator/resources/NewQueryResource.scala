@@ -36,7 +36,7 @@ import com.socrata.soql.stdlib.analyzer2.{Context, PreserveSystemColumnsAggregat
 import com.socrata.soql.sql.Debug
 import com.socrata.soql.util.GenericSoQLError
 
-import com.socrata.querycoordinator.{Secondary, NewSecondaryInstanceSelector}
+import com.socrata.querycoordinator.{Secondary, SecondaryResult, NewSecondaryInstanceSelector}
 import com.socrata.querycoordinator.util.{Lazy, NewQueryError}
 
 object NewQueryResource {
@@ -273,11 +273,11 @@ class NewQueryResource(
         }
 
         @tailrec
-        def innerLoop(chosenSecondaries: Seq[String], retries: Int, secondaries: Queue[String]): (String, Response) = {
+        def innerLoop(chosenSecondaries: Seq[SecondaryResult[String]], retries: Int, secondaries: Queue[SecondaryResult[String]]): (SecondaryResult[String], Response) = {
           val (chosenSecondary, remainingSecondaries) = secondaries.dequeueOption.getOrElse {
-            throw new Exception(s"None of ${chosenSecondaries} seems to be available?") // this genuinely is an internal error
+            throw new Exception(s"None of ${chosenSecondaries.map(_.secondary)} seems to be available?") // this genuinely is an internal error
           }
-          secondaryFinder(chosenSecondary) match {
+          secondaryFinder(chosenSecondary.secondary) match {
             case None =>
               // there were no instances for the chosen secondary,
               // don't count this as a "retry", but also don't
@@ -306,34 +306,48 @@ class NewQueryResource(
           }
         }
 
-        def chooseSecondary(): Either[HttpResponse, Seq[String]] = {
+        def chooseSecondary(): Either[HttpResponse, Seq[SecondaryResult[String]]] = {
           store match {
             case None =>
-              val secondaries = analysis.statement.allTables.map { n =>
-                val candidates = secondarySelector.whereis(n.name._1)
-                if(candidates.isEmpty) {
-                  return Left(bail(NewQueryError.SecondarySelectionError.NoSecondariesForDataset(foundTables.tableMap.byDatabaseTableName(n).head)))
-                }
-                candidates
-              }
-              if(secondaries.isEmpty) { // no tables involved, so we don't care what secondary we use!
+              val versionedTables = analysis.statement.allTables
+              val tables = versionedTables.map(_.name._1)
+              if(tables.isEmpty) {
+                // no tables involved, so we don't care what secondary we use!
                 Right(Random.shuffle(secondarySelector.allSecondaries.toSeq))
               } else {
-                val candidates = secondaries.reduceLeft { (a, b) => a.intersect(b) }.toVector
+                var candidates = secondarySelector.whereAre(tables)
+
+                // This isn't great, but it also shouldn't be a thing
+                // that happens much/at all.  If we didn't find any
+                // candidates, then either
+                //   * The user is querying datasets that do not live
+                //     together, which shouldn't be a thing that can
+                //     happen
+                //   * Datasets have moved and our cache is out of
+                //     date, which can happen _rarely_.
+                // So this assumes the latter, and thus clears any
+                // cached data for these tables and rescans.
                 if(candidates.isEmpty) {
-                  return Left(bail(NewQueryError.SecondarySelectionError.NoSecondariesForAllDatasets()))
+                  secondarySelector.invalidate(tables)
+                  candidates = secondarySelector.whereAre(tables)
+                  if(tables.size == 1) {
+                      return Left(bail(NewQueryError.SecondarySelectionError.NoSecondariesForDataset(foundTables.tableMap.byDatabaseTableName(versionedTables.head).head)))
+                  } else {
+                    return Left(bail(NewQueryError.SecondarySelectionError.NoSecondariesForAllDatasets()))
+                  }
                 }
-                Right(Random.shuffle(candidates))
+
+                Right(Random.shuffle(candidates.toSeq))
               }
             case Some(store) =>
               log.info("Forcing secondary to {}", JString(store))
-              Right(Seq(store))
+              Right(Seq(new SecondaryResult.Simple(store)))
           }
         }
 
         @tailrec
         def outerLoop(retries: Int): HttpResponse = {
-          val chosenSecondaries: Seq[String] =
+          val chosenSecondaries: Seq[SecondaryResult[String]] =
             chooseSecondary() match {
               case Right(cs) => cs
               case Left(response) => return response
@@ -341,7 +355,7 @@ class NewQueryResource(
 
           val (chosenSecondary, resp) = innerLoop(chosenSecondaries, 0, Queue(chosenSecondaries : _*))
 
-          val base = Status(resp.resultCode) ~> Header("x-soda2-secondary", chosenSecondary)
+          val base = Status(resp.resultCode) ~> Header("x-soda2-secondary", chosenSecondary.secondary)
 
           resp.resultCode match {
             case code@(200 | 304) =>
@@ -357,7 +371,7 @@ class NewQueryResource(
               }
               rs.close(resp)
               for(table <- analysis.statement.allTables) {
-                secondarySelector.invalidate(table.name._1, chosenSecondary)
+                chosenSecondary.invalidateAll()
               }
 
               outerLoop(retries + 1)

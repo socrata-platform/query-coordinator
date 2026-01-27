@@ -9,10 +9,49 @@ import java.util.concurrent.atomic.AtomicReference
 
 import org.slf4j.LoggerFactory
 
+abstract class SecondaryResult[Secondary] {
+  val secondary: Secondary
+
+  // Invalidate the result for this dataset on all secondaries,
+  // forcing re-checking the next time it's accessed.
+  def invalidateAll(): Unit
+
+  // Mark the result on _this_ secondary as Unknown.  Does not force
+  // re-checking on all secondaries.  Use this with caution!  It can
+  // interact badly with multi-dataset queries if the cache ends up in
+  // a state where the datasets are believed to be in a disjoint
+  // state.
+  def invalidateSecondary(): Unit
+
+  override final def hashCode = secondary.hashCode
+  override final def equals(that: Any) =
+    that match {
+      case s: SecondaryResult[_] => this.secondary == s.secondary
+      case _ => false
+    }
+
+  override final def toString =
+    s"SecondaryResult($secondary)"
+}
+
+object SecondaryResult {
+  // A pure secondary, without any "dataset" involved
+  class Simple[Secondary](val secondary: Secondary) extends SecondaryResult[Secondary] {
+    override def invalidateAll() = {}
+    override def invalidateSecondary() = {}
+  }
+}
+
 trait NewSecondaryInstanceSelector[DatasetInternalName, Secondary] {
-  val allSecondaries: Set[Secondary]
-  def whereis(internalName: DatasetInternalName): Set[Secondary]
-  def invalidate(internalName: DatasetInternalName, secondary: Secondary): Unit
+  val allSecondaries: Set[SecondaryResult[Secondary]]
+
+  def invalidate(internalNames: Iterable[DatasetInternalName]): Unit
+
+  // Find a secondary containing _all_ the given datasets
+  def whereAre(internalNames: Iterable[DatasetInternalName]): Set[SecondaryResult[Secondary]]
+
+  final def whereIs(internalName: DatasetInternalName): Set[SecondaryResult[Secondary]] =
+    whereAre(internalName :: Nil)
 }
 
 sealed abstract class CheckResult
@@ -23,9 +62,9 @@ object CheckResult {
 }
 
 class Instant private (private val nanoTime: Long) extends AnyVal {
-  def elapsed = FiniteDuration(System.nanoTime() - nanoTime, TimeUnit.NANOSECONDS)
-
   def -(that: Instant): FiniteDuration = FiniteDuration(this.nanoTime - that.nanoTime, TimeUnit.NANOSECONDS)
+  def -(that: FiniteDuration): Instant = new Instant(this.nanoTime - that.toNanos)
+  def elapsed = Instant.now() - this
 }
 object Instant {
   def now(): Instant = new Instant(System.nanoTime())
@@ -40,7 +79,7 @@ object Instant {
 // be re-checked.  When this happens the timestamp on it is reset.  At most
 // one secondary will be scheduled for rechecking per request.
 class NewSecondaryInstanceSelectorImpl[DatasetInternalName, Secondary](
-  override val allSecondaries: Set[Secondary],
+  allSecondariesRaw: Set[Secondary],
   check: (Secondary, DatasetInternalName) => CheckResult,
   absentInterval: FiniteDuration,
   absentOdds: Int,
@@ -49,7 +88,8 @@ class NewSecondaryInstanceSelectorImpl[DatasetInternalName, Secondary](
 ) extends NewSecondaryInstanceSelector[DatasetInternalName, Secondary] {
   private val log = LoggerFactory.getLogger(classOf[NewSecondaryInstanceSelectorImpl[_, _]])
 
-  private val allSecondariesSeq = allSecondaries.toSeq
+  private val allSecondariesSeq = allSecondariesRaw.toSeq
+  override val allSecondaries = allSecondariesRaw.map(new SecondaryResult.Simple(_))
 
   private val rechecker = new Worker
 
@@ -90,7 +130,89 @@ class NewSecondaryInstanceSelectorImpl[DatasetInternalName, Secondary](
   }
   private val cache = new ConcurrentHashMap[DatasetInternalName, Cached]
 
-  override def whereis(internalName: DatasetInternalName): Set[Secondary] = {
+  private class SR(
+    val internalNames: Map[DatasetInternalName, (Cached.Completed, CacheResult.Present)],
+    override val secondary: Secondary
+  ) extends SecondaryResult[Secondary] {
+    override def invalidateAll(): Unit = {
+      for((internalName, (origCompleted, _)) <- internalNames) {
+        cache.remove(internalName, origCompleted)
+      }
+    }
+
+    override def invalidateSecondary(): Unit = {
+      for((internalName, (_, origPresent)) <- internalNames) {
+        Option(cache.get(internalName)).foreach {
+          case completed: Cached.Completed =>
+            completed.result.get(secondary).foreach { v =>
+              v.compareAndSet(origPresent, CacheResult.Unknown(Instant.now() - unknownInterval))
+            }
+          case _ =>
+            // Not there to be invalidated, so we're done
+        }
+      }
+    }
+  }
+
+  private implicit class IteratorExt[T](private val it: Iterator[T]) {
+    def nextOption(): Option[T] = {
+      if(it.hasNext) {
+        Some(it.next())
+      } else {
+        None
+      }
+    }
+  }
+
+  private implicit class BufferedIteratorExt[T](private val it: BufferedIterator[T]) {
+    def headOption: Option[T] = {
+      if(it.hasNext) {
+        Some(it.head)
+      } else {
+        None
+      }
+    }
+  }
+
+  private def upcast[A, B >: A](s: Set[A]): Set[B] = s.asInstanceOf[Set[B]]
+
+  override def invalidate(internalNames: Iterable[DatasetInternalName]): Unit = {
+    for(internalName <- internalNames) {
+      cache.remove(internalName)
+    }
+  }
+
+  override def whereAre(internalNames: Iterable[DatasetInternalName]): Set[SecondaryResult[Secondary]] = {
+    val it = internalNames.iterator.buffered
+    it.nextOption() match {
+      case None =>
+        Set.empty
+      case Some(hd) =>
+        it.headOption match {
+          case None =>
+            // common case: only one dataset in the query
+            upcast(whereis1(hd))
+          case Some(_) =>
+            // Ok, so we're looking for a set of secondaries that
+            // _all_ the datasets are in.  So what we'll do is find
+            // the set of secondaries for each, and then
+            // intersect-merge them.  To do this, we'll build a map
+            // of secondaryName -> SR
+            val merged = it.map { dsin =>
+              val secondaries = whereis1(dsin)
+              secondaries.iterator.map { s => s.secondary -> s }.toMap
+            }.foldLeft(whereis1(hd).iterator.map { s => s.secondary -> s }.toMap) { (acc: Map[Secondary, SR], mergeSet: Map[Secondary, SR]) =>
+              val commonSecondaries = acc.keySet.intersect(mergeSet.keySet)
+              commonSecondaries.iterator.map { commonSecondary =>
+                commonSecondary -> new SR(acc(commonSecondary).internalNames ++ mergeSet(commonSecondary).internalNames, commonSecondary)
+              }.toMap
+            }
+            upcast(merged.valuesIterator.toSet)
+        }
+    }
+  }
+
+  private def whereis1(internalName: DatasetInternalName): Set[SR] = {
     val WhereisResult(completed, byMe) = doWhereis(internalName)
 
     var recheckedOne = false
@@ -100,8 +222,8 @@ class NewSecondaryInstanceSelectorImpl[DatasetInternalName, Secondary](
       .iterator
       .flatMap { case (secondary, v) =>
         v.get match {
-          case CacheResult.Present(_) =>
-            Some(secondary)
+          case present@CacheResult.Present(_) =>
+            Some(new SR(Map(internalName -> (completed, present)), secondary))
           case absent@CacheResult.Absent(at) if !byMe && !recheckedOne && now - at > absentInterval && rng.nextInt(absentOdds) == 0 =>
             val newAbsent = CacheResult.Absent(Instant.now())
             if(v.compareAndSet(absent, newAbsent)) {
@@ -140,13 +262,13 @@ class NewSecondaryInstanceSelectorImpl[DatasetInternalName, Secondary](
 
       // If we _still_ don't have any, well.. guess we're returning an
       // empty set at this point.
-      doWhereis(internalName).completed
-        .result
+      val newCompleted = doWhereis(internalName).completed
+      newCompleted.result
         .iterator
         .flatMap { case (secondary, v) =>
           v.get match {
-            case CacheResult.Present(_) =>
-              Some(secondary)
+            case present@CacheResult.Present(_) =>
+              Some(new SR(Map(internalName -> (completed, present)), secondary))
             case _ =>
               None
           }
@@ -156,7 +278,7 @@ class NewSecondaryInstanceSelectorImpl[DatasetInternalName, Secondary](
   }
 
   private def doCheck(name: DatasetInternalName): Map[Secondary, AtomicReference[CacheResult]] = {
-    allSecondaries.par
+    allSecondariesSeq.par
       .map { secondary =>
         val result: CacheResult = CacheResult.fromCheckResult(check(secondary, name))
         (secondary, new AtomicReference(result))
@@ -196,22 +318,6 @@ class NewSecondaryInstanceSelectorImpl[DatasetInternalName, Secondary](
         }
       }
       loop()
-    }
-  }
-
-  override def invalidate(internalName: DatasetInternalName, secondary: Secondary): Unit = {
-    Option(cache.get(internalName)).foreach {
-      case completed: Cached.Completed =>
-        completed.result.get(secondary).foreach { v =>
-          v.get match {
-            case orig@CacheResult.Present(_) =>
-              v.compareAndSet(orig, CacheResult.Unknown(Instant.now()))
-            case _ =>
-              // wasn't Present, nothing to do
-          }
-        }
-      case _ : Cached.Pending =>
-        // Not there to be invalidated, so we're done
     }
   }
 
