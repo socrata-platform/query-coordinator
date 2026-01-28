@@ -36,7 +36,8 @@ import com.socrata.soql.stdlib.analyzer2.{Context, PreserveSystemColumnsAggregat
 import com.socrata.soql.sql.Debug
 import com.socrata.soql.util.GenericSoQLError
 
-import com.socrata.querycoordinator.{Secondary, SecondaryResult, NewSecondaryInstanceSelector}
+import com.socrata.querycoordinator.Secondary
+import com.socrata.querycoordinator.secondary_selector.{FoundSecondary, SecondaryInstanceFinder}
 import com.socrata.querycoordinator.util.{Lazy, NewQueryError}
 
 object NewQueryResource {
@@ -216,7 +217,7 @@ object NewQueryResource {
 
 class NewQueryResource(
   httpClient: HttpClient,
-  secondarySelector: NewSecondaryInstanceSelector[NewQueryResource.DatasetInternalName, String],
+  secondarySelector: SecondaryInstanceFinder[NewQueryResource.DatasetInternalName, String],
   secondaryFinder: String => Option[ServiceInstance[AuxiliaryData]],
   secondary: Secondary
 ) extends QCResource with ResourceExt {
@@ -273,7 +274,7 @@ class NewQueryResource(
         }
 
         @tailrec
-        def innerLoop(chosenSecondaries: Seq[SecondaryResult[String]], retries: Int, secondaries: Queue[SecondaryResult[String]]): (SecondaryResult[String], Response) = {
+        def innerLoop(chosenSecondaries: Seq[FoundSecondary[String]], retries: Int, secondaries: Queue[FoundSecondary[String]]): (FoundSecondary[String], Response) = {
           val (chosenSecondary, remainingSecondaries) = secondaries.dequeueOption.getOrElse {
             throw new Exception(s"None of ${chosenSecondaries.map(_.secondary)} seems to be available?") // this genuinely is an internal error
           }
@@ -306,7 +307,7 @@ class NewQueryResource(
           }
         }
 
-        def chooseSecondary(): Either[HttpResponse, Seq[SecondaryResult[String]]] = {
+        def chooseSecondary(): Either[HttpResponse, Seq[FoundSecondary[String]]] = {
           store match {
             case None =>
               val versionedTables = analysis.statement.allTables
@@ -341,13 +342,13 @@ class NewQueryResource(
               }
             case Some(store) =>
               log.info("Forcing secondary to {}", JString(store))
-              Right(Seq(new SecondaryResult.Simple(store)))
+              Right(Seq(new FoundSecondary.Simple(store)))
           }
         }
 
         @tailrec
         def outerLoop(retries: Int): HttpResponse = {
-          val chosenSecondaries: Seq[SecondaryResult[String]] =
+          val chosenSecondaries: Seq[FoundSecondary[String]] =
             chooseSecondary() match {
               case Right(cs) => cs
               case Left(response) => return response
