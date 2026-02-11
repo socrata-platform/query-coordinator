@@ -5,28 +5,6 @@ com.socrata.query-coordinator {
   liveness-check.port = 6031
 
   all-secondary-instance-names = [{{ SECONDARY_INSTANCES }}]
-  mirrors = {
-    {% if MIRROR_PRIMARY_1 is defined -%}
-      "{{MIRROR_PRIMARY_1}}" = {{MIRROR_1}}
-    {%- endif %}
-
-    {% if MIRROR_PRIMARY_2 is defined -%}
-      "{{MIRROR_PRIMARY_2}}" = {{MIRROR_2}}
-    {%- endif %}
-
-    {% if MIRROR_PRIMARY_3 is defined -%}
-      "{{MIRROR_PRIMARY_3}}" = {{MIRROR_3}}
-    {%- endif %}
-
-    {% if MIRROR_PRIMARY_4 is defined -%}
-      "{{MIRROR_PRIMARY_4}}" = {{MIRROR_4}}
-    {%- endif %}
-
-    {% if MIRROR_PRIMARY_5 is defined -%}
-      "{{MIRROR_PRIMARY_5}}" = {{MIRROR_5}}
-    {%- endif %}
-  }
-
 
   query-timeout = {{ QUERY_TIMEOUT }}
 
@@ -35,6 +13,11 @@ com.socrata.query-coordinator {
   secondary-selector-max-cache-entries = {{ DISCOVERY_CACHE_MAX_ENTRIES }}
   secondary-discovery-expiration = {{ DISCOVERY_CACHE_TTL }}
   dataset-max-nope-count = {{ DISCOVERY_CACHE_MAX_NOPE_COUNT }}
+
+  abent-interval = {{ DISCOVERY_ABSENT_INTERVAL }}
+  abent-bound = {{ DISCOVERY_ABSENT_BOUND }}
+  unknown-interval = {{ DISCOVERY_UNKNOWN_INTERVAL }}
+  unknown-bound = {{ DISCOVERY_UNKNOWN_BOUND }}
 
   {% if CACHE_DATABASE_HOST is defined and CACHE_DATABASE_PORT is defined and CACHE_DATABASE_PASSWORD is defined and CACHE_DATABASE_USERNAME is defined -%}
   cache {

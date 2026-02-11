@@ -13,6 +13,7 @@ import com.socrata.querycoordinator.rollups.QueryRewriter.{Analysis, AnalysisTre
 import com.socrata.querycoordinator.SchemaFetcher.{NoSuchDatasetInSecondary, Successful, TimeoutFromSecondary}
 import com.socrata.querycoordinator._
 import com.socrata.querycoordinator.caching.SharedHandle
+import com.socrata.querycoordinator.secondary_finder.{FoundSecondary, SecondaryInstanceFinder}
 import com.socrata.querycoordinator.datetime.NowAnalyzer
 import com.socrata.querycoordinator.exceptions.JoinedDatasetNotColocatedException
 import com.socrata.querycoordinator.rollups.{QueryRewriter, RollupInfoFetcher, RollupInfo}
@@ -30,7 +31,6 @@ import scala.concurrent.duration.FiniteDuration
 
 
 case class QueryResource(secondary: Secondary,
-                    mirror: Mirror,
                     schemaFetcher: SchemaFetcher,
                     queryParser: QueryParser,
                     queryExecutor: QueryExecutor,
@@ -39,6 +39,7 @@ case class QueryResource(secondary: Secondary,
                     receiveTimeout: FiniteDuration,
                     schemaCache: (String, Option[String], Schema) => Unit,
                     schemaDecache: (String, Option[String]) => Option[Schema],
+                    secondaryInstanceFinder: SecondaryInstanceFinder[(NewQueryResource.DatasetInternalName, NewQueryResource.Stage), String],
                     secondaryInstance: SecondaryInstanceSelector,
                     queryRewriter: QueryRewriter,
                     rollupInfoFetcher: RollupInfoFetcher) extends QCResource with QueryService { // scalastyle:ignore
@@ -113,28 +114,30 @@ case class QueryResource(secondary: Secondary,
       // potentially long-running thing, and can cause a retry
       // if the upstream says "the schema just changed".
 
+      def chooseSecondary(excludedSecondaryNames: Set[String]) =
+        forcedSecondaryName.map(new FoundSecondary.Simple(_)).orElse {
+          val secondaries = secondaryInstanceFinder.whereIs((NewQueryResource.DatasetInternalName(dataset), NewQueryResource.Stage(copy.getOrElse("published"))))
+            .filterNot { fs => excludedSecondaryNames(fs.secondary) }
+            .toVector
+
+          if(secondaries.nonEmpty) {
+            Some(secondaries(java.util.concurrent.ThreadLocalRandom.current().nextInt(secondaries.length)))
+          } else {
+            None
+          }
+        }
+
       final class QueryRetryState(retriesSoFar: Int, excludedSecondaryNames: Set[String]) {
-        val chosenSecondaryName = secondary.chosenSecondaryName(forcedSecondaryName, dataset, copy, excludedSecondaryNames)
+        val chosenSecondary = chooseSecondary(excludedSecondaryNames)
 
-        val secondaryMirrorNames = chosenSecondaryName
-          .map(mirror.secondaryMirrors).getOrElse(Nil)
-          .filter(secondary.isInSecondary(_, dataset, copy)
-            .getOrElse(false))
-        log.debug(s"Selected Mirrors for ${chosenSecondaryName}: $secondaryMirrorNames")
-
-        val second = secondary.serviceInstance(dataset, chosenSecondaryName) match {
+        val second = secondary.serviceInstance(dataset, chosenSecondary.map(_.secondary)) match {
           case Some(x) => x
           case None =>
             finishRequest(noSecondaryAvailable(dataset))
         }
 
-        val mirrorInstances = secondaryMirrorNames.flatMap(name => secondary.serviceInstance(dataset, Some(name), markBrokenOnUnknown = false))
-
         val base = secondary.reqBuilder(second)
         log.debug("Base URI: " + base.url)
-
-        val mirrorBases = mirrorInstances.map(secondary.reqBuilder).toSet
-        log.debug(s"Mirror URIs: ${mirrorBases.map(_.url)}")
 
         def checkTooManyRetries(): Unit = {
           if(isTooManyRetries) {
@@ -178,9 +181,9 @@ case class QueryResource(secondary: Secondary,
             case QueryParser.RowLimitExceeded(max) =>
               finishRequest(rowLimitExceeded(max))
             case QueryParser.JoinedTableNotFound(j, s) =>
-              val excludedSecondaries = excludedSecondaryNames ++ chosenSecondaryName.toSet
-              val sec = secondary.chosenSecondaryName(forcedSecondaryName, dataset, copy, excludedSecondaries)
-              if (secondary.serviceInstance(dataset, sec).isEmpty) {
+              val excludedSecondaries = excludedSecondaryNames ++ chosenSecondary.map(_.secondary).toSet
+              val sec = chooseSecondary(excludedSecondaries)
+              if (secondary.serviceInstance(dataset, sec.map(_.secondary)).isEmpty) {
                 finishRequest(joinedTableNotFound(dataset, j, excludedSecondaries))
               } else {
                 Left(nextRetry)
@@ -225,7 +228,6 @@ case class QueryResource(secondary: Secondary,
           queryExecutor(
             base = base.receiveTimeoutMS(recvTimeout).connectTimeoutMS(connectTimeout.toMillis.toInt),
             dataset = dataset,
-            mirrors = mirrorBases,
             analyses = analyzedQuery,
             schema = schema.payload,
             precondition = precondition,
@@ -247,7 +249,7 @@ case class QueryResource(secondary: Secondary,
             case QueryExecutor.Retry =>
               Left(nextRetry)
             case QueryExecutor.NotFound =>
-              chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
+              chosenSecondary.foreach(_.invalidateAll())
               Left(nextRetry)
             case QueryExecutor.Timeout =>
               // don't flag an error in this case because the timeout may be based on the particular query.
@@ -310,7 +312,7 @@ case class QueryResource(secondary: Secondary,
               finishRequest(upstreamTimeoutResponse)
             case other: SchemaFetcher.Result =>
               log.error(unexpectedError, s"${other} $name ${base.host}")
-              chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
+              chosenSecondary.foreach(_.invalidateSecondary())
               finishRequest(internalServerError)
           }
         }
@@ -319,14 +321,14 @@ case class QueryResource(secondary: Secondary,
           case RollupInfoFetcher.Successful(rollups) =>
             rollups
           case RollupInfoFetcher.NoSuchDatasetInSecondary =>
-            chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
+            chosenSecondary.foreach(_.invalidateAll())
             finishRequest(notFoundResponse(dataset))
           case RollupInfoFetcher.TimeoutFromSecondary =>
-            chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
+            chosenSecondary.foreach(_.invalidateSecondary())
             finishRequest(upstreamTimeoutResponse)
           case other: RollupInfoFetcher.Result =>
             log.error(unexpectedError, other)
-            chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
+            chosenSecondary.foreach(_.invalidateSecondary())
             finishRequest(internalServerError)
           case unsuccessful =>
             log.warn(s"No rollups ${dataset} ${unsuccessful.toString}")
@@ -353,7 +355,7 @@ case class QueryResource(secondary: Secondary,
 
         def nextRetry: QueryRetryState = {
           checkTooManyRetries()
-          new QueryRetryState(retriesSoFar + 1, chosenSecondaryName.map(x => excludedSecondaryNames + x).getOrElse(excludedSecondaryNames))
+          new QueryRetryState(retriesSoFar + 1, chosenSecondary.map(x => excludedSecondaryNames + x.secondary).getOrElse(excludedSecondaryNames))
         }
 
         def getSchema(dataset: String, copy: Option[String]): Either[QueryRetryState, Versioned[SchemaWithFieldName]] = {
@@ -366,14 +368,14 @@ case class QueryResource(secondary: Secondary,
             case SchemaFetcher.Successful(s, c, d, l) =>
               Right(Versioned(s, c, d, l))
             case SchemaFetcher.NoSuchDatasetInSecondary =>
-              chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
+              chosenSecondary.foreach(_.invalidateAll())
               Left(nextRetry)
             case SchemaFetcher.TimeoutFromSecondary =>
-              chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
+              chosenSecondary.foreach(_.invalidateSecondary())
               finishRequest(upstreamTimeoutResponse)
             case other: SchemaFetcher.Result =>
               log.error(unexpectedError, other)
-              chosenSecondaryName.foreach { n => secondaryInstance.flagError(dataset, n) }
+              chosenSecondary.foreach(_.invalidateSecondary())
               finishRequest(internalServerError)
           }
         }
