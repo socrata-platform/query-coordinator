@@ -76,8 +76,8 @@ class CachedSecondaryInstanceFinder[DatasetInternalName, Secondary](
       override def bound = absentBound
     }
     case object Unknown extends NotPresent {
-      override def initialInterval = absentInterval
-      override def bound = absentBound
+      override def initialInterval = unknownInterval
+      override def bound = unknownBound
     }
 
     implicit val jEncode = new JsonEncode[NotPresent] {
