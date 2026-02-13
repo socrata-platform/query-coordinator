@@ -5,12 +5,13 @@ import scala.collection.JavaConverters._
 import scala.concurrent.duration._
 import scala.util.Random
 
+import java.{util => ju}
 import java.util.concurrent.{ConcurrentHashMap, ArrayBlockingQueue, ThreadLocalRandom}
 import java.util.concurrent.atomic.{AtomicReference, AtomicLong}
 
 import com.rojoma.simplearm.v2.Resource
-import com.rojoma.json.v3.ast.{JObject, JNumber, JString}
-import com.rojoma.json.v3.codec.{JsonEncode, FieldEncode}
+import com.rojoma.json.v3.ast.{JObject, JNumber, JString, JValue}
+import com.rojoma.json.v3.codec.{JsonEncode, JsonDecode, FieldEncode, DecodeError}
 import com.rojoma.json.v3.interpolation._
 import com.rojoma.json.v3.util.{AutomaticJsonEncodeBuilder, SimpleHierarchyEncodeBuilder, InternalTag}
 import com.typesafe.scalalogging.Logger
@@ -25,6 +26,26 @@ object CachedSecondaryInstanceFinder {
     case object Present extends CheckResult
     case object Absent extends CheckResult
     case object Unknown extends CheckResult
+
+    implicit object jCodec extends JsonEncode[CheckResult] with JsonDecode[CheckResult] {
+      private val PresentStr = JString("present")
+      private val AbsentStr = JString("absent")
+      private val UnknownStr = JString("absent")
+      override def encode(cr: CheckResult) =
+        cr match {
+          case Present => PresentStr
+          case Absent => AbsentStr
+          case Unknown => UnknownStr
+        }
+      override def decode(v: JValue) =
+        v match {
+          case PresentStr => Right(Present)
+          case AbsentStr => Right(Absent)
+          case UnknownStr => Right(Unknown)
+          case str: JString => Left(DecodeError.InvalidValue(str))
+          case other => Left(DecodeError.InvalidType(expected = JString, got = other.jsonType))
+        }
+    }
   }
 
   implicit def resource[DIN, S] = new Resource[CachedSecondaryInstanceFinder[DIN, S]] {
@@ -156,6 +177,68 @@ class CachedSecondaryInstanceFinder[DatasetInternalName, Secondary](
 
   def toJValue(implicit din: FieldEncode[DatasetInternalName], s: FieldEncode[Secondary]) =
     JsonEncode.toJValue(cache.asScala)
+
+  // Prime a different secondary with the top 50% (or at least 100)
+  // most used datasets that I know about.
+  def primingData: PrimingData[DatasetInternalName, Secondary] = {
+    val counts = cache.asScala.iterator.flatMap { case (dsName, cached) =>
+      cached match {
+        case completed: Cached.Completed => Some(dsName -> completed.count.get)
+        case _ => None
+      }
+    }.toVector.sortBy(-_._2)
+
+    val secondaryCanonicalizer = new ju.HashMap[Secondary, Secondary]
+
+    val filtered = counts.iterator.take(Math.max(100, counts.length / 2)).map(_._1).flatMap { dsName =>
+      Option(cache.get(dsName)).flatMap {
+        case completed: Cached.Completed =>
+          val secondaries = completed.result.iterator.map { case (secondary, result) =>
+            val checkResult = result.get match {
+              case CacheResult.Present(checkedAt) =>
+                PrimingData.SecondaryInfo(CheckResult.Present, checkedAt.approxWallClockTime, 0)
+              case CacheResult.Absent(NotPresent.Absent, checkedAt, checkAfter) =>
+                PrimingData.SecondaryInfo(CheckResult.Absent, checkedAt.approxWallClockTime, checkAfter.toNanos)
+              case CacheResult.Absent(NotPresent.Unknown, checkedAt, checkAfter) =>
+                PrimingData.SecondaryInfo(CheckResult.Unknown, checkedAt.approxWallClockTime, checkAfter.toNanos)
+              case CacheResult.Rechecking(NotPresent.Absent, checkedAt, checkAfter) =>
+                PrimingData.SecondaryInfo(CheckResult.Absent, checkedAt.approxWallClockTime, checkAfter.toNanos)
+              case CacheResult.Rechecking(NotPresent.Unknown, checkedAt, checkAfter) =>
+                PrimingData.SecondaryInfo(CheckResult.Unknown, checkedAt.approxWallClockTime, checkAfter.toNanos)
+            }
+            secondaryCanonicalizer.computeIfAbsent(secondary, (_) => secondary) -> checkResult
+          }.toMap
+          Some(dsName -> PrimingData.DatasetInfo(secondaries))
+        case _ =>
+          None
+      }
+    }.toMap
+
+    PrimingData(filtered.toMap)
+  }
+
+  def prime(primingData: PrimingData[DatasetInternalName, Secondary]): Unit = {
+    val PrimingData(datasetInfos) = primingData
+
+    for((dsName, PrimingData.DatasetInfo(secondaryInfos)) <- datasetInfos) {
+      val convertedSecondaryInfos = secondaryInfos.iterator.flatMap { case (secondary, PrimingData.SecondaryInfo(checkResult, checkedAt, rawCheckAfter)) =>
+        MonotoneInstant.fromWallClockTime(checkedAt).map { checkedAtMonotone =>
+          // Jitter the checkAfter values we received from the other
+          // QC +/- 1 minute
+          val checkAfter = rawCheckAfter + (ThreadLocalRandom.current().nextFloat() * 120.0 - 60.0).seconds.toNanos
+          val cacheResult = checkResult match {
+            case CheckResult.Present => CacheResult.Present(checkedAtMonotone)
+            case CheckResult.Absent => CacheResult.absent(checkedAtMonotone).copy(checkAfter = checkAfter.nanos)
+            case CheckResult.Unknown => CacheResult.unknown(checkedAtMonotone).copy(checkAfter = checkAfter.nanos)
+          }
+          log.debug("{} in {}: {}", secondary, dsName, cacheResult)
+          secondary -> new AtomicReference[CacheResult](cacheResult)
+        }
+      }.toMap
+
+      cache.computeIfAbsent(dsName, (_) => new Cached.Completed(convertedSecondaryInfos, new AtomicLong(0)))
+    }
+  }
 
   private class SR(
     val internalNames: Map[DatasetInternalName, (Cached.Completed, CacheResult.Present)],

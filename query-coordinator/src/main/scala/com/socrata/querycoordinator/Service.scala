@@ -26,6 +26,7 @@ class Service(
     Route("/{String}", (_: Any) => queryResource),
     Route("/new-query", newQueryResource),
     Route("/cache-state", cacheStateResource),
+    Route("/cache-state/prime", cacheStateResource.Prime),
     Route("/version", versionResource)
   )
 

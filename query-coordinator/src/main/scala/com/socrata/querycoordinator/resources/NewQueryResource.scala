@@ -53,6 +53,8 @@ object NewQueryResource {
 
   case class Stage(underlying: String)
   object Stage {
+    def apply(underlying: String) = new Stage(underlying.intern())
+
     implicit val codec = WrapperJsonCodec[Stage]({ s: String => Stage(s.toLowerCase) }, _.underlying)
     implicit object serialize extends Writable[Stage] {
       def writeTo(buffer: WriteBuffer, s: Stage) = buffer.write(s.underlying)

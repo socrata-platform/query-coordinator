@@ -7,7 +7,7 @@ import com.socrata.querycoordinator.caching.cache.CacheCleanerThread
 import com.socrata.querycoordinator.caching.cache.config.CacheSessionProviderFromConfig
 import com.rojoma.json.v3.ast.JString
 import com.rojoma.simplearm.v2._
-import com.socrata.http.client.HttpClientHttpClient
+import com.socrata.http.client.{HttpClient, HttpClientHttpClient, RequestBuilder}
 import com.socrata.http.common.AuxiliaryData
 import com.socrata.http.common.livenesscheck.LivenessCheckInfo
 import com.socrata.http.server.SocrataServerJetty
@@ -18,7 +18,7 @@ import com.socrata.http.server.util.handlers.{ErrorCatcher, LoggingOptions, NewL
 import com.socrata.querycoordinator.caching.Windower
 import com.socrata.querycoordinator.resources.{QueryResource, NewQueryResource, CacheStateResource, VersionResource}
 import com.socrata.querycoordinator.util.TeeToTempInputStream
-import com.socrata.querycoordinator.secondary_finder.CachedSecondaryInstanceFinder
+import com.socrata.querycoordinator.secondary_finder.{CachedSecondaryInstanceFinder, PrimingData}
 import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
 import com.socrata.soql.types.SoQLType
 import com.socrata.soql.{AnalysisSerializer, SoQLAnalyzer}
@@ -27,7 +27,7 @@ import com.socrata.querycoordinator.rollups.{CompoundQueryRewriter, RollupInfoFe
 import com.socrata.thirdparty.metrics.{MetricsReporter, SocrataHttpSupport}
 import com.socrata.thirdparty.typesafeconfig.Propertizer
 import com.typesafe.config.{Config, ConfigFactory}
-import org.apache.curator.x.discovery.{ServiceInstanceBuilder, strategies}
+import org.apache.curator.x.discovery.{ServiceProvider, ServiceInstanceBuilder, strategies}
 import org.apache.log4j.PropertyConfigurator
 import com.socrata.util.io.StreamWrapper
 import org.slf4j.LoggerFactory
@@ -71,6 +71,36 @@ object Main extends App with DynamicPortMap {
   val analysisSerializer = new AnalysisSerializer[String, SoQLType](identity, typeSerializer)
 
   implicit val execResource = Resource.executorShutdownNoTimeout
+
+  def prime(
+    http: HttpClient,
+    discovery: ServiceProvider[AuxiliaryData],
+    secondaryFinder: CachedSecondaryInstanceFinder[(NewQueryResource.DatasetInternalName, NewQueryResource.Stage), String]
+  ): Unit = {
+    try {
+      for(instance <- Option(discovery.getInstance())) {
+        val req =
+          instance.toRequestBuilder
+            .p("cache-state", "prime")
+            .timeoutMS(Some(5000))
+            .get
+        for(resp <- http.execute(req)) {
+          resp.resultCode match {
+            case 200 =>
+              resp.value[PrimingData[(NewQueryResource.DatasetInternalName, NewQueryResource.Stage), String]]() match {
+                case Right(body) => secondaryFinder.prime(body)
+                case Left(err) => log.warn("Undecodable response while priming cache: {}", err)
+              }
+            case non200 =>
+              log.warn("Invalid response code while priming cache: {}", non200)
+          }
+        }
+      }
+    } catch {
+      case e: Exception =>
+        log.warn("Exception while priming cache from another instance", e)
+    }
+  }
 
   val threadPoolSize = 5
   for {
@@ -134,6 +164,7 @@ object Main extends App with DynamicPortMap {
       )
     )
     secondaryFinder.start()
+    prime(httpClient, serviceProviderProvider.provider(config.discovery.name), secondaryFinder)
 
     val queryResource = QueryResource(
       secondary = secondary,
@@ -158,13 +189,7 @@ object Main extends App with DynamicPortMap {
       secondaryInstanceBroker = { secondary => Option(serviceProviderProvider.provider(secondary).getInstance()) }
     )
 
-    val cacheStateResource = locally {
-      implicit val dinEncode = new com.rojoma.json.v3.codec.FieldEncode[(NewQueryResource.DatasetInternalName, NewQueryResource.Stage)] {
-        override def encode(v: (NewQueryResource.DatasetInternalName, NewQueryResource.Stage)) =
-          v._1.underlying + "@" + v._2.underlying
-      }
-      new CacheStateResource(() => secondaryFinder.toJValue)
-    }
+    val cacheStateResource = new CacheStateResource(secondaryFinder)
 
     val handler = Service(queryResource, newQueryResource, cacheStateResource, VersionResource())
 
