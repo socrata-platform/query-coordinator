@@ -20,7 +20,23 @@ class MonotoneInstant private (private val nanoTime: Long) extends AnyVal {
   override def toString = approxWallClockTime.toString
 }
 object MonotoneInstant {
-  def now(): MonotoneInstant = new MonotoneInstant(System.nanoTime())
+  private val epoch = System.nanoTime()
+
+  private def epochNanos() = System.nanoTime() - epoch
+
+  def now(): MonotoneInstant = new MonotoneInstant(epochNanos())
+
+  def fromWallClockTime(instant: Instant): Option[MonotoneInstant] = {
+    try {
+      val nowNanos = epochNanos()
+      val distanceInPastMillis = Math.subtractExact(Instant.now().toEpochMilli, instant.toEpochMilli)
+      val distanceInPastNanos = Math.multiplyExact(distanceInPastMillis, 1000000)
+      Some(new MonotoneInstant(Math.subtractExact(nowNanos, distanceInPastNanos)))
+    } catch {
+      case _ : ArithmeticException =>
+        None
+    }
+  }
 
   implicit val jEncode = new JsonEncode[MonotoneInstant] {
     override def encode(i: MonotoneInstant) =
