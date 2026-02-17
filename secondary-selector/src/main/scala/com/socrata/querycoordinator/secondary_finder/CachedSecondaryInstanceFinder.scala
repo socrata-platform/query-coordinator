@@ -227,9 +227,14 @@ class CachedSecondaryInstanceFinder[DatasetInternalName, Secondary](
           // QC +/- 1 minute
           val checkAfter = rawCheckAfter + (ThreadLocalRandom.current().nextFloat() * 120.0 - 60.0).seconds.toNanos
           val cacheResult = checkResult match {
-            case CheckResult.Present => CacheResult.Present(checkedAtMonotone)
-            case CheckResult.Absent => CacheResult.absent(checkedAtMonotone).copy(checkAfter = checkAfter.nanos)
-            case CheckResult.Unknown => CacheResult.unknown(checkedAtMonotone).copy(checkAfter = checkAfter.nanos)
+            case CheckResult.Present =>
+              CacheResult.Present(checkedAtMonotone)
+            case CheckResult.Absent =>
+              CacheResult.absent(checkedAtMonotone)
+                .copy(checkAfter = checkAfter.clamp(absentInterval.toNanos, absentBound.toNanos).nanos)
+            case CheckResult.Unknown =>
+              CacheResult.unknown(checkedAtMonotone)
+                .copy(checkAfter = checkAfter.clamp(unknownInterval.toNanos, unknownBound.toNanos).nanos)
           }
           log.debug("{} in {}: {}", secondary, dsName, cacheResult)
           secondary -> new AtomicReference[CacheResult](cacheResult)
