@@ -3,7 +3,7 @@ package com.socrata.querycoordinator
 import java.io._
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.Semaphore
-import javax.servlet.http.HttpServletResponse
+import jakarta.servlet.http.HttpServletResponse
 import com.socrata.http.common.util.HttpUtils
 import com.socrata.querycoordinator.caching.cache.noop.NoopCacheSessionProvider
 import com.socrata.querycoordinator.caching.{Hasher, SoQLAnalysisDepositioner, Windower}

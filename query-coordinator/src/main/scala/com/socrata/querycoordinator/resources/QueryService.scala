@@ -1,6 +1,6 @@
 package com.socrata.querycoordinator.resources
 
-import javax.servlet.http.HttpServletResponse
+import jakarta.servlet.http.HttpServletResponse
 
 import com.rojoma.json.v3.ast.{Json => _, _}
 import com.rojoma.json.v3.codec.JsonEncode

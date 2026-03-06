@@ -1,7 +1,7 @@
 package com.socrata.querycoordinator.resources
 
 import java.io.{InputStream, OutputStream}
-import javax.servlet.http.HttpServletResponse
+import jakarta.servlet.http.HttpServletResponse
 import com.rojoma.simplearm.v2.ResourceScope
 import com.rojoma.json.v3.util.JsonUtil
 import com.socrata.http.common.util.HttpUtils

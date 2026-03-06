@@ -1,6 +1,6 @@
 ThisBuild / organization := "com.socrata"
 
-ThisBuild / scalaVersion := "2.12.8"
+ThisBuild / scalaVersion := "2.12.21"
 
 ThisBuild / resolvers += "socrata releases" at "https://repo.socrata.com/artifactory/libs-release"
 

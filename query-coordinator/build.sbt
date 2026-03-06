@@ -55,3 +55,11 @@ assembly/test := {}
 assembly/assemblyJarName := s"${name.value}-assembly.jar"
 
 assembly/assemblyOutputPath := target.value / (assembly/assemblyJarName).value
+
+ThisBuild / assemblyMergeStrategy  := {
+  case PathList("module-info.class") => MergeStrategy.discard
+  case x if x.endsWith("/module-info.class") => MergeStrategy.discard
+  case x =>
+    val oldStrategy = (ThisBuild / assemblyMergeStrategy).value
+    oldStrategy(x)
+}
