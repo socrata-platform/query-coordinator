@@ -220,7 +220,7 @@ object Main extends App with DynamicPortMap {
                            )
                          ).
                          withPort(config.network.port).
-                         withExtraHandlers(List(SocrataHttpSupport.getHandler(config.metrics))).
+                         //withExtraHandlers(List(SocrataHttpSupport.getHandler(config.metrics))).
                          withPoolOptions(SocrataServerJetty.Pool(config.threadpool)).
                          withBroker(broker)
     )
