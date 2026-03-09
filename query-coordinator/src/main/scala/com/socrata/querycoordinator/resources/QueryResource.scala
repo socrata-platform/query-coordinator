@@ -65,7 +65,7 @@ case class QueryResource(secondary: Secondary,
     val originalThreadName = Thread.currentThread.getName
     val servReq = req.servletRequest
     try {
-      Thread.currentThread.setName(Thread.currentThread.getId + " / " + req.method + " " +
+      Thread.currentThread.setName(Thread.currentThread.threadId + " / " + req.method + " " +
         req.servletRequest.getRequestURI)
 
       val requestId = RequestId.getFromRequest(servReq)
