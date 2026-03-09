@@ -1,7 +1,7 @@
 @Library('socrata-pipeline-library@9.9.1') _
 
 commonPipeline(
-    defaultBuildWorker: 'build-worker-pg13',
+    defaultBuildWorker: 'worker-java-multi-pg13',
     jobName: 'query-coordinator',
     language: 'scala',
     languageOptions: [
