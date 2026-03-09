@@ -63,3 +63,7 @@ ThisBuild / assemblyMergeStrategy  := {
     val oldStrategy = (ThisBuild / assemblyMergeStrategy).value
     oldStrategy(x)
 }
+
+excludeDependencies ++= Seq(
+  ExclusionRule("log4j", "log4j")
+)

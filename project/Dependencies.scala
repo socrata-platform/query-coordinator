@@ -18,7 +18,7 @@ object Dependencies {
     val metrics = "4.1.2"
     val metricsScala = "4.1.1"
     val scalaLogging = "3.9.2"
-    val slf4j =  "1.7.7"
+    val slf4j =  "2.0.9"
     val scalaTest = "3.0.8"
     val scalaCheck = "1.14.0"
     val simpleArm = "2.3.3"
