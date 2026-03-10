@@ -325,6 +325,7 @@ class NewQueryResource(
                 // no tables involved, so we don't care what secondary we use!
                 Right(Random.shuffle(secondaryFinder.allSecondaries.toSeq))
               } else {
+                org.slf4j.MDC.put("X-Socrata-Resource", tables.mkString(" "))
                 var candidates = secondaryFinder.whereAre(tables)
 
                 // This isn't great, but it also shouldn't be a thing
