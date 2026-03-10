@@ -318,9 +318,10 @@ class NewQueryResource(
         }
 
         def chooseSecondaries(): Either[HttpResponse, Seq[FoundSecondary[String]]] = {
+          val tables = analysis.statement.allTables.map(_.name)
+          org.slf4j.MDC.put("X-Socrata-Resource", tables.mkString(" "))
           store match {
             case None =>
-              val tables = analysis.statement.allTables.map(_.name)
               if(tables.isEmpty) {
                 // no tables involved, so we don't care what secondary we use!
                 Right(Random.shuffle(secondaryFinder.allSecondaries.toSeq))
