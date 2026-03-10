@@ -15,7 +15,7 @@ object Dependencies {
     val trove4j = "3.0.3"
     val sprayCaching = "1.2.2"
     val typesafeConfig = "1.2.1"
-    val metrics = "4.1.2"
+    val metrics = "4.2.38"
     val metricsScala = "4.1.1"
     val scalaLogging = "3.9.2"
     val slf4j =  "2.0.9"
@@ -44,7 +44,7 @@ object Dependencies {
   val sprayCaching = "io.spray" % "spray-caching" % versions.sprayCaching
   val typesafeConfig = "com.typesafe" % "config" % versions.typesafeConfig
 
-  val metricsJetty = "io.dropwizard.metrics" % "metrics-jetty9" % versions.metrics
+  val metricsJetty = "io.dropwizard.metrics" % "metrics-jetty11" % versions.metrics
   val metricsGraphite = "io.dropwizard.metrics" % "metrics-graphite" % versions.metrics
   val metricsJmx = "io.dropwizard.metrics" % "metrics-jmx" % versions.metrics
   val metricsScala = "nl.grons" %% "metrics4-scala" % versions.metricsScala

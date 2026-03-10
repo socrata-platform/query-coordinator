@@ -5,6 +5,7 @@ import java.io.InputStream
 import java.util.concurrent.Executors
 import com.socrata.querycoordinator.caching.cache.CacheCleanerThread
 import com.socrata.querycoordinator.caching.cache.config.CacheSessionProviderFromConfig
+import io.dropwizard.metrics.jetty11.InstrumentedHandler
 import com.rojoma.json.v3.ast.JString
 import com.rojoma.simplearm.v2._
 import com.socrata.http.client.{HttpClient, HttpClientHttpClient, RequestBuilder}
@@ -24,7 +25,7 @@ import com.socrata.soql.types.SoQLType
 import com.socrata.soql.{AnalysisSerializer, SoQLAnalyzer}
 import com.socrata.curator.{ConfigWatch, CuratorFromConfig, DiscoveryFromConfig}
 import com.socrata.querycoordinator.rollups.{CompoundQueryRewriter, RollupInfoFetcher}
-import com.socrata.thirdparty.metrics.{MetricsReporter, SocrataHttpSupport}
+import com.socrata.thirdparty.metrics.{MetricsReporter, Metrics}
 import com.socrata.thirdparty.typesafeconfig.Propertizer
 import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.curator.x.discovery.{ServiceProvider, ServiceInstanceBuilder, strategies}
@@ -220,7 +221,11 @@ object Main extends App with DynamicPortMap {
                            )
                          ).
                          withPort(config.network.port).
-                         //withExtraHandlers(List(SocrataHttpSupport.getHandler(config.metrics))).
+                         withExtraHandlers(List({ underlying =>
+                           val handler = new InstrumentedHandler(Metrics.metricsRegistry, config.metrics.prefix)
+                           handler.setHandler(underlying)
+                           handler
+                         })).
                          withPoolOptions(SocrataServerJetty.Pool(config.threadpool)).
                          withBroker(broker)
     )
