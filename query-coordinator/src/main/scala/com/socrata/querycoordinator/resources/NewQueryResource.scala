@@ -319,7 +319,7 @@ class NewQueryResource(
 
         def chooseSecondaries(): Either[HttpResponse, Seq[FoundSecondary[String]]] = {
           val tables = analysis.statement.allTables.map(_.name)
-          org.slf4j.MDC.put("X-Socrata-Resource", tables.mkString(" "))
+          org.slf4j.MDC.put("X-Socrata-Resource", tables.map(_._1.underlying).mkString(" "))
           store match {
             case None =>
               if(tables.isEmpty) {
