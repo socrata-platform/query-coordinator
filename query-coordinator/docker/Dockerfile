@@ -1,4 +1,4 @@
-FROM socrata/java25-jammy
+FROM socrata/java-jammy:25
 
 EXPOSE 6030
 EXPOSE 6031/udp
@@ -21,7 +21,7 @@ ENV LOG_METRICS false
 ENV QUERY_TIMEOUT 10m
 ENV MAX_DB_QUERY_TIMEOUT 10m
 ENV JAVA_MAX_METASPACE 64m
-ENV JAVA_GC_LOG_BEHAVIOR="-Xloggc:/tmp/gc.log -XX:+PrintGCDateStamps -XX:+PrintGCDetails -XX:+PrintTenuringDistribution -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=50M -XX:+TraceClassLoading -XX:+PrintGCCause -XX:+TraceClassUnloading"
+ENV JAVA_GC_LOG_BEHAVIOR="-Xlog:gc:/tmp/gc.log:time,level,tags:filesize=50M,filecount=10 -Xlog:age*=debug -Xlog:class+load,class+unload"
 ENV DELETE_CHUNK_SIZE 200
 ENV MIN_QUERY_TIME 3s
 ENV DISCOVERY_CACHE_MAX_ENTRIES 500000
