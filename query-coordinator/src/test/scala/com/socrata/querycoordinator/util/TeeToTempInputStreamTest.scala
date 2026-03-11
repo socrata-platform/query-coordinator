@@ -48,10 +48,13 @@ class TeeToTempInputStreamTest extends FunSuite with MustMatchers with ScalaChec
       val xs = xsR.flatten
       val inputStream = new ByteArrayInputStream(xs)
       var count = 0
-      using(using(new TeeToTempInputStream(inputStream, inMemoryBufferSize = 128)) { ts =>
+
+      using(new ResourceScope) { scope =>
+        val ts = scope.open(new TeeToTempInputStream(inputStream, inMemoryBufferSize = 128))
         count = read(ts, blockSize, blockCount)
-        ts.restream()
-      }) { rs =>
+        val rs = scope.open(ts.restream())
+        scope.close(ts)
+
         readAll(rs) must equal(java.util.Arrays.copyOf(xs, count))
         readAll(inputStream) must equal(java.util.Arrays.copyOfRange(xs, count, xs.length))
       }
