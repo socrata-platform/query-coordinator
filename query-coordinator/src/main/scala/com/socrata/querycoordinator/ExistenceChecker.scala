@@ -1,7 +1,7 @@
 package com.socrata.querycoordinator
 
 import java.io.IOException
-import javax.servlet.http.HttpServletResponse
+import jakarta.servlet.http.HttpServletResponse
 
 import com.socrata.http.client.exceptions._
 import com.socrata.http.client.{HttpClient, RequestBuilder, Response}

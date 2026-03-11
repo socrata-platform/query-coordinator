@@ -7,7 +7,7 @@ import com.socrata.http.client.{HttpClient, RequestBuilder, Response}
 import com.socrata.querycoordinator.rollups.RollupInfoFetcher._
 
 import java.io.IOException
-import javax.servlet.http.HttpServletResponse
+import jakarta.servlet.http.HttpServletResponse
 
 /**
  * Fetches the rollup info from the secondary server.  Modelled after the SchemaFetcher, it would be nice
