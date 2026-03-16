@@ -5,20 +5,20 @@ object Dependencies {
   object versions {
     val postgresql = "42.2.5"
     val c3p0 = "0.9.5.2"
-    val socrataHttpVersion = "3.16.2"
+    val socrataHttpVersion = "3.16.5-jdk11"
     val rojomaJson = "3.13.0"
     val socrataCuratorUtils = "1.2.0"
     val socrataThirdpartyUtils = "5.0.0"
     val socrataUtils = "0.11.0"
-    val soqlStdlib = "4.14.82"
+    val soqlStdlib = "4.14.93"
     val protobuf = "2.4.1"
     val trove4j = "3.0.3"
     val sprayCaching = "1.2.2"
     val typesafeConfig = "1.2.1"
-    val metrics = "4.1.2"
+    val metrics = "4.2.38"
     val metricsScala = "4.1.1"
     val scalaLogging = "3.9.2"
-    val slf4j =  "1.7.7"
+    val slf4j =  "2.0.9"
     val scalaTest = "3.0.8"
     val scalaCheck = "1.14.0"
     val simpleArm = "2.3.3"
@@ -44,7 +44,7 @@ object Dependencies {
   val sprayCaching = "io.spray" % "spray-caching" % versions.sprayCaching
   val typesafeConfig = "com.typesafe" % "config" % versions.typesafeConfig
 
-  val metricsJetty = "io.dropwizard.metrics" % "metrics-jetty9" % versions.metrics
+  val metricsJetty = "io.dropwizard.metrics" % "metrics-jetty11" % versions.metrics
   val metricsGraphite = "io.dropwizard.metrics" % "metrics-graphite" % versions.metrics
   val metricsJmx = "io.dropwizard.metrics" % "metrics-jmx" % versions.metrics
   val metricsScala = "nl.grons" %% "metrics4-scala" % versions.metricsScala

@@ -3,7 +3,7 @@ package com.socrata.querycoordinator
 import java.io._
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.Semaphore
-import javax.servlet.http.HttpServletResponse
+import jakarta.servlet.http.HttpServletResponse
 import com.socrata.http.common.util.HttpUtils
 import com.socrata.querycoordinator.caching.cache.noop.NoopCacheSessionProvider
 import com.socrata.querycoordinator.caching.{Hasher, SoQLAnalysisDepositioner, Windower}
@@ -85,7 +85,6 @@ class QueryExecutor(httpClient: HttpClient,
    */
   def apply(base: RequestBuilder, // scalastyle:ignore parameter.number method.length cyclomatic.complexity
             dataset: String,
-            mirrors: Set[RequestBuilder],
             analyses: BinaryTree[SoQLAnalysis[String, SoQLType]],
             schema: Schema,
             precondition: Precondition,
@@ -115,7 +114,7 @@ class QueryExecutor(httpClient: HttpClient,
     }
 
     def go(theAnalyses: BinaryTree[SoQLAnalysis[String, SoQLType]] = analyses): Result =
-      reallyApply(base = base, mirrors = mirrors, dataset = dataset, analyses = theAnalyses, context = context, schema = schema, precondition = precondition, ifModifiedSince = ifModifiedSince, rowCount = rowCount, copy = copy,
+      reallyApply(base = base, dataset = dataset, analyses = theAnalyses, context = context, schema = schema, precondition = precondition, ifModifiedSince = ifModifiedSince, rowCount = rowCount, copy = copy,
                   rollupName = rollupName, obfuscateId = obfuscateId, extraHeaders = extraHeaders, resourceScope = rs, queryTimeoutSeconds = queryTimeoutSeconds, debug = debug, explain = explain)
 
     if(explain ||
@@ -442,7 +441,6 @@ class QueryExecutor(httpClient: HttpClient,
   }
 
   private def reallyApply(base: RequestBuilder, // scalastyle:ignore parameter.number method.length cyclomatic.complexity
-                          mirrors: Set[RequestBuilder],
                           dataset: String,
                           analyses: BinaryTree[SoQLAnalysis[String, SoQLType]],
                           context: Context,
@@ -487,22 +485,6 @@ class QueryExecutor(httpClient: HttpClient,
             blob(queryInputStream, "application/octet-stream") // blob implies POST
           httpClient.execute(request, resourceScope)
         }
-
-    new Thread {
-      override def run(): Unit = {
-        try {
-          mirrors.foreach { req =>
-            log.debug(s"Sending mirror query ${req.url} to mirror base query ${base.url}")
-            using(new ResourceScope) { rs =>
-              sendRequest(req, rs)
-            }
-          }
-        } catch {
-          case e: Throwable =>
-            log.error("Exception while executing against mirrors", e)
-        }
-      }
-    }.start()
 
     try {
       Timing.TimedResultReturningTransformed{

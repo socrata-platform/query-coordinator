@@ -9,11 +9,17 @@ trait SecondarySelectorConfig extends ConfigClass {
 
   val allSecondaryInstanceNames: Seq[String] = getStringList("all-secondary-instance-names")
 
-  val mirrors: Map[String, List[String]] = getObjectOf("mirrors", (config, root) => config.getStringList(root).asScala).mapValues(_.toList)
-
   val secondaryDiscoveryExpirationMillis: Long = getDuration("secondary-discovery-expiration").toMillis
 
   val datasetMaxNopeCount: Int = getInt("dataset-max-nope-count")
 
   val maxCacheEntries: Int = getInt("secondary-selector-max-cache-entries")
+
+  // new cache settings
+
+  val absentInterval = getDuration("absent-interval")
+  val absentBound = getDuration("absent-bound")
+
+  val unknownInterval = getDuration("unknown-interval")
+  val unknownBound = getDuration("unknown-bound")
 }

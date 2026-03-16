@@ -23,7 +23,7 @@ class Secondary(
   val schemaTimeoutMillis = schemaTimeout.toMillis.toInt
 
 
-  def chosenSecondaryName(forcedSecondaryName: Option[String],
+  def chosenSecondaryNamex(forcedSecondaryName: Option[String],
                           dataset: String, copy: Option[String],
                           excludedSecondaryNames: Set[String]): Option[String] = {
     forcedSecondaryName.orElse {
@@ -103,20 +103,7 @@ class Secondary(
 
 
   def reqBuilder(secondary: ServiceInstance[AuxiliaryData]): RequestBuilder = {
-    val pingTarget = for {
-      auxData <- Option(secondary.getPayload)
-      pingInfo <- auxData.livenessCheckInfo
-    } yield pingInfo
-
-    val rb = RequestBuilder(secondary.getAddress).livenessCheckInfo(pingTarget).connectTimeoutMS(connectTimeoutMillis)
-
-    if(Option(secondary.getSslPort).nonEmpty) {
-      rb.secure(true).port(secondary.getSslPort)
-    } else if (Option(secondary.getPort).nonEmpty) {
-      rb.port(secondary.getPort)
-    } else {
-      rb
-    }
+    secondary.toRequestBuilder.connectTimeoutMS(connectTimeoutMillis)
   }
 
 }

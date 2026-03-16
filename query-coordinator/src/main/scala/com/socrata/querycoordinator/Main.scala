@@ -1,12 +1,14 @@
 package com.socrata.querycoordinator
 
+import scala.concurrent.duration._
 import java.io.InputStream
 import java.util.concurrent.Executors
 import com.socrata.querycoordinator.caching.cache.CacheCleanerThread
 import com.socrata.querycoordinator.caching.cache.config.CacheSessionProviderFromConfig
+import io.dropwizard.metrics.jetty11.InstrumentedHandler
 import com.rojoma.json.v3.ast.JString
 import com.rojoma.simplearm.v2._
-import com.socrata.http.client.HttpClientHttpClient
+import com.socrata.http.client.{HttpClient, HttpClientHttpClient, RequestBuilder}
 import com.socrata.http.common.AuxiliaryData
 import com.socrata.http.common.livenesscheck.LivenessCheckInfo
 import com.socrata.http.server.SocrataServerJetty
@@ -15,17 +17,18 @@ import com.socrata.http.server.livenesscheck.LivenessCheckResponder
 import com.socrata.http.server.util.RequestId.ReqIdHeader
 import com.socrata.http.server.util.handlers.{ErrorCatcher, LoggingOptions, NewLoggingHandler, ThreadRenamingHandler}
 import com.socrata.querycoordinator.caching.Windower
-import com.socrata.querycoordinator.resources.{QueryResource, NewQueryResource, VersionResource}
+import com.socrata.querycoordinator.resources.{QueryResource, NewQueryResource, CacheStateResource, VersionResource}
 import com.socrata.querycoordinator.util.TeeToTempInputStream
+import com.socrata.querycoordinator.secondary_finder.{CachedSecondaryInstanceFinder, PrimingData}
 import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
 import com.socrata.soql.types.SoQLType
 import com.socrata.soql.{AnalysisSerializer, SoQLAnalyzer}
 import com.socrata.curator.{ConfigWatch, CuratorFromConfig, DiscoveryFromConfig}
 import com.socrata.querycoordinator.rollups.{CompoundQueryRewriter, RollupInfoFetcher}
-import com.socrata.thirdparty.metrics.{MetricsReporter, SocrataHttpSupport}
+import com.socrata.thirdparty.metrics.{MetricsReporter, Metrics}
 import com.socrata.thirdparty.typesafeconfig.Propertizer
 import com.typesafe.config.{Config, ConfigFactory}
-import org.apache.curator.x.discovery.{ServiceInstanceBuilder, strategies}
+import org.apache.curator.x.discovery.{ServiceProvider, ServiceInstanceBuilder, strategies}
 import org.apache.log4j.PropertyConfigurator
 import com.socrata.util.io.StreamWrapper
 import org.slf4j.LoggerFactory
@@ -70,6 +73,36 @@ object Main extends App with DynamicPortMap {
 
   implicit val execResource = Resource.executorShutdownNoTimeout
 
+  def prime(
+    http: HttpClient,
+    discovery: ServiceProvider[AuxiliaryData],
+    secondaryFinder: CachedSecondaryInstanceFinder[(NewQueryResource.DatasetInternalName, NewQueryResource.Stage), String]
+  ): Unit = {
+    try {
+      for(instance <- Option(discovery.getInstance())) {
+        val req =
+          instance.toRequestBuilder
+            .p("cache-state", "prime")
+            .timeoutMS(Some(5000))
+            .get
+        for(resp <- http.execute(req)) {
+          resp.resultCode match {
+            case 200 =>
+              resp.value[PrimingData[(NewQueryResource.DatasetInternalName, NewQueryResource.Stage), String]]() match {
+                case Right(body) => secondaryFinder.prime(body)
+                case Left(err) => log.warn("Undecodable response while priming cache: {}", err)
+              }
+            case non200 =>
+              log.warn("Invalid response code while priming cache: {}", non200)
+          }
+        }
+      }
+    } catch {
+      case e: Exception =>
+        log.warn("Exception while priming cache from another instance", e)
+    }
+  }
+
   val threadPoolSize = 5
   for {
     executor <- managed(Executors.newFixedThreadPool(threadPoolSize))
@@ -80,7 +113,7 @@ object Main extends App with DynamicPortMap {
     httpClient <- managed(new HttpClientHttpClient(executor, httpClientConfig))
     curator <- CuratorFromConfig(config.curator)
     discovery <- DiscoveryFromConfig(classOf[AuxiliaryData], curator, config.discovery)
-    dataCoordinatorProviderProvider <- managed(new ServiceProviderProvider(
+    serviceProviderProvider <- managed(new ServiceProviderProvider(
       discovery,
       new strategies.RoundRobinStrategy))
     pongProvider <- managed(new LivenessCheckResponder(config.livenessCheck)).and(_.start())
@@ -88,27 +121,54 @@ object Main extends App with DynamicPortMap {
     useBatchDelete <- managed(new ConfigWatch[Boolean](curator, "query-coordinator/use-batch-delete", true)).and(_.start())
     cacheSessionProvider <- CacheSessionProviderFromConfig(config.cache, useBatchDelete, StreamWrapper.gzip).and(_.init())
     cacheCleaner <- managed(new CacheCleanerThread(cacheSessionProvider, config.cache.cleanInterval, config.discovery.address)).and(_.start())
+    scope <- managed(new ResourceScope)
   } {
     def teeStream(in: InputStream): TeeToTempInputStream = new TeeToTempInputStream(in)
 
     val secondaryInstanceSelector = new SecondaryInstanceSelector(config)
 
+    val existenceChecker = ExistenceChecker(httpClient)
+
     val secondary = Secondary(
-      secondaryProvider = dataCoordinatorProviderProvider,
-      existenceChecker = ExistenceChecker(httpClient),
+      secondaryProvider = serviceProviderProvider,
+      existenceChecker = existenceChecker,
       secondaryInstance = secondaryInstanceSelector,
       connectTimeout = config.connectTimeout,
       schemaTimeout = config.schemaTimeout
     )
 
-    val mirror = Mirror(config.mirrors)
-
     val windower = new Windower(config.cache.rowsPerWindow)
     val maxWindowCount = config.cache.maxWindows
     val schemaFetcher = SchemaFetcher(httpClient)
+
+    val secondaryFinder = scope.open(
+      new CachedSecondaryInstanceFinder[(NewQueryResource.DatasetInternalName, NewQueryResource.Stage), String](
+        config.allSecondaryInstanceNames.toSet,
+        { case (secondaryName, (datasetName, stage)) =>
+          Option(serviceProviderProvider.provider(secondaryName).getInstance()) match {
+            case None =>
+              CachedSecondaryInstanceFinder.CheckResult.Unknown
+            case Some(instance) =>
+              existenceChecker(secondary.reqBuilder(instance), datasetName.underlying, Some(stage.underlying)) match {
+                case ExistenceChecker.Yes => CachedSecondaryInstanceFinder.CheckResult.Present
+                case ExistenceChecker.No => CachedSecondaryInstanceFinder.CheckResult.Absent
+                case e: ExistenceChecker.Error=>
+                  log.warn("error checking for {}/{}'s existence: {}", secondaryName, datasetName, e)
+                  CachedSecondaryInstanceFinder.CheckResult.Unknown
+              }
+          }
+        },
+        absentInterval = config.absentInterval,
+        absentBound = config.absentBound,
+        unknownInterval = config.unknownInterval,
+        unknownBound = config.unknownBound
+      )
+    )
+    secondaryFinder.start()
+    prime(httpClient, serviceProviderProvider.provider(config.discovery.name), secondaryFinder)
+
     val queryResource = QueryResource(
       secondary = secondary,
-      mirror = mirror,
       schemaFetcher = schemaFetcher,
       queryParser = new QueryParser(analyzer, schemaFetcher, config.maxRows, config.defaultRowsLimit),
       queryExecutor = new QueryExecutor(httpClient, analysisSerializer, teeStream, cacheSessionProvider, windower, maxWindowCount, config.maxDbQueryTimeout.toSeconds),
@@ -119,15 +179,20 @@ object Main extends App with DynamicPortMap {
       schemaDecache = (_, _) => None,
       secondaryInstance = secondaryInstanceSelector,
       queryRewriter = new CompoundQueryRewriter(analyzer),
-      rollupInfoFetcher = new RollupInfoFetcher(httpClient)
+      rollupInfoFetcher = new RollupInfoFetcher(httpClient),
+      secondaryInstanceFinder = secondaryFinder
     )
 
     val newQueryResource = new NewQueryResource(
       httpClient = httpClient,
-      secondary = secondary
+      secondary = secondary,
+      secondaryFinder = secondaryFinder,
+      secondaryInstanceBroker = { secondary => Option(serviceProviderProvider.provider(secondary).getInstance()) }
     )
 
-    val handler = Service(queryResource, newQueryResource, VersionResource())
+    val cacheStateResource = new CacheStateResource(secondaryFinder)
+
+    val handler = Service(queryResource, newQueryResource, cacheStateResource, VersionResource())
 
     def remapLivenessCheckInfo(lci: LivenessCheckInfo): LivenessCheckInfo =
       new LivenessCheckInfo(hostPort(lci.port), lci.response)
@@ -156,7 +221,11 @@ object Main extends App with DynamicPortMap {
                            )
                          ).
                          withPort(config.network.port).
-                         withExtraHandlers(List(SocrataHttpSupport.getHandler(config.metrics))).
+                         withExtraHandlers(List({ underlying =>
+                           val handler = new InstrumentedHandler(Metrics.metricsRegistry, config.metrics.prefix)
+                           handler.setHandler(underlying)
+                           handler
+                         })).
                          withPoolOptions(SocrataServerJetty.Pool(config.threadpool)).
                          withBroker(broker)
     )
