@@ -1,4 +1,5 @@
 import scala.sys.process.Process
+import scala.util.Try
 
 import Dependencies._
 
@@ -36,7 +37,9 @@ libraryDependencies ++= Seq(
 
 addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.full)
 
-lazy val gitSha = Process(Seq("git", "describe", "--always", "--dirty", "--long", "--abbrev=10")).!!.stripLineEnd
+lazy val gitSha = Try{
+  Process(Seq("git", "describe", "--always", "--dirty", "--long", "--abbrev=10")).!!.stripLineEnd
+}.getOrElse("unknown")
 
 buildInfoKeys := Seq[BuildInfoKey](
   name,
