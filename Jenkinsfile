@@ -1,11 +1,12 @@
-@Library('socrata-pipeline-library@9.9.2') _
+@Library('socrata-pipeline-library@10.2.1') _
 
 commonPipeline(
     defaultBuildWorker: 'worker-java-multi-pg13',
     jobName: 'query-coordinator',
-    language: 'scala',
     languageOptions: [
-        crossCompile: true,
+        scala: [
+            crossCompile: true,
+        ],
     ],
     numberOfBuildsToKeep: 50,
     projects: [
@@ -13,9 +14,10 @@ commonPipeline(
           name: 'query-coordinator',
           compiled: true,
           deploymentEcosystem: 'ecs',
-          paths: [
-              dockerBuildContext: 'query-coordinator/docker'
+          docker: [
+              buildContext: 'query-coordinator/docker'
           ],
+          language: 'scala',
           type: 'service',
         ]
   ],
