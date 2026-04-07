@@ -22,16 +22,18 @@ import io.dropwizard.metrics.jetty11.InstrumentedHandler
 import com.rojoma.json.v3.ast.JString
 import com.rojoma.simplearm.v2._
 import com.socrata.http.client.{HttpClient, HttpClientHttpClient, RequestBuilder}
+import com.socrata.http.client.otel.OtelHttpClient
 import com.socrata.http.common.AuxiliaryData
 import com.socrata.http.common.livenesscheck.LivenessCheckInfo
 import com.socrata.http.server.SocrataServerJetty
 import com.socrata.http.server.curator.CuratorBroker
 import com.socrata.http.server.livenesscheck.LivenessCheckResponder
+import com.socrata.http.server.otel.OtelHandler
 import com.socrata.http.server.util.RequestId.ReqIdHeader
 import com.socrata.http.server.util.handlers.{ErrorCatcher, LoggingOptions, NewLoggingHandler, ThreadRenamingHandler}
 import com.socrata.querycoordinator.caching.Windower
 import com.socrata.querycoordinator.resources.{QueryResource, NewQueryResource, CacheStateResource, VersionResource}
-import com.socrata.querycoordinator.util.{TeeToTempInputStream, OpenTelemetryUtils}
+import com.socrata.querycoordinator.util.TeeToTempInputStream
 import com.socrata.querycoordinator.secondary_finder.{CachedSecondaryInstanceFinder, PrimingData}
 import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
 import com.socrata.soql.types.SoQLType
@@ -168,9 +170,9 @@ object Main extends App with DynamicPortMap {
       defaultOptions.
       withContentCompression(true).
       withUserAgent("Query Coordinator")
-    val httpClient = new OpenTelemetryUtils.OtelHttpClient(
+    val httpClient = OtelHttpClient(
       scope.open(new HttpClientHttpClient(executor, httpClientConfig)),
-      otel
+      otel.getPropagators
     )
     val curator = scope.open(CuratorFromConfig.unmanaged(config.curator))
     curator.start()
@@ -279,7 +281,7 @@ object Main extends App with DynamicPortMap {
     }
 
     val serv = new SocrataServerJetty(
-      OpenTelemetryUtils.OtelHandler(otel.getTracer("query-coordinator"), otel.getPropagators) {
+      OtelHandler(otel.getTracer("query-coordinator"), otel.getPropagators) {
         ThreadRenamingHandler {
           NewLoggingHandler(logOptions) {
             ErrorCatcher(handler)

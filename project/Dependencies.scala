@@ -8,7 +8,7 @@ object Dependencies {
     val opentelemetry = "1.60.1"
     val otelSemConv = "1.40.0"
     val otelXray = "1.55.0-alpha"
-    val socrataHttpVersion = "3.16.5-jdk11"
+    val socrataHttpVersion = "3.17.0-jdk11"
     val rojomaJson = "3.13.0"
     val socrataCuratorUtils = "1.2.0"
     val socrataThirdpartyUtils = "5.0.0"
@@ -40,10 +40,11 @@ object Dependencies {
   val opentelemetrySemConv = "io.opentelemetry.semconv" % "opentelemetry-semconv" % versions.otelSemConv
   val opentelemetryXrayPropagator   = "io.opentelemetry.contrib" % "opentelemetry-aws-xray-propagator" % versions.otelXray
   val rojomaJson = "com.rojoma" %% "rojoma-json-v3" % versions.rojomaJson
-  val socrataHttpClient = "com.socrata" %% "socrata-http-client" % versions.socrataHttpVersion
+  val socrataHttpClient = "com.socrata" %% "socrata-http-client-otel" % versions.socrataHttpVersion
   val socrataHttpCuratorBroker = "com.socrata" %% "socrata-http-curator-broker" % versions.socrataHttpVersion exclude("org.slf4j", "slf4j-simple") exclude ("org.jboss.netty", "netty" /* see ZOOKEEPER-1681 */)
   val socrataHttpJetty = "com.socrata" %% "socrata-http-jetty" % versions.socrataHttpVersion
   val socrataHttpServerExt = "com.socrata" %% "socrata-http-server-ext" % versions.socrataHttpVersion
+  val socrataHttpServerOtel = "com.socrata" %% "socrata-http-server-otel" % versions.socrataHttpVersion
   val socrataCuratorUtils = "com.socrata" %% "socrata-curator-utils" % versions.socrataCuratorUtils
   val socrataThirdpartyUtils = "com.socrata" %% "socrata-thirdparty-utils" % versions.socrataThirdpartyUtils
   val socrataUtils = "com.socrata" %% "socrata-utils" % versions.socrataUtils
