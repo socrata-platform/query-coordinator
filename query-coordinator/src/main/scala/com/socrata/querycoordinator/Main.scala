@@ -1,6 +1,19 @@
 package com.socrata.querycoordinator
 
 import scala.concurrent.duration._
+
+import io.opentelemetry.api.OpenTelemetry
+import io.opentelemetry.sdk.OpenTelemetrySdk
+import io.opentelemetry.sdk.resources.{Resource => OtelResource}
+import io.opentelemetry.semconv.ServiceAttributes
+import io.opentelemetry.sdk.trace.SdkTracerProvider
+import io.opentelemetry.sdk.trace.export.BatchSpanProcessor
+import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter
+import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator
+import io.opentelemetry.api.baggage.propagation.W3CBaggagePropagator
+import io.opentelemetry.contrib.awsxray.propagator.AwsXrayPropagator
+import io.opentelemetry.context.propagation.ContextPropagators
+import io.opentelemetry.context.propagation.TextMapPropagator
 import java.io.InputStream
 import java.util.concurrent.Executors
 import com.socrata.querycoordinator.caching.cache.CacheCleanerThread
@@ -18,7 +31,7 @@ import com.socrata.http.server.util.RequestId.ReqIdHeader
 import com.socrata.http.server.util.handlers.{ErrorCatcher, LoggingOptions, NewLoggingHandler, ThreadRenamingHandler}
 import com.socrata.querycoordinator.caching.Windower
 import com.socrata.querycoordinator.resources.{QueryResource, NewQueryResource, CacheStateResource, VersionResource}
-import com.socrata.querycoordinator.util.TeeToTempInputStream
+import com.socrata.querycoordinator.util.{TeeToTempInputStream, OpenTelemetryUtils}
 import com.socrata.querycoordinator.secondary_finder.{CachedSecondaryInstanceFinder, PrimingData}
 import com.socrata.soql.functions.{SoQLFunctionInfo, SoQLTypeInfo}
 import com.socrata.soql.types.SoQLType
@@ -104,25 +117,80 @@ object Main extends App with DynamicPortMap {
   }
 
   val threadPoolSize = 5
-  for {
-    executor <- managed(Executors.newFixedThreadPool(threadPoolSize))
-    httpClientConfig <- unmanaged(HttpClientHttpClient.
+  using(new ResourceScope) { scope =>
+
+    val otel =
+      config.opentelemetry match {
+        case Some(otelConfig) =>
+          val resource = OtelResource.getDefault.toBuilder
+            .put(ServiceAttributes.SERVICE_NAME, "query-coordinator")
+            .build()
+          scope.open(
+            OpenTelemetrySdk.builder()
+              .setTracerProvider(
+                scope.open(
+                  SdkTracerProvider.builder()
+                    .setResource(resource)
+                    .addSpanProcessor(
+                      BatchSpanProcessor.builder(
+                        OtlpHttpSpanExporter.builder()
+                          .setEndpoint(otelConfig.endpoint)
+                          .setTimeout(java.time.Duration.ofSeconds(10))
+                          .build()
+                      )
+                      .setMaxQueueSize(2048)
+                      .setExporterTimeout(java.time.Duration.ofSeconds(30))
+                      .setScheduleDelay(java.time.Duration.ofSeconds(5))
+                      .build()
+                  )
+                  .build()
+              )
+            )
+            // .setMeterProvider(SdkMeterProviderConfig.create(resource))
+            // .setLoggerProvider(SdkLoggerProviderConfig.create(resource))
+            .setPropagators(
+              ContextPropagators.create(
+                TextMapPropagator.composite(
+                  W3CTraceContextPropagator.getInstance(),
+                  W3CBaggagePropagator.getInstance(),
+                  AwsXrayPropagator.getInstance()
+                )
+              )
+            )
+            .build()
+          )
+        case None =>
+          OpenTelemetry.noop
+      }
+
+    val executor = scope.open(Executors.newFixedThreadPool(threadPoolSize))
+    val httpClientConfig = HttpClientHttpClient.
       defaultOptions.
       withContentCompression(true).
-      withUserAgent("Query Coordinator"))
-    httpClient <- managed(new HttpClientHttpClient(executor, httpClientConfig))
-    curator <- CuratorFromConfig(config.curator)
-    discovery <- DiscoveryFromConfig(classOf[AuxiliaryData], curator, config.discovery)
-    serviceProviderProvider <- managed(new ServiceProviderProvider(
+      withUserAgent("Query Coordinator")
+    val httpClient = new OpenTelemetryUtils.OtelHttpClient(
+      scope.open(new HttpClientHttpClient(executor, httpClientConfig)),
+      otel
+    )
+    val curator = scope.open(CuratorFromConfig.unmanaged(config.curator))
+    curator.start()
+    val discovery = scope.open(DiscoveryFromConfig.unmanaged(classOf[AuxiliaryData], curator, config.discovery))
+    discovery.start()
+    val serviceProviderProvider = scope.open(new ServiceProviderProvider(
       discovery,
       new strategies.RoundRobinStrategy))
-    pongProvider <- managed(new LivenessCheckResponder(config.livenessCheck)).and(_.start())
-    reporter <- MetricsReporter.managed(config.metrics)
-    useBatchDelete <- managed(new ConfigWatch[Boolean](curator, "query-coordinator/use-batch-delete", true)).and(_.start())
-    cacheSessionProvider <- CacheSessionProviderFromConfig(config.cache, useBatchDelete, StreamWrapper.gzip).and(_.init())
-    cacheCleaner <- managed(new CacheCleanerThread(cacheSessionProvider, config.cache.cleanInterval, config.discovery.address)).and(_.start())
-    scope <- managed(new ResourceScope)
-  } {
+    val pongProvider = scope.open(new LivenessCheckResponder(config.livenessCheck))
+    pongProvider.start()
+    val reporter = scope.open(new MetricsReporter(config.metrics))(new Resource[MetricsReporter] {
+                                                                     override def close(mr: MetricsReporter) = mr.stop()
+                                                                   })
+    val useBatchDelete = scope.open(new ConfigWatch[Boolean](curator, "query-coordinator/use-batch-delete", true))
+    useBatchDelete.start()
+    val cacheSessionProvider = CacheSessionProviderFromConfig(scope, config.cache, useBatchDelete, StreamWrapper.gzip)
+    cacheSessionProvider.init()
+    val cacheCleaner = scope.open(new CacheCleanerThread(cacheSessionProvider, config.cache.cleanInterval, config.discovery.address))
+    cacheCleaner.start()
+
     def teeStream(in: InputStream): TeeToTempInputStream = new TeeToTempInputStream(in)
 
     val secondaryInstanceSelector = new SecondaryInstanceSelector(config)
@@ -187,7 +255,8 @@ object Main extends App with DynamicPortMap {
       httpClient = httpClient,
       secondary = secondary,
       secondaryFinder = secondaryFinder,
-      secondaryInstanceBroker = { secondary => Option(serviceProviderProvider.provider(secondary).getInstance()) }
+      secondaryInstanceBroker = { secondary => Option(serviceProviderProvider.provider(secondary).getInstance()) },
+      otel = otel
     )
 
     val cacheStateResource = new CacheStateResource(secondaryFinder)
@@ -210,7 +279,13 @@ object Main extends App with DynamicPortMap {
     }
 
     val serv = new SocrataServerJetty(
-      ThreadRenamingHandler(NewLoggingHandler(logOptions)(ErrorCatcher(handler))),
+      OpenTelemetryUtils.OtelHandler(otel.getTracer("query-coordinator"), otel.getPropagators) {
+        ThreadRenamingHandler {
+          NewLoggingHandler(logOptions) {
+            ErrorCatcher(handler)
+          }
+        }
+      },
       SocrataServerJetty.defaultOptions.
                          withGzipOptions(
                            Some(

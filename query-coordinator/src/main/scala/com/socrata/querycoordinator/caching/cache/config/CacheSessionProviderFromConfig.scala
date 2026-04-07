@@ -14,37 +14,39 @@ object CacheSessionProviderFromConfig {
     def close(ds: ComboPooledDataSource) = ds.close()
   }
 
-  def apply(config: CacheConfig, useBatchDelete: () => Boolean, streamWrapper: StreamWrapper = StreamWrapper.noop): Managed[CacheSessionProvider with CacheCleanerProvider with CacheInit] =
+  def apply(rs: ResourceScope, config: CacheConfig, useBatchDelete: () => Boolean, streamWrapper: StreamWrapper = StreamWrapper.noop): CacheSessionProvider with CacheCleanerProvider with CacheInit =
     config.realConfig match {
       case fs: FilesystemCacheConfig =>
-        fromFilesystem(fs, streamWrapper)
+        fromFilesystem(rs, fs, streamWrapper)
       case pg: PostgresqlCacheConfig =>
-        fromPostgres(pg, useBatchDelete, streamWrapper, config.minQueryTime)
+        fromPostgres(rs, pg, useBatchDelete, streamWrapper, config.minQueryTime)
       case NoopCacheConfig =>
-        unmanaged(NoopCacheSessionProvider)
+        rs.openUnmanaged(new NoopCacheSessionProvider)
     }
 
-  def fromFilesystem(fs: FilesystemCacheConfig, streamWrapper: StreamWrapper) =
-    unmanaged(new FileCacheSessionProvider(
+  def fromFilesystem(rs: ResourceScope, fs: FilesystemCacheConfig, streamWrapper: StreamWrapper) =
+    rs.openUnmanaged(new FileCacheSessionProvider(
       fs.root,
       updateATimeInterval = fs.atimeUpdateInterval,
       survivorCutoff = fs.survivorCutoff,
       assumeDeadCreateCutoff = fs.assumeDeadCreateCutoff,
       streamWrapper = streamWrapper))
 
-  def fromPostgres(pg: PostgresqlCacheConfig, useBatchDelete: () => Boolean, streamWrapper: StreamWrapper, minQueryTimeMs: Long) =
-    for(ds <- managed(new ComboPooledDataSource(false))) yield {
-      ds.setDriverClass("org.postgresql.Driver")
-      ds.setJdbcUrl("jdbc:postgresql://" + pg.db.host + ":" + pg.db.port + "/" + pg.db.database)
-      ds.setUser(pg.db.username)
-      ds.setPassword(pg.db.password)
-      ds.setCheckoutTimeout(500) // since we only use this for caching, we can have a brief timeout -- if we can't get one, we'll just not cache
-      ds.setTestConnectionOnCheckin(true)
-      ds.setPreferredTestQuery("SELECT 1")
-      ds.setInitialPoolSize(pg.db.minPoolSize)
-      ds.setMinPoolSize(pg.db.minPoolSize)
-      ds.setMaxPoolSize(pg.db.maxPoolSize)
-      new PostgresqlCacheSessionProvider(ds,
+  def fromPostgres(rs: ResourceScope, pg: PostgresqlCacheConfig, useBatchDelete: () => Boolean, streamWrapper: StreamWrapper, minQueryTimeMs: Long) = {
+    val ds = rs.open(new ComboPooledDataSource(false))
+    ds.setDriverClass("org.postgresql.Driver")
+    ds.setJdbcUrl("jdbc:postgresql://" + pg.db.host + ":" + pg.db.port + "/" + pg.db.database)
+    ds.setUser(pg.db.username)
+    ds.setPassword(pg.db.password)
+    ds.setCheckoutTimeout(500) // since we only use this for caching, we can have a brief timeout -- if we can't get one, we'll just not cache
+    ds.setTestConnectionOnCheckin(true)
+    ds.setPreferredTestQuery("SELECT 1")
+    ds.setInitialPoolSize(pg.db.minPoolSize)
+    ds.setMinPoolSize(pg.db.minPoolSize)
+    ds.setMaxPoolSize(pg.db.maxPoolSize)
+    rs.openUnmanaged(
+      new PostgresqlCacheSessionProvider(
+        ds,
         updateATimeInterval = pg.atimeUpdateInterval,
         survivorCutoff = pg.survivorCutoff,
         assumeDeadCreateCutoff = pg.assumeDeadCreateCutoff,
@@ -52,6 +54,9 @@ object CacheSessionProviderFromConfig {
         deleteChunkSize = pg.deleteChunkSize,
         useBatchDelete = useBatchDelete,
         streamWrapper = streamWrapper,
-        minimumQueryTimeMs = minQueryTimeMs)
-    }
+        minimumQueryTimeMs = minQueryTimeMs
+      ),
+      transitiveClose = List(ds)
+    )
+  }
 }

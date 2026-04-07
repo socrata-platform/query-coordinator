@@ -10,6 +10,11 @@ enablePlugins(BuildInfoPlugin)
 libraryDependencies ++= Seq(
   postgresql,
   c3p0,
+  opentelemetryOtlp,
+  opentelemetrySdk,
+  opentelemetrySemConv,
+  opentelemetryIncubator,
+  opentelemetryXrayPropagator,
   rojomaJson,
   simpleArm,
   socrataHttpClient,

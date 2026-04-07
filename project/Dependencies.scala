@@ -5,6 +5,9 @@ object Dependencies {
   object versions {
     val postgresql = "42.2.5"
     val c3p0 = "0.9.5.2"
+    val opentelemetry = "1.60.1"
+    val otelSemConv = "1.40.0"
+    val otelXray = "1.55.0-alpha"
     val socrataHttpVersion = "3.16.5-jdk11"
     val rojomaJson = "3.13.0"
     val socrataCuratorUtils = "1.2.0"
@@ -27,6 +30,14 @@ object Dependencies {
 
   val postgresql = "org.postgresql" % "postgresql" % versions.postgresql
   val c3p0 = "com.mchange" % "c3p0" % versions.c3p0
+  val opentelemetryOtlp = "io.opentelemetry" % "opentelemetry-exporter-otlp" % versions.opentelemetry
+  val opentelemetrySdk = "io.opentelemetry" % "opentelemetry-sdk" % versions.opentelemetry
+  val opentelemetryMetrics = "io.opentelemetry" % "opentelemetry-metrics" % versions.opentelemetry
+  val opentelemetryTracing = "io.opentelemetry" % "opentelemetry-tracing" % versions.opentelemetry
+  val opentelemetryLogs = "io.opentelemetry" % "opentelemetry-logs" % versions.opentelemetry
+  val opentelemetryIncubator = "io.opentelemetry" % "opentelemetry-sdk-extension-incubator" % (versions.opentelemetry + "-alpha")
+  val opentelemetrySemConv = "io.opentelemetry.semconv" % "opentelemetry-semconv" % versions.otelSemConv
+  val opentelemetryXrayPropagator   = "io.opentelemetry.contrib" % "opentelemetry-aws-xray-propagator" % versions.otelXray
   val rojomaJson = "com.rojoma" %% "rojoma-json-v3" % versions.rojomaJson
   val socrataHttpClient = "com.socrata" %% "socrata-http-client" % versions.socrataHttpVersion
   val socrataHttpCuratorBroker = "com.socrata" %% "socrata-http-curator-broker" % versions.socrataHttpVersion exclude("org.slf4j", "slf4j-simple") exclude ("org.jboss.netty", "netty" /* see ZOOKEEPER-1681 */)

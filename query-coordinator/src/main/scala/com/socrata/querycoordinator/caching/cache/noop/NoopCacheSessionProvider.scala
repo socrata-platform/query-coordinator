@@ -5,9 +5,7 @@ import com.socrata.querycoordinator.caching.cache._
 
 import scala.concurrent.duration.FiniteDuration
 
-class NoopCacheSessionProvider
-
-object NoopCacheSessionProvider extends CacheSessionProvider with CacheCleanerProvider with CacheInit {
+class NoopCacheSessionProvider extends CacheSessionProvider with CacheCleanerProvider with CacheInit {
   protected val log = org.slf4j.LoggerFactory.getLogger(classOf[NoopCacheSessionProvider])
 
   override def open(rs: ResourceScope, dataset: String): CacheSession = NoopCacheSession

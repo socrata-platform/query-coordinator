@@ -9,6 +9,7 @@ import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.nio.charset.StandardCharsets
 import java.net.SocketException
 
+import io.opentelemetry.api.OpenTelemetry
 import com.rojoma.json.v3.ast.{JBoolean, JString, JValue, JNull}
 import com.rojoma.json.v3.codec.{JsonEncode, JsonDecode, DecodeError}
 import com.rojoma.json.v3.util.{WrapperJsonCodec, AutomaticJsonCodec, NullForNone, AllowMissing, SimpleHierarchyCodecBuilder, InternalTag, AutomaticJsonCodecBuilder, JsonUtil}
@@ -224,7 +225,8 @@ class NewQueryResource(
   // A thing that can say "here is a registration record for this secondary"
   secondaryInstanceBroker: String => Option[ServiceInstance[AuxiliaryData]],
   // shared with the old codepath; we use it for building the base RequestBuilder
-  secondary: Secondary
+  secondary: Secondary,
+  otel: OpenTelemetry
 ) extends QCResource with ResourceExt {
   import NewQueryResource._
 
