@@ -9,7 +9,8 @@ import java.{util => ju}
 import java.util.concurrent.{ConcurrentHashMap, ArrayBlockingQueue, ThreadLocalRandom}
 import java.util.concurrent.atomic.{AtomicReference, AtomicLong}
 
-import com.rojoma.simplearm.v2.Resource
+import io.opentelemetry.context.Context
+import com.rojoma.simplearm.v2._
 import com.rojoma.json.v3.ast.{JObject, JNumber, JString, JValue}
 import com.rojoma.json.v3.codec.{JsonEncode, JsonDecode, FieldEncode, DecodeError}
 import com.rojoma.json.v3.interpolation._
@@ -466,10 +467,13 @@ class CachedSecondaryInstanceFinder[DatasetInternalName, Secondary](
             try {
               log.debug("Seeking {} in all secondaries", internalName)
 
+              val context = Context.current
               val checkResults: Map[Secondary, AtomicReference[CacheResult]] = allSecondariesSeq.par
                 .map { secondary =>
-                  val result = doCheck(secondary, internalName)
-                  (secondary, new AtomicReference(result))
+                  using(context.makeCurrent()) { _ =>
+                    val result = doCheck(secondary, internalName)
+                    (secondary, new AtomicReference(result))
+                  }
                 }
                 .seq
                 .toMap
@@ -520,14 +524,17 @@ class CachedSecondaryInstanceFinder[DatasetInternalName, Secondary](
       log.debug("Re-looking up {}", internalName)
       if(cache.replace(internalName, orig, pending)) {
         try {
+          val context = Context.current
           for((secondary, cacheResult) <- orig.result.par) {
-            cacheResult.get match {
-              case CacheResult.Absent(kind, checkedAt, _) if checkedAt.elapsed > kind.initialInterval =>
-                log.debug("Re-looking up {} in {}", internalName, secondary)
-                val result = doCheck(secondary, internalName)
-                cacheResult.set(result)
-              case _ =>
-                // ok
+            using(context.makeCurrent()) { _ =>
+              cacheResult.get match {
+                case CacheResult.Absent(kind, checkedAt, _) if checkedAt.elapsed > kind.initialInterval =>
+                  log.debug("Re-looking up {} in {}", internalName, secondary)
+                  val result = doCheck(secondary, internalName)
+                  cacheResult.set(result)
+                case _ =>
+                  // ok
+              }
             }
           }
 

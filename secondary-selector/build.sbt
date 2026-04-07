@@ -3,6 +3,7 @@ import Dependencies._
 name := "secondary-selector"
 
 libraryDependencies ++= Seq(
+  opentelemetryApi,
   rojomaJson,
   simpleArm,
   socrataThirdpartyUtils,

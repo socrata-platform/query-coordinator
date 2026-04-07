@@ -31,6 +31,7 @@ object Dependencies {
   val postgresql = "org.postgresql" % "postgresql" % versions.postgresql
   val c3p0 = "com.mchange" % "c3p0" % versions.c3p0
   val opentelemetryOtlp = "io.opentelemetry" % "opentelemetry-exporter-otlp" % versions.opentelemetry
+  val opentelemetryApi = "io.opentelemetry" % "opentelemetry-api" % versions.opentelemetry
   val opentelemetrySdk = "io.opentelemetry" % "opentelemetry-sdk" % versions.opentelemetry
   val opentelemetryMetrics = "io.opentelemetry" % "opentelemetry-metrics" % versions.opentelemetry
   val opentelemetryTracing = "io.opentelemetry" % "opentelemetry-tracing" % versions.opentelemetry
