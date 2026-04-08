@@ -43,5 +43,10 @@ com.socrata.query-coordinator {
     graphite-host = "{{ GRAPHITE_HOST }}"
     graphite-port = "{{ GRAPHITE_PORT }}"
   }
+
+  opentelemetry {
+    enabled = {{ OTEL_ENABLED }}
+    endpoint = "{{ OTEL_ENDPOINT }}"
+  }
 }
 
