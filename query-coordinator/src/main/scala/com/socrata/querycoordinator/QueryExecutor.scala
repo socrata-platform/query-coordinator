@@ -9,6 +9,7 @@ import com.socrata.querycoordinator.caching.cache.noop.NoopCacheSessionProvider
 import com.socrata.querycoordinator.caching.{Hasher, SoQLAnalysisDepositioner, Windower}
 
 import scala.collection.JavaConverters._
+import io.opentelemetry.api.OpenTelemetry
 import com.rojoma.json.v3.ast.{JObject, JString, JValue}
 import com.rojoma.json.v3.codec.JsonDecode
 import com.rojoma.json.v3.io.{FusedBlockJsonEventIterator, JsonReader}
@@ -118,7 +119,7 @@ class QueryExecutor(httpClient: HttpClient,
                   rollupName = rollupName, obfuscateId = obfuscateId, extraHeaders = extraHeaders, resourceScope = rs, queryTimeoutSeconds = queryTimeoutSeconds, debug = debug, explain = explain)
 
     if(explain ||
-       (cacheSessionProvider == NoopCacheSessionProvider && !forceCacheEvenWhenNoop) ||
+       (cacheSessionProvider.isInstanceOf[NoopCacheSessionProvider] && !forceCacheEvenWhenNoop) ||
        cacheSessionProvider.disabled) {
       return go()
     }

@@ -30,4 +30,13 @@ class QueryCoordinatorConfig(config: Config, root: String)
   val cache = getConfig("cache", new CacheConfig(_, _))
 
   val threadpool = getRawConfig("threadpool")
+
+  val opentelemetry = optionally(getRawConfig("opentelemetry")).map { _ =>
+    getConfig("opentelemetry", new OtelConfig(_, _))
+  }
+}
+
+class OtelConfig(config: Config, root: String) extends ConfigClass(config, root) {
+  val enabled = optionally(getBoolean("enabled")).getOrElse(true)
+  val endpoint = getString("endpoint")
 }
