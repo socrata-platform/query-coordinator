@@ -123,7 +123,7 @@ object Main extends App with DynamicPortMap {
 
     val otel =
       config.opentelemetry match {
-        case Some(otelConfig) =>
+        case Some(otelConfig) if otelConfig.enabled =>
           val resource = OtelResource.getDefault.toBuilder
             .put(ServiceAttributes.SERVICE_NAME, "query-coordinator")
             .build()
@@ -137,12 +137,8 @@ object Main extends App with DynamicPortMap {
                       BatchSpanProcessor.builder(
                         OtlpHttpSpanExporter.builder()
                           .setEndpoint(otelConfig.endpoint)
-                          .setTimeout(java.time.Duration.ofSeconds(10))
                           .build()
                       )
-                      .setMaxQueueSize(2048)
-                      .setExporterTimeout(java.time.Duration.ofSeconds(30))
-                      .setScheduleDelay(java.time.Duration.ofSeconds(5))
                       .build()
                   )
                   .build()
@@ -161,7 +157,7 @@ object Main extends App with DynamicPortMap {
             )
             .build()
           )
-        case None =>
+        case _ =>
           OpenTelemetry.noop
       }
 

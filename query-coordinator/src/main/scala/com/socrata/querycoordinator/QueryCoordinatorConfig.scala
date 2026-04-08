@@ -37,5 +37,6 @@ class QueryCoordinatorConfig(config: Config, root: String)
 }
 
 class OtelConfig(config: Config, root: String) extends ConfigClass(config, root) {
+  val enabled = optionally(getBoolean("enabled")).getOrElse(true)
   val endpoint = getString("endpoint")
 }
