@@ -8,7 +8,7 @@ object Dependencies {
     val opentelemetry = "1.60.1"
     val otelSemConv = "1.40.0"
     val otelXray = "1.55.0-alpha"
-    val socrataHttpVersion = "3.17.1-jdk11"
+    val socrataHttpVersion = "3.17.2-jdk11"
     val rojomaJson = "3.13.0"
     val socrataCuratorUtils = "1.2.0"
     val socrataThirdpartyUtils = "5.0.0"
