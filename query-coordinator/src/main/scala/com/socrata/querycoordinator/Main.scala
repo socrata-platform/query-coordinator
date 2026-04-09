@@ -25,7 +25,7 @@ import com.socrata.http.client.{HttpClient, HttpClientHttpClient, RequestBuilder
 import com.socrata.http.client.otel.OtelHttpClient
 import com.socrata.http.common.AuxiliaryData
 import com.socrata.http.common.livenesscheck.LivenessCheckInfo
-import com.socrata.http.server.SocrataServerJetty
+import com.socrata.http.server.{SocrataServerJetty, HttpRequest}
 import com.socrata.http.server.curator.CuratorBroker
 import com.socrata.http.server.livenesscheck.LivenessCheckResponder
 import com.socrata.http.server.otel.OtelHandler
@@ -276,8 +276,15 @@ object Main extends App with DynamicPortMap {
       }
     }
 
+    def otelRequestFilter(req: HttpRequest) = {
+      req.requestPath match {
+        case List("version") => false
+        case _ => true
+      }
+    }
+
     val serv = new SocrataServerJetty(
-      OtelHandler(otel.getTracer("query-coordinator"), otel.getPropagators) {
+      OtelHandler(otel.getTracer("query-coordinator"), otel.getPropagators, record = otelRequestFilter) {
         ThreadRenamingHandler {
           NewLoggingHandler(logOptions) {
             ErrorCatcher(handler)
