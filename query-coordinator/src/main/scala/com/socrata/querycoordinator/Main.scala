@@ -98,7 +98,9 @@ object Main extends App with DynamicPortMap {
         val req =
           instance.toRequestBuilder
             .p("cache-state", "prime")
-            .timeoutMS(Some(5000))
+            .connectTimeoutMS(Some(500))
+            .receiveTimeoutMS(Some(10000))
+            .timeoutMS(Some(20000))
             .get
         for(resp <- http.execute(req)) {
           resp.resultCode match {
